@@ -1,8 +1,9 @@
 defmodule Exograph.Web.Monaco do
   @moduledoc false
 
-  @entry "assets/node_modules/monaco-editor/esm/vs/editor/edcore.main.js"
-  @css_src "assets/node_modules/monaco-editor/min/vs/editor/editor.main.css"
+  @app_root Path.expand("../../..", __DIR__)
+  @entry Path.join(@app_root, "assets/node_modules/monaco-editor/esm/vs/editor/edcore.main.js")
+  @css_src Path.join(@app_root, "assets/node_modules/monaco-editor/min/vs/editor/editor.main.css")
 
   def ensure_bundled! do
     outdir = Volt.Config.build().outdir |> to_string()
@@ -21,9 +22,9 @@ defmodule Exograph.Web.Monaco do
       File.mkdir_p!(vendor_dir)
 
       case OXC.bundle(@entry,
-             cwd: File.cwd!(),
+             cwd: @app_root,
              format: :esm,
-             modules: ["assets/node_modules"],
+             modules: [Path.join(@app_root, "assets/node_modules")],
              module_types: Volt.Config.build().module_types,
              define: %{"process.env.NODE_ENV" => ~s("production")}
            ) do

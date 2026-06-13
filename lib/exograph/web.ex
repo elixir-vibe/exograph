@@ -28,9 +28,27 @@ defmodule Exograph.Web do
   defp html_helpers do
     quote do
       import Phoenix.HTML
-      import PhoenixIconify, only: [icon: 1]
+      import Exograph.Web, only: [icon: 1]
       alias Phoenix.LiveView.JS
       unquote(verified_routes())
+    end
+  end
+
+  use Phoenix.Component
+
+  attr(:name, :string, required: true)
+  attr(:class, :string, default: nil)
+  attr(:rest, :global)
+
+  def icon(assigns) do
+    if Code.ensure_loaded?(PhoenixIconify) do
+      apply(PhoenixIconify, :icon, [assigns])
+    else
+      assigns = Phoenix.Component.assign_new(assigns, :class, fn -> nil end)
+
+      ~H"""
+      <span class={@class} aria-hidden="true" data-icon={@name} {@rest}></span>
+      """
     end
   end
 

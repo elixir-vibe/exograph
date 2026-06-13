@@ -11,7 +11,7 @@ defmodule Exograph.MixProject do
       elixir: "~> 1.19",
       description:
         "Local CodeQL-style code search for Elixir, backed by DuckDB/QuackDB or Postgres and ExAST.",
-      compilers: Mix.compilers() ++ [:phoenix_iconify],
+      compilers: compilers(),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
@@ -64,6 +64,14 @@ defmodule Exograph.MixProject do
       {:phoenix_test_playwright, "~> 0.14", only: :test, runtime: false},
       {:phoenix_iconify, "~> 0.1", optional: true}
     ]
+  end
+
+  defp compilers do
+    if Code.ensure_loaded?(PhoenixIconify.MixCompiler) do
+      Mix.compilers() ++ [:phoenix_iconify]
+    else
+      Mix.compilers()
+    end
   end
 
   defp package do

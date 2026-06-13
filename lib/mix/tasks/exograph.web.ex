@@ -22,13 +22,12 @@ defmodule Mix.Tasks.Exograph.Web do
   """
   use Mix.Task
 
+  @app_root Path.expand("../../..", __DIR__)
+
   @impl true
   def run(args) do
-    unless Code.ensure_loaded?(Phoenix) do
-      Mix.raise(
-        "mix exograph.web requires phoenix, phoenix_live_view, volt, and bandit as dependencies"
-      )
-    end
+    ensure_web_dependencies!()
+    put_volt_config!()
 
     {opts, _, _} =
       OptionParser.parse(args,
@@ -165,6 +164,55 @@ defmodule Mix.Tasks.Exograph.Web do
   defp build_assets! do
     Exograph.Web.Monaco.ensure_bundled!()
     Mix.Task.rerun("volt.build")
+  end
+
+  defp put_volt_config! do
+    assets_root = Path.join(@app_root, "assets")
+
+    Application.put_all_env(
+      volt: [
+        entry: Path.join(@app_root, "assets/web/app.ts"),
+        root: assets_root,
+        outdir: Path.join(@app_root, "priv/static/assets"),
+        target: :es2020,
+        hash: false,
+        resolve_dirs: [Path.join(assets_root, "node_modules"), Path.join(@app_root, "deps")],
+        module_types: %{".css" => :empty, ".ttf" => :empty},
+        tailwind: [
+          css: Path.join(@app_root, "assets/web/app.css"),
+          sources: [
+            %{base: Path.join(@app_root, "lib"), pattern: "**/*.{ex,heex}"},
+            %{base: assets_root, pattern: "**/*.{ts,css}"}
+          ]
+        ],
+        server: [
+          prefix: "/assets",
+          watch_dirs: [Path.join(@app_root, "lib"), assets_root]
+        ]
+      ]
+    )
+  end
+
+  defp ensure_web_dependencies! do
+    missing =
+      [
+        {:phoenix, Phoenix},
+        {:phoenix_live_view, Phoenix.LiveView},
+        {:volt, Volt},
+        {:volt, Volt.Config},
+        {:bandit, Bandit}
+      ]
+      |> Enum.reject(fn {_app, module} -> Code.ensure_loaded?(module) end)
+      |> Enum.map(fn {app, _module} -> app end)
+      |> Enum.uniq()
+
+    if missing != [] do
+      deps =
+        missing
+        |> Enum.map_join(", ", fn app -> "{:#{app}, \"...\"}" end)
+
+      Mix.raise("mix exograph.web requires these dependencies in the host project: #{deps}")
+    end
   end
 
   defp iex_running?, do: Code.ensure_loaded?(IEx) and IEx.started?()
