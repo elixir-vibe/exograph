@@ -98,6 +98,25 @@ No missing local tarballs were reported for either completed run. The largest cu
 
 QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ecto native append paths. QuackDB `0.5.8` reused QuackDB's DML builder for the same Ecto append temporary-table SQL and was performance-neutral in the full workload. These changes were positive or neutral but not large enough to change the main bottleneck: fragment append/upsert remains dominated by the append + conflict-ignore + returning/staging path.
 
+### Experimental MERGE fragment append
+
+DuckDB docs and source notes indicate that recent `MERGE` paths can choose better bulk strategies than older `ON CONFLICT` index-conflict paths. Exograph therefore has an experimental DuckDB fragment append path enabled with:
+
+```bash
+EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge mix exograph.index.hex ...
+```
+
+This keeps the default Ecto `insert_all(..., insert_method: :append, on_conflict: :nothing, returning: ...)` path unchanged unless explicitly requested.
+
+Initial `top --limit 2000` result:
+
+| Mode | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total |
+|------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|
+| default (`0.5.8`) | 1635 | 365 | 0 | 156.99s | 166.86s | 241.2s |
+| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` | 1635 | 365 | 0 | 153.91s | 158.99s | 188.0s |
+
+This is promising but still experimental; do not make it the default until repeat runs show the improvement is stable and search quality checks match.
+
 ### Package batching experiment
 
 `mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:
