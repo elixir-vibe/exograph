@@ -143,29 +143,14 @@ defmodule Exograph.DuckDB.FragmentAppend do
   defp clear_temp_table_sql(table), do: ["DELETE FROM ", quote_name(table)]
 
   defp merge_sql(source, temp_table) do
-    target = quote_name(source)
-    stage = quote_name(temp_table)
-    columns = Enum.map_join(@columns, ", ", &quote_name/1)
-    values = Enum.map_join(@columns, ", ", &["s.", quote_name(&1)])
-
-    [
-      "MERGE INTO ",
-      target,
-      " AS t USING ",
-      stage,
-      " AS s ON t.",
-      quote_name(:content_hash),
-      " = s.",
-      quote_name(:content_hash),
-      " WHEN NOT MATCHED THEN INSERT (",
-      columns,
-      ") VALUES (",
-      values,
-      ") RETURNING ",
-      quote_name(:content_hash),
-      ", ",
-      quote_name(:id)
-    ]
+    QuackDB.DML.merge_into(source,
+      using: temp_table,
+      target_as: :target,
+      source_as: :source,
+      on: [:content_hash],
+      when_not_matched: {:insert, @columns},
+      returning: [:content_hash, :id]
+    )
   end
 
   defp quote_name(name), do: QuackDB.Type.quote_identifier(to_string(name))
