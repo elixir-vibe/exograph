@@ -129,6 +129,8 @@ This is promising but still experimental. `fragment_append_rows` consistently im
 
 Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. Keep it explicit until quality parity and larger repeated benchmarks are complete.
 
+An automated top-package parity guard now compares online vs offline counts for files, fragments, terms, fragment_terms, definitions, references, comments, and representative text/definition/reference searches.
+
 ### Package batching experiment
 
 `mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:
