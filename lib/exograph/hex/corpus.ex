@@ -3,6 +3,13 @@ defmodule Exograph.Hex.Corpus do
 
   alias Exograph.Hex.{Downloader, Progress, Registry}
 
+  alias Exograph.{Package, PackageVersion}
+
+  alias Exograph.Storage.Ecto.{
+    PackageRecord,
+    PackageVersionRecord
+  }
+
   require Logger
 
   def index(opts \\ []) do
@@ -185,72 +192,128 @@ defmodule Exograph.Hex.Corpus do
 
   defp index_with_tasks(entries, existing, opts, total, started, cli?, concurrency) do
     counter = :counters.new(1, [:atomics])
+    package_batch_size = Keyword.get(opts, :package_batch_size, 1)
+
+    stream =
+      if package_batch_size > 1 do
+        entries
+        |> Stream.with_index()
+        |> Stream.chunk_every(package_batch_size)
+        |> Task.async_stream(&index_entry_batch(&1, existing, opts),
+          max_concurrency: concurrency,
+          timeout: :infinity,
+          ordered: false
+        )
+        |> Stream.flat_map(fn
+          {:ok, results} -> Enum.map(results, &{:ok, &1})
+          {:exit, reason} -> [{:exit, reason}]
+        end)
+      else
+        entries
+        |> Stream.with_index()
+        |> Task.async_stream(&index_entry_task(&1, existing, opts),
+          max_concurrency: concurrency,
+          timeout: :infinity,
+          ordered: false
+        )
+      end
 
     results =
-      entries
-      |> Stream.with_index()
-      |> Task.async_stream(
-        fn {entry, index} ->
-          set_dynamic_repo(opts)
-          key = {entry.name, entry.version}
-
-          if MapSet.member?(existing, key) do
-            :counters.add(counter, 1, 1)
-            n = :counters.get(counter, 1)
-            Progress.package_done(entry, :skipped)
-            {:skipped, entry, n}
-          else
-            Progress.package_started(entry)
-
-            case index_entry_with_timeout(entry, index, opts) do
-              :skipped ->
-                :counters.add(counter, 1, 1)
-                n = :counters.get(counter, 1)
-                Progress.package_done(entry, :skipped)
-                {:skipped, entry, n}
-
-              {:timeout, entry} ->
-                :counters.add(counter, 1, 1)
-                n = :counters.get(counter, 1)
-                Progress.package_done(entry, {:error, :timeout})
-                {{:error, :timeout}, entry, n}
-
-              result ->
-                :counters.add(counter, 1, 1)
-                n = :counters.get(counter, 1)
-                Progress.package_done(entry, result)
-                {result, entry, n}
-            end
-          end
-        end,
-        max_concurrency: concurrency,
-        timeout: :infinity,
-        ordered: false
-      )
-      |> Enum.reduce(%{ok: 0, skipped: 0, error: 0, failures: []}, fn
-        {:ok, {:ok, entry, count}}, acc ->
-          if cli?, do: cli_package(entry, count, total, started, :ok)
-          %{acc | ok: acc.ok + 1}
-
-        {:ok, {:skipped, entry, count}}, acc ->
-          if cli?, do: cli_package(entry, count, total, started, :skipped)
-          %{acc | skipped: acc.skipped + 1}
-
-        {:ok, {{:error, reason}, entry, count}}, acc ->
-          if cli?, do: cli_package(entry, count, total, started, {:error, reason})
-          %{acc | error: acc.error + 1, failures: [failure(entry, reason) | acc.failures]}
-
-        {:exit, :timeout}, acc ->
-          Logger.error("Package indexing timed out")
-          %{acc | error: acc.error + 1, failures: [failure(nil, :timeout) | acc.failures]}
-
-        {:exit, reason}, acc ->
-          Logger.error("Task crashed: #{inspect(reason)}")
-          %{acc | error: acc.error + 1, failures: [failure(nil, reason) | acc.failures]}
+      stream
+      |> Enum.reduce(%{ok: 0, skipped: 0, error: 0, failures: []}, fn result, acc ->
+        reduce_entry_result(result, acc, counter, total, started, cli?)
       end)
       |> then(&%{&1 | failures: Enum.reverse(&1.failures)})
 
     {results, System.monotonic_time(:millisecond) - started}
+  end
+
+  defp index_entry_task({entry, index}, existing, opts) do
+    set_dynamic_repo(opts)
+    key = {entry.name, entry.version}
+
+    if MapSet.member?(existing, key) do
+      Progress.package_done(entry, :skipped)
+      {:skipped, entry}
+    else
+      Progress.package_started(entry)
+
+      case index_entry_with_timeout(entry, index, opts) do
+        :skipped ->
+          Progress.package_done(entry, :skipped)
+          {:skipped, entry}
+
+        {:timeout, entry} ->
+          Progress.package_done(entry, {:error, :timeout})
+          {{:error, :timeout}, entry}
+
+        result ->
+          Progress.package_done(entry, result)
+          {result, entry}
+      end
+    end
+  end
+
+  defp index_entry_batch(entries_with_index, existing, opts) do
+    set_dynamic_repo(opts)
+
+    {skipped, pending} =
+      Enum.split_with(entries_with_index, fn {entry, _index} ->
+        MapSet.member?(existing, {entry.name, entry.version})
+      end)
+
+    Enum.each(skipped, fn {entry, _index} -> Progress.package_done(entry, :skipped) end)
+    Enum.each(pending, fn {entry, _index} -> Progress.package_started(entry) end)
+
+    results = Enum.map(skipped, fn {entry, _index} -> {:skipped, entry} end)
+
+    results ++
+      case index_entries_batch_with_timeout(pending, opts) do
+        {:timeout, entries} ->
+          Enum.map(entries, fn {entry, _index} ->
+            Progress.package_done(entry, {:error, :timeout})
+            {{:error, :timeout}, entry}
+          end)
+
+        batch_results ->
+          Enum.map(batch_results, fn {result, entry} ->
+            Progress.package_done(entry, result)
+            {result, entry}
+          end)
+      end
+  end
+
+  defp reduce_entry_result({:ok, {:ok, entry}}, acc, counter, total, started, cli?) do
+    count = increment_counter(counter)
+    if cli?, do: cli_package(entry, count, total, started, :ok)
+    %{acc | ok: acc.ok + 1}
+  end
+
+  defp reduce_entry_result({:ok, {:skipped, entry}}, acc, counter, total, started, cli?) do
+    count = increment_counter(counter)
+    if cli?, do: cli_package(entry, count, total, started, :skipped)
+    %{acc | skipped: acc.skipped + 1}
+  end
+
+  defp reduce_entry_result({:ok, {{:error, reason}, entry}}, acc, counter, total, started, cli?) do
+    count = increment_counter(counter)
+    if cli?, do: cli_package(entry, count, total, started, {:error, reason})
+    %{acc | error: acc.error + 1, failures: [failure(entry, reason) | acc.failures]}
+  end
+
+  defp reduce_entry_result({:exit, :timeout}, acc, _counter, _total, _started, _cli?) do
+    Logger.error("Package indexing timed out")
+    %{acc | error: acc.error + 1, failures: [failure(nil, :timeout) | acc.failures]}
+  end
+
+  defp reduce_entry_result({:exit, reason}, acc, _counter, _total, _started, _cli?) do
+    Logger.error("Task crashed: #{inspect(reason)}")
+    %{acc | error: acc.error + 1, failures: [failure(nil, reason) | acc.failures]}
+  end
+
+  defp increment_counter(counter) do
+    :counters.add(counter, 1, 1)
+    :counters.get(counter, 1)
   end
 
   defp index_entry_with_timeout(entry, index, opts) do
@@ -264,6 +327,233 @@ defmodule Exograph.Hex.Corpus do
       nil ->
         Logger.error("Package #{entry.name}@#{entry.version} indexing timed out")
         {:timeout, entry}
+    end
+  end
+
+  defp index_entries_batch_with_timeout([], _opts), do: []
+
+  defp index_entries_batch_with_timeout(entries_with_index, opts) do
+    timeout = Keyword.get(opts, :timeout, 300_000) * max(1, length(entries_with_index))
+
+    task =
+      Task.async(fn ->
+        set_dynamic_repo(opts)
+        index_entries_batch(entries_with_index, opts)
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, results} ->
+        results
+
+      nil ->
+        names =
+          Enum.map_join(entries_with_index, ", ", fn {entry, _} ->
+            "#{entry.name}@#{entry.version}"
+          end)
+
+        Logger.error("Package batch indexing timed out: #{names}")
+        {:timeout, entries_with_index}
+    end
+  end
+
+  defp index_entries_batch(entries_with_index, opts) do
+    fetched =
+      Enum.map(entries_with_index, fn {entry, index} ->
+        {entry, fetch_entry_sources(entry, index, opts)}
+      end)
+
+    {ready, results} =
+      Enum.reduce(fetched, {[], []}, fn
+        {entry, {:ok, sources}}, {ready, results} ->
+          {[{entry, sources} | ready], results}
+
+        {entry, :skipped}, {ready, results} ->
+          {ready, [{:skipped, entry} | results]}
+
+        {entry, {:error, reason}}, {ready, results} ->
+          {ready, [{{:error, reason}, entry} | results]}
+      end)
+
+    ready = Enum.reverse(ready)
+
+    if ready == [] do
+      Enum.reverse(results)
+    else
+      package_contexts = preallocate_package_contexts(Enum.map(ready, &elem(&1, 0)), opts)
+
+      sources =
+        Enum.flat_map(ready, fn {entry, package_sources} ->
+          context = Map.fetch!(package_contexts, {entry.name, entry.version})
+          source_opts = [package_version: package_version_attrs(entry, context)]
+          Enum.map(package_sources, fn {path, source} -> {path, source, source_opts} end)
+        end)
+
+      case index_batch_sources(sources, opts) do
+        :ok ->
+          Enum.map(ready, fn {entry, _sources} -> {:ok, entry} end) ++ Enum.reverse(results)
+
+        {:error, reason} ->
+          Enum.map(ready, fn {entry, _sources} -> {{:error, reason}, entry} end) ++
+            Enum.reverse(results)
+      end
+    end
+  end
+
+  defp fetch_entry_sources(entry, index, opts) do
+    download_opts =
+      Keyword.take(opts, [:mirrors, :mirror_strategy, :timeout, :cache_dir, :tarball_dir])
+
+    try do
+      files =
+        Exograph.Hex.StageTimings.measure(:fetch_extract, fn ->
+          Downloader.fetch(entry.name, entry.version, [{:index, index} | download_opts])
+        end)
+
+      sources =
+        Exograph.Hex.StageTimings.measure(:source_filter, fn ->
+          files
+          |> Enum.filter(fn {path, source} -> elixir_source?(path, source) end)
+          |> Enum.map(fn {path, source} -> {safe_path!(path), source} end)
+        end)
+
+      if sources == [], do: :skipped, else: {:ok, sources}
+    rescue
+      error ->
+        reason = Exception.message(error)
+        Logger.warning("Hex package #{entry.name}@#{entry.version} fetch failed: #{reason}")
+        {:error, reason}
+    end
+  end
+
+  defp preallocate_package_contexts(entries, opts) do
+    import Ecto.Query
+
+    repo = Keyword.fetch!(opts, :repo)
+    prefix = Keyword.get(opts, :prefix, "hex")
+    now = DateTime.utc_now(:microsecond)
+
+    packages =
+      entries |> Enum.uniq_by(& &1.name) |> Enum.map(&Package.new(ecosystem: :hex, name: &1.name))
+
+    package_entries =
+      Enum.map(packages, fn package ->
+        package
+        |> PackageRecord.from_package()
+        |> Map.merge(%{inserted_at: now, updated_at: now})
+      end)
+
+    if package_entries != [] do
+      repo.insert_all({"#{prefix}_packages", PackageRecord}, package_entries,
+        conflict_target: [:ecosystem, :name],
+        on_conflict: :nothing,
+        timeout: :infinity
+      )
+    end
+
+    names = Enum.map(packages, & &1.name)
+
+    package_ids =
+      from(p in {"#{prefix}_packages", PackageRecord},
+        where: p.ecosystem == "hex" and p.name in ^names,
+        select: {p.name, p.id}
+      )
+      |> repo.all(timeout: :infinity)
+      |> Map.new()
+
+    versions =
+      Enum.map(entries, fn entry ->
+        package_id = Map.fetch!(package_ids, entry.name)
+
+        PackageVersion.new(
+          ecosystem: :hex,
+          name: entry.name,
+          package_id: package_id,
+          version: entry.version,
+          source_ref: "hex:#{entry.name}:#{entry.version}"
+        )
+      end)
+
+    version_entries =
+      Enum.map(versions, fn version ->
+        version
+        |> PackageVersionRecord.from_package_version()
+        |> Map.merge(%{inserted_at: now, updated_at: now})
+      end)
+
+    if version_entries != [] do
+      repo.insert_all({"#{prefix}_package_versions", PackageVersionRecord}, version_entries,
+        conflict_target: [:package_id, :version],
+        on_conflict: :nothing,
+        timeout: :infinity
+      )
+    end
+
+    version_keys = versions |> Enum.map(&{&1.package_id, &1.version}) |> MapSet.new()
+    package_ids_for_versions = Enum.map(versions, & &1.package_id)
+    version_values = Enum.map(versions, & &1.version)
+    package_id_to_name = Map.new(package_ids, fn {name, id} -> {id, name} end)
+
+    from(pv in {"#{prefix}_package_versions", PackageVersionRecord},
+      where: pv.package_id in ^package_ids_for_versions and pv.version in ^version_values,
+      select: {pv.package_id, pv.version, pv.id}
+    )
+    |> repo.all(timeout: :infinity)
+    |> Enum.filter(fn {package_id, version, _id} ->
+      MapSet.member?(version_keys, {package_id, version})
+    end)
+    |> Map.new(fn {package_id, version, package_version_id} ->
+      name = Map.fetch!(package_id_to_name, package_id)
+      {{name, version}, %{package_id: package_id, package_version_id: package_version_id}}
+    end)
+  end
+
+  defp package_version_attrs(entry, %{
+         package_id: package_id,
+         package_version_id: package_version_id
+       }) do
+    [
+      ecosystem: :hex,
+      name: entry.name,
+      package_id: package_id,
+      id: package_version_id,
+      version: entry.version,
+      source_ref: "hex:#{entry.name}:#{entry.version}"
+    ]
+  end
+
+  defp index_batch_sources(sources, opts) do
+    repo = Keyword.fetch!(opts, :repo)
+    prefix = Keyword.get(opts, :prefix, "hex")
+    min_mass = Keyword.get(opts, :min_mass, 8)
+    extractors = Keyword.get(opts, :extractors, [:ex_ast])
+
+    index_opts = [
+      backend: Keyword.fetch!(opts, :backend),
+      repo: repo,
+      prefix: prefix,
+      bm25?: Keyword.get(opts, :bm25?, true),
+      duckdb_threads: Keyword.get(opts, :duckdb_threads),
+      min_mass: min_mass,
+      generated_min_mass: Keyword.get(opts, :generated_min_mass),
+      static_atoms: Keyword.get(opts, :static_atoms, :create),
+      index_concurrency: Keyword.get(opts, :index_concurrency) || System.schedulers_online(),
+      index_batch_size: hex_index_batch_size(opts),
+      migrate?: false,
+      extractors: extractors,
+      postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
+      defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
+      duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer)
+    ]
+
+    case Exograph.Hex.StageTimings.measure(:index_sources, fn ->
+           Exograph.index_sources(sources, index_opts)
+         end) do
+      {:ok, _index} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Hex package batch indexing failed: #{inspect(reason, limit: 30)}")
+        {:error, reason}
     end
   end
 

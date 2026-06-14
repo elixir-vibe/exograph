@@ -25,6 +25,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--entries-file` - JSON report or NDJSON file with `name` and `version` entries to index
     * `--prefix` - table prefix (default: `hex`)
     * `--concurrency` - global download+index worker target (default: `4`)
+    * `--package-batch-size` - packages to extract and flush together per worker (default: `1`)
     * `--shard-concurrency` - workers per DuckDB shard (default: `ceil(concurrency / duckdb_shards)`)
     * `--shard-pool-size` - DB connections per DuckDB shard (default: shard concurrency)
     * `--pipeline` - `task` (default) or `broadway`
@@ -81,6 +82,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           entries_file: :string,
           prefix: :string,
           concurrency: :integer,
+          package_batch_size: :integer,
           shard_concurrency: :integer,
           shard_pool_size: :integer,
           pipeline: :string,
@@ -148,6 +150,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       limit: Keyword.get(opts, :limit),
       prefix: prefix,
       concurrency: Keyword.get(opts, :concurrency, 4),
+      package_batch_size: Keyword.get(opts, :package_batch_size, 1),
       shard_concurrency: Keyword.get(opts, :shard_concurrency),
       shard_pool_size: Keyword.get(opts, :shard_pool_size),
       pipeline: pipeline(Keyword.get(opts, :pipeline)),

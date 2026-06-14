@@ -34,7 +34,7 @@ defmodule Exograph.Extractor.ExAST do
 
   def stream_sources(sources, opts \\ []) do
     sources
-    |> Task.async_stream(fn {path, source} -> index_source(path, source, opts) end,
+    |> Task.async_stream(fn source -> index_source_tuple(source, opts) end,
       max_concurrency: Keyword.get(opts, :index_concurrency, System.schedulers_online()),
       ordered: false,
       timeout: :infinity
@@ -44,6 +44,11 @@ defmodule Exograph.Extractor.ExAST do
       {:exit, _reason} -> []
     end)
   end
+
+  defp index_source_tuple({path, source}, opts), do: index_source(path, source, opts)
+
+  defp index_source_tuple({path, source, source_opts}, opts) when is_list(source_opts),
+    do: index_source(path, source, Keyword.merge(opts, source_opts))
 
   @spec index_file(String.t(), keyword()) :: [Fragment.t()]
   def index_file(file, opts \\ []) do
