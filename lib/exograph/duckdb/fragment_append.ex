@@ -76,17 +76,39 @@ defmodule Exograph.DuckDB.FragmentAppend do
     if rows == [] do
       %{}
     else
-      Exograph.Hex.StageTimings.measure(:fragment_append_rows, fn ->
-        if merge_append?(opts) do
-          merge_insert_by_hash(repo, source, rows)
-        else
-          ecto_insert_by_hash(repo, target, rows)
-        end
-      end)
+      insert_rows_by_hash(repo, source, target, rows, opts, Keyword.get(opts, :retries, 3))
     end
   end
 
+  defp insert_rows_by_hash(repo, source, target, rows, opts, retries_left) do
+    Exograph.Hex.StageTimings.measure(:fragment_append_rows, fn ->
+      if merge_append?(opts) do
+        merge_insert_by_hash(repo, source, rows)
+      else
+        ecto_insert_by_hash(repo, target, rows)
+      end
+    end)
+  rescue
+    error ->
+      if retries_left > 0 and unique_constraint_race?(error) do
+        Process.sleep(retry_backoff_ms(retries_left))
+        insert_rows_by_hash(repo, source, target, rows, opts, retries_left - 1)
+      else
+        reraise error, __STACKTRACE__
+      end
+  end
+
   defp merge_append?(opts), do: Keyword.get(opts, :mode, :ecto) == :merge
+
+  defp unique_constraint_race?(error) do
+    message = Exception.message(error)
+
+    String.contains?(message, "content_hash") and
+      (String.contains?(message, "PRIMARY KEY or UNIQUE constraint violation") or
+         String.contains?(message, "violates unique constraint"))
+  end
+
+  defp retry_backoff_ms(retries_left), do: max(1, 4 - retries_left) * 25
 
   defp ecto_insert_by_hash(repo, target, rows) do
     {_count, returning} =
