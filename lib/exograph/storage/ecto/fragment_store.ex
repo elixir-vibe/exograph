@@ -619,14 +619,15 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
       Exograph.Hex.StageTimings.measure(:code_facts_extract_comments, fn ->
         files_with_ast
         |> Enum.flat_map(fn {file, _ast} ->
-          (file.source || "")
-          |> extract_comments()
-          |> Enum.map(fn comment ->
-            Comment.new(
-              file,
-              comment,
-              FragmentLocator.containing_fragment_id(fragments_by_file_id[file.id], comment.line)
-            )
+          comments = extract_comments(file.source || "")
+
+          fragment_ids_by_line =
+            Exograph.Hex.StageTimings.measure(:code_facts_locate_comments, fn ->
+              fragment_ids_by_line(fragments_by_file_id[file.id], comments)
+            end)
+
+          Enum.map(comments, fn comment ->
+            Comment.new(file, comment, Map.get(fragment_ids_by_line, comment.line))
           end)
         end)
       end)
@@ -635,16 +636,15 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
       Exograph.Hex.StageTimings.measure(:code_facts_extract_definitions, fn ->
         files_with_ast
         |> Enum.flat_map(fn {file, ast} ->
-          symbols_from(ast, file.source || "", &ExAST.Symbols.definitions/1)
-          |> Enum.map(fn definition ->
-            Definition.new(
-              file,
-              definition,
-              FragmentLocator.containing_fragment_id(
-                fragments_by_file_id[file.id],
-                definition.line
-              )
-            )
+          definitions = symbols_from(ast, file.source || "", &ExAST.Symbols.definitions/1)
+
+          fragment_ids_by_line =
+            Exograph.Hex.StageTimings.measure(:code_facts_locate_definitions, fn ->
+              fragment_ids_by_line(fragments_by_file_id[file.id], definitions)
+            end)
+
+          Enum.map(definitions, fn definition ->
+            Definition.new(file, definition, Map.get(fragment_ids_by_line, definition.line))
           end)
         end)
       end)
@@ -653,21 +653,22 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
       Exograph.Hex.StageTimings.measure(:code_facts_extract_references, fn ->
         files_with_ast
         |> Enum.flat_map(fn {file, ast} ->
-          symbols_from(ast, file.source || "", &ExAST.Symbols.references/1)
-          |> Enum.reject(fn ref ->
-            MapSet.member?(@noise_references, ref.qualified_name) or
-              String.starts_with?(ref.qualified_name, "__block__/") or
-              (ref.kind == :local_call and ref.name == "__block__")
-          end)
-          |> Enum.map(fn reference ->
-            Reference.new(
-              file,
-              reference,
-              FragmentLocator.containing_fragment_id(
-                fragments_by_file_id[file.id],
-                reference.line
-              )
-            )
+          references =
+            ast
+            |> symbols_from(file.source || "", &ExAST.Symbols.references/1)
+            |> Enum.reject(fn ref ->
+              MapSet.member?(@noise_references, ref.qualified_name) or
+                String.starts_with?(ref.qualified_name, "__block__/") or
+                (ref.kind == :local_call and ref.name == "__block__")
+            end)
+
+          fragment_ids_by_line =
+            Exograph.Hex.StageTimings.measure(:code_facts_locate_references, fn ->
+              fragment_ids_by_line(fragments_by_file_id[file.id], references)
+            end)
+
+          Enum.map(references, fn reference ->
+            Reference.new(file, reference, Map.get(fragment_ids_by_line, reference.line))
           end)
         end)
       end)
@@ -807,6 +808,11 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     fun.(ast)
   rescue
     _ -> []
+  end
+
+  defp fragment_ids_by_line(fragments, facts) do
+    lines = Enum.map(facts, & &1.line)
+    FragmentLocator.containing_fragment_ids(fragments, lines)
   end
 
   defp insert_code_facts(_store, _source, [], _record, _mapper, _now), do: :ok
