@@ -41,26 +41,6 @@ defmodule Exograph.DuckDB.OfflineFragments do
     updated_at: :timestamp
   ]
 
-  @ddl_types [
-    package_id: "BIGINT",
-    package_version_id: "BIGINT",
-    file_id: "BIGINT",
-    content_hash: "BLOB",
-    ast: "BLOB",
-    kind: "VARCHAR",
-    module: "VARCHAR",
-    name: "VARCHAR",
-    arity: "BIGINT",
-    line: "BIGINT",
-    end_line: "BIGINT",
-    mass: "BIGINT",
-    exact_hash: "BLOB",
-    terms: "BIGINT[]",
-    sub_hashes: "BIGINT[]",
-    inserted_at: "TIMESTAMP",
-    updated_at: "TIMESTAMP"
-  ]
-
   def stage_table(prefix), do: "#{prefix}_fragment_stage"
 
   def create_stage!(repo, prefix) do
@@ -89,13 +69,31 @@ defmodule Exograph.DuckDB.OfflineFragments do
     Map.new(rows, fn [content_hash, id] -> {content_hash, id} end)
   end
 
-  defp create_stage_sql(table) do
-    columns =
-      Enum.map_join(@ddl_types, ", ", fn {name, type} ->
-        [quote_name(name), " ", type]
-      end)
+  def definition_stage_table(prefix), do: "#{prefix}_definition_stage"
 
-    ["CREATE TABLE IF NOT EXISTS ", quote_name(table), " (", columns, ")"]
+  def create_definition_stage!(repo, prefix) do
+    repo.query!(create_definition_stage_sql(definition_stage_table(prefix)), [],
+      timeout: :infinity
+    )
+
+    :ok
+  end
+
+  def append_definition_stage!(repo, prefix, rows) when is_list(rows) do
+    repo.insert_all(definition_stage_table(prefix), rows,
+      insert_method: :append,
+      columns: definition_append_types(),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
+  def finalize_definitions!(repo, prefix) do
+    repo.query!(finalize_definitions_sql(prefix), [], timeout: :infinity)
+  end
+
+  defp create_stage_sql(table) do
+    QuackDB.DDL.create_table(table, @append_types, if_not_exists: true)
   end
 
   defp finalize_sql(prefix) do
@@ -129,6 +127,47 @@ defmodule Exograph.DuckDB.OfflineFragments do
     ]
   end
 
+  defp create_definition_stage_sql(table) do
+    QuackDB.DDL.create_table(table, definition_append_types(), if_not_exists: true)
+  end
+
+  defp finalize_definitions_sql(prefix) do
+    target = quote_name("#{prefix}_definitions")
+    stage = quote_name(definition_stage_table(prefix))
+    fragments = quote_name("#{prefix}_fragments")
+
+    columns =
+      definition_columns()
+      |> Enum.reject(&(&1 == :fragment_content_hash))
+      |> Enum.map_join(", ", &quote_name/1)
+
+    select_columns =
+      definition_columns()
+      |> Enum.reject(&(&1 in [:fragment_content_hash, :fragment_id]))
+      |> Enum.map_join(", ", &["s.", quote_name(&1)])
+
+    [
+      "INSERT INTO ",
+      target,
+      " (",
+      columns,
+      ") SELECT ",
+      select_columns,
+      ", f.",
+      quote_name(:id),
+      " AS ",
+      quote_name(:fragment_id),
+      " FROM ",
+      stage,
+      " AS s INNER JOIN ",
+      fragments,
+      " AS f ON f.",
+      quote_name(:content_hash),
+      " = s.",
+      quote_name(:fragment_content_hash)
+    ]
+  end
+
   defp lookup_ids_sql(prefix) do
     target = quote_name("#{prefix}_fragments")
     stage = quote_name(stage_table(prefix))
@@ -149,6 +188,43 @@ defmodule Exograph.DuckDB.OfflineFragments do
       " WHERE s.",
       quote_name(:content_hash),
       " IS NOT NULL"
+    ]
+  end
+
+  defp definition_columns do
+    [
+      :package_id,
+      :package_version_id,
+      :file_id,
+      :kind,
+      :module,
+      :name,
+      :arity,
+      :qualified_name,
+      :line,
+      :column,
+      :inserted_at,
+      :updated_at,
+      :fragment_content_hash,
+      :fragment_id
+    ]
+  end
+
+  defp definition_append_types do
+    [
+      package_id: :integer,
+      package_version_id: :integer,
+      file_id: :integer,
+      kind: :varchar,
+      module: :varchar,
+      name: :varchar,
+      arity: :integer,
+      qualified_name: :varchar,
+      line: :integer,
+      column: :integer,
+      inserted_at: :timestamp,
+      updated_at: :timestamp,
+      fragment_content_hash: :blob
     ]
   end
 
