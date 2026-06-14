@@ -38,6 +38,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
     * `--duckdb-build-mode` - DuckDB corpus build strategy: `online` (default) or experimental `offline` metadata flag
     * `--duckdb-fragment-append` - DuckDB fragment insert strategy: `merge` (default) or `ecto`
+    * `--duckdb-insert-buffer-size` - buffered DuckDB fact rows per table before flushing (default: `50000`)
     * `--manifest-path` - write a sharded DuckDB manifest to this path
     * `--report-path` - write indexing totals and failures as JSON
     * `--timings-path` - write stage timing totals as JSON
@@ -99,6 +100,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           duckdb_recovery_mode: :string,
           duckdb_build_mode: :string,
           duckdb_fragment_append: :string,
+          duckdb_insert_buffer_size: :integer,
           manifest_path: :string,
           report_path: :string,
           timings_path: :string,
@@ -170,6 +172,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       recovery_mode: recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)),
       duckdb_build_mode: duckdb_build_mode(Keyword.get(opts, :duckdb_build_mode)),
       duckdb_fragment_append: duckdb_fragment_append(Keyword.get(opts, :duckdb_fragment_append)),
+      duckdb_insert_buffer_size: Keyword.get(opts, :duckdb_insert_buffer_size, 50_000),
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),
       timings_path: Keyword.get(opts, :timings_path),

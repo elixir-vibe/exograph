@@ -271,6 +271,15 @@ A follow-up fact-buffer split (`bench-results/fact-buffer-cost-20260615/top500-d
 
 The surprising comments cost is not comment row volume: comments flush only took ~0.25s. The expensive `code_facts_bulk_insert_comments` timing is the synchronous call into a shared InsertBuffer, which can block behind reference/definition flushes from other package tasks. The next low-risk experiment should therefore target InsertBuffer flush granularity/serialization (for example, larger per-source thresholds or per-source workers), not comment extraction or direct comment insert SQL.
 
+Two immediate InsertBuffer variants did not justify a behavior change:
+
+| Variant | Result |
+|---------|--------|
+| `--duckdb-insert-buffer-size 200000` | completed top500 but regressed wall time to 146s; fewer, larger flushes made final/large flushes expensive (`duckdb_insert_buffer_flush` 13.7s; definition flush 8.4s) and did not reduce comment enqueue backpressure enough |
+| async flush prototype | not kept; naive `Task.async` from inside the GenServer let task replies hit `handle_info` before `Task.await`, causing final flush/reporting to hang |
+
+If revisiting this area, use a proper supervised per-source worker design or an explicit flush-task protocol, not ad hoc async tasks inside the buffer GenServer.
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |

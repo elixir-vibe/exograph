@@ -81,17 +81,7 @@ defmodule Exograph.DuckDB.InsertBuffer do
       |> Enum.flat_map(& &1)
 
     if entries != [] do
-      Exograph.Hex.StageTimings.count(metric(source, :flush_rows), length(entries))
-
-      Exograph.Hex.StageTimings.measure(metric(source, :flush), fn ->
-        with_dynamic_repo(state, fn ->
-          state.repo.insert_all(source, entries,
-            insert_method: :append,
-            chunk_every: 10_000,
-            timeout: :infinity
-          )
-        end)
-      end)
+      flush_entries(state, source, entries)
     end
 
     %{
@@ -99,6 +89,20 @@ defmodule Exograph.DuckDB.InsertBuffer do
       | buffers: Map.delete(state.buffers, source),
         counts: Map.delete(state.counts, source)
     }
+  end
+
+  defp flush_entries(state, source, entries) do
+    Exograph.Hex.StageTimings.count(metric(source, :flush_rows), length(entries))
+
+    Exograph.Hex.StageTimings.measure(metric(source, :flush), fn ->
+      with_dynamic_repo(state, fn ->
+        state.repo.insert_all(source, entries,
+          insert_method: :append,
+          chunk_every: 10_000,
+          timeout: :infinity
+        )
+      end)
+    end)
   end
 
   defp metric(source, kind) do
