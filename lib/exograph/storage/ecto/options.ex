@@ -38,6 +38,7 @@ defmodule Exograph.Storage.Ecto.Options do
       postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
       defer_fragment_terms?: Keyword.get(opts, :defer_fragment_terms?, false),
       duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
+      duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
       duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :ecto),
       static_atoms: Keyword.get(opts, :static_atoms, :existing)
     }

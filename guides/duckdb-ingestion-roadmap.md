@@ -29,7 +29,7 @@ There is also an experimental DuckDB build-mode option for report/benchmark labe
 mix exograph.index.hex --duckdb-build-mode offline ...
 ```
 
-The build-mode flag currently records intent in report metadata; the default online ingestion path remains active until the offline pipeline is wired explicitly.
+The build-mode flag now selects an initial offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. The default remains online, and the offline path is still experimental until quality parity and larger benchmarks are complete.
 
 Early MERGE measurements show lower cumulative `fragment_append_rows` time, but end-to-end wall time is still noisy. Keep it experimental until repeated full-workload runs show a stable total-time win.
 
@@ -70,7 +70,8 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - It appends fragments into a constraint-free `*_fragment_stage` table.
    - It finalizes by deduping staged rows by `content_hash`, inserting unique rows into `*_fragments`, and returning `content_hash => id` for staged fragments.
    - It can also stage files, terms, definitions, references, comments, and fragment_terms with `fragment_content_hash` and bind them to final IDs during finalization.
-   - Next work: extend the same idea to call graph facts, then wire a full package/corpus path for benchmarking.
+   - The helper is wired behind `--duckdb-build-mode offline` for initial package/corpus benchmarking.
+   - Next work: extend the same idea to call graph facts, then run online/offline quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
      - assign final IDs

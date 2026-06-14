@@ -48,6 +48,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             postgres_copy?: false,
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
+            duckdb_build_mode: :online,
             duckdb_fragment_append: :ecto,
             static_atoms: :existing
 
@@ -60,6 +61,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           postgres_copy?: boolean(),
           defer_fragment_terms?: boolean(),
           duckdb_insert_buffer: pid() | nil,
+          duckdb_build_mode: :online | :offline,
           duckdb_fragment_append: :ecto | :merge,
           static_atoms: atom()
         }
@@ -67,6 +69,14 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   def new(opts \\ []), do: {:ok, Options.store(__MODULE__, opts)}
 
   def put(%__MODULE__{} = store, fragments) when is_list(fragments) do
+    if offline_duckdb?(store) do
+      put_offline(store, fragments)
+    else
+      put_online(store, fragments)
+    end
+  end
+
+  defp put_online(%__MODULE__{} = store, fragments) do
     now = DateTime.utc_now(:microsecond)
 
     store =
@@ -104,6 +114,50 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
     Exograph.Hex.StageTimings.measure(:fragment_store_code_facts, fn ->
       upsert_code_facts(store, files, resolved_fragments, now)
+    end)
+
+    {:ok, store}
+  end
+
+  defp put_offline(%__MODULE__{} = store, fragments) do
+    now = DateTime.utc_now(:microsecond)
+    Exograph.DuckDB.OfflineBuild.create_stages!(store.repo, store.prefix)
+
+    store =
+      Exograph.Hex.StageTimings.measure(:fragment_store_package_context, fn ->
+        ensure_package_context(store, now)
+      end)
+
+    files =
+      Exograph.Hex.StageTimings.measure(:offline_build_stage_files, fn ->
+        stage_and_finalize_files(store, fragments, now)
+      end)
+
+    files_by_path = Map.new(files, &{&1.path, &1})
+    package_id = store.package && store.package.id
+    package_version_id = store.package_version && store.package_version.id
+
+    resolved_fragments =
+      Enum.map(fragments, fn fragment ->
+        file = files_by_path[fragment.file]
+        file_id = if file, do: file.id, else: fragment.file_id
+
+        %{
+          fragment
+          | id: fragment.content_hash,
+            file_id: file_id,
+            package_id: package_id || fragment.package_id,
+            package_version_id: package_version_id || fragment.package_version_id
+        }
+      end)
+
+    resolved_fragments =
+      Exograph.Hex.StageTimings.measure(:offline_build_stage_fragments, fn ->
+        stage_fragments(store, resolved_fragments, now)
+      end)
+
+    Exograph.Hex.StageTimings.measure(:offline_build_stage_code_facts, fn ->
+      stage_code_facts(store, files, resolved_fragments, now)
     end)
 
     {:ok, store}
@@ -333,6 +387,43 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     end)
   end
 
+  defp stage_and_finalize_files(store, fragments, now) do
+    package_id = store.package && store.package.id
+    package_version_id = store.package_version && store.package_version.id
+
+    raw_files =
+      fragments
+      |> Enum.reject(&is_nil(&1.file))
+      |> Enum.uniq_by(& &1.file)
+      |> Enum.map(fn fragment ->
+        source = fragment.source || ""
+
+        File.new(fragment.file, source, %{
+          package_id: package_id || fragment.package_id,
+          package_version_id: package_version_id || fragment.package_version_id
+        })
+      end)
+
+    if raw_files == [] do
+      []
+    else
+      entries =
+        Enum.map(raw_files, fn file ->
+          file
+          |> FileRecord.from_file()
+          |> Map.merge(%{inserted_at: now, updated_at: now})
+        end)
+
+      Exograph.DuckDB.OfflineBuild.append_file_stage!(store.repo, store.prefix, entries)
+      ids = Exograph.DuckDB.OfflineBuild.finalize_files!(store.repo, store.prefix)
+
+      Enum.map(raw_files, fn file ->
+        id = Map.fetch!(ids, {file.package_version_id, file.sha256})
+        %{file | id: id}
+      end)
+    end
+  end
+
   defp upsert_fragments(store, fragments, now) do
     fragments_with_term_ids =
       Exograph.Hex.StageTimings.measure(:fragment_store_normalize_terms, fn ->
@@ -402,6 +493,44 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     resolved
   end
 
+  defp stage_fragments(store, fragments, now) do
+    fragments_with_term_ids = offline_normalize_terms(store, fragments)
+
+    entries =
+      fragments_with_term_ids
+      |> Enum.map(fn fragment ->
+        fragment
+        |> FragmentRecord.from_fragment()
+        |> Map.merge(%{inserted_at: now, updated_at: now})
+      end)
+
+    Exograph.DuckDB.OfflineBuild.append_stage!(store.repo, store.prefix, entries)
+
+    fragment_term_entries =
+      fragments_with_term_ids
+      |> Enum.flat_map(fn fragment ->
+        if is_binary(fragment.content_hash) do
+          fragment.terms
+          |> MapSet.to_list()
+          |> Enum.filter(&is_integer/1)
+          |> Enum.map(&%{fragment_content_hash: fragment.content_hash, term_id: &1})
+        else
+          []
+        end
+      end)
+      |> Enum.uniq()
+
+    if fragment_term_entries != [] do
+      Exograph.DuckDB.OfflineBuild.append_fragment_term_stage!(
+        store.repo,
+        store.prefix,
+        fragment_term_entries
+      )
+    end
+
+    fragments_with_term_ids
+  end
+
   defp resolve_fragment_ids_by_hash(store, entries, hashed_unique) do
     inserted_by_hash = insert_fragments_by_hash(store, entries)
 
@@ -458,6 +587,43 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     )
     |> repo.all(timeout: :infinity)
     |> Map.new()
+  end
+
+  defp offline_normalize_terms(store, fragments) do
+    all_terms =
+      fragments
+      |> Enum.flat_map(fn f -> MapSet.to_list(f.terms) end)
+      |> Enum.filter(&is_binary/1)
+      |> Enum.uniq()
+
+    if all_terms == [] do
+      fragments
+    else
+      all_terms
+      |> Enum.map(&%{term: &1})
+      |> then(&Exograph.DuckDB.OfflineBuild.append_term_stage!(store.repo, store.prefix, &1))
+
+      term_to_id = Exograph.DuckDB.OfflineBuild.finalize_terms!(store.repo, store.prefix)
+
+      Enum.map(fragments, fn fragment ->
+        if Enum.all?(MapSet.to_list(fragment.terms), &is_integer/1) do
+          fragment
+        else
+          term_ids =
+            fragment.terms
+            |> MapSet.to_list()
+            |> Enum.flat_map(fn term ->
+              case Map.fetch(term_to_id, term) do
+                {:ok, id} -> [id]
+                :error -> []
+              end
+            end)
+            |> MapSet.new()
+
+          %{fragment | terms: term_ids}
+        end
+      end)
+    end
   end
 
   defp normalize_terms(store, fragments) do
@@ -606,6 +772,77 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     from(t in terms_source(store), where: t.term in ^terms, select: {t.term, t.id})
     |> store.repo.all(timeout: :infinity)
     |> Map.new()
+  end
+
+  defp stage_code_facts(_store, [], _fragments, _now), do: :ok
+
+  defp stage_code_facts(store, files, fragments, now) do
+    fragments_by_file_id = Enum.group_by(fragments, & &1.file_id)
+
+    files_with_ast =
+      Exograph.Hex.StageTimings.measure(:code_facts_parse_ast, fn ->
+        Enum.map(files, fn file ->
+          ast =
+            case Exograph.ElixirParser.string_to_quoted(file.source || "",
+                   line: 1,
+                   columns: true,
+                   emit_warnings: false,
+                   static_atoms: store.static_atoms
+                 ) do
+              {:ok, ast} -> ast
+              _ -> nil
+            end
+
+          {file, ast}
+        end)
+      end)
+
+    comments =
+      Exograph.Hex.StageTimings.measure(:code_facts_extract_comments, fn ->
+        files_with_ast
+        |> Enum.flat_map(fn {file, _ast} ->
+          comments = extract_comments(file.source || "")
+          hashes_by_line = fragment_ids_by_line(fragments_by_file_id[file.id], comments)
+
+          Enum.map(comments, fn comment ->
+            Comment.new(file, comment, Map.get(hashes_by_line, comment.line))
+          end)
+        end)
+      end)
+
+    definitions =
+      Exograph.Hex.StageTimings.measure(:code_facts_extract_definitions, fn ->
+        files_with_ast
+        |> Enum.flat_map(fn {file, ast} ->
+          definitions = symbols_from(ast, file.source || "", &ExAST.Symbols.definitions/1)
+          hashes_by_line = fragment_ids_by_line(fragments_by_file_id[file.id], definitions)
+
+          Enum.map(definitions, fn definition ->
+            Definition.new(file, definition, Map.get(hashes_by_line, definition.line))
+          end)
+        end)
+      end)
+
+    references =
+      Exograph.Hex.StageTimings.measure(:code_facts_extract_references, fn ->
+        files_with_ast
+        |> Enum.flat_map(fn {file, ast} ->
+          references =
+            ast
+            |> symbols_from(file.source || "", &ExAST.Symbols.references/1)
+            |> Enum.reject(&noise_reference?/1)
+
+          hashes_by_line = fragment_ids_by_line(fragments_by_file_id[file.id], references)
+
+          Enum.map(references, fn reference ->
+            Reference.new(file, reference, Map.get(hashes_by_line, reference.line))
+          end)
+        end)
+      end)
+
+    stage_offline_facts(store, comments, CommentRecord, :from_comment, now)
+    stage_offline_facts(store, definitions, DefinitionRecord, :from_definition, now)
+    stage_offline_facts(store, references, ReferenceRecord, :from_reference, now)
   end
 
   defp upsert_code_facts(_store, [], _fragments, _now), do: :ok
@@ -838,6 +1075,33 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     FragmentLocator.containing_fragment_ids(fragments, lines)
   end
 
+  defp stage_offline_facts(_store, [], _record, _mapper, _now), do: :ok
+
+  defp stage_offline_facts(store, facts, record, mapper, now) do
+    entries =
+      Enum.map(facts, fn fact ->
+        fact
+        |> then(&apply(record, mapper, [&1]))
+        |> Map.put(:fragment_content_hash, fact.fragment_id)
+        |> Map.delete(:fragment_id)
+        |> Map.merge(%{inserted_at: now, updated_at: now})
+      end)
+      |> Enum.reject(&is_nil(&1.fragment_content_hash))
+
+    if entries != [] do
+      case mapper do
+        :from_comment ->
+          Exograph.DuckDB.OfflineBuild.append_comment_stage!(store.repo, store.prefix, entries)
+
+        :from_definition ->
+          Exograph.DuckDB.OfflineBuild.append_definition_stage!(store.repo, store.prefix, entries)
+
+        :from_reference ->
+          Exograph.DuckDB.OfflineBuild.append_reference_stage!(store.repo, store.prefix, entries)
+      end
+    end
+  end
+
   defp insert_code_facts(_store, _source, [], _record, _mapper, _now), do: :ok
 
   defp insert_code_facts(store, source, facts, record, mapper, now) do
@@ -878,6 +1142,12 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
+
+  defp offline_duckdb?(%{repo: repo, duckdb_build_mode: :offline}) do
+    Exograph.Backend.duckdb_repo?(repo)
+  end
+
+  defp offline_duckdb?(_store), do: false
 
   defp package_from_version(%PackageVersion{} = version) do
     %Package{

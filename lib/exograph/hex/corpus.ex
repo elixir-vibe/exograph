@@ -37,6 +37,7 @@ defmodule Exograph.Hex.Corpus do
 
     configure_backend!(backend, repo, opts)
     if Keyword.get(opts, :migrate?, true), do: migrate!(backend, repo, prefix, opts)
+    prepare_backend!(backend, repo, prefix, opts)
     existing = if resume?, do: existing_versions(repo, prefix), else: MapSet.new()
 
     progress_lifecycle? = Keyword.get(opts, :progress_lifecycle?, true)
@@ -130,6 +131,7 @@ defmodule Exograph.Hex.Corpus do
     Enum.each(shards, fn shard ->
       Exograph.DuckDBShards.with_repo(shard, fn ->
         Exograph.DuckDB.migrate!(repo: shard.repo, prefix: shard.prefix)
+        prepare_backend!(:duckdb, shard.repo, shard.prefix, opts)
       end)
     end)
 
@@ -544,7 +546,8 @@ defmodule Exograph.Hex.Corpus do
       extractors: extractors,
       postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
       defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
-      duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer)
+      duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
+      duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online)
     ]
 
     case Exograph.Hex.StageTimings.measure(:index_sources, fn ->
@@ -755,7 +758,19 @@ defmodule Exograph.Hex.Corpus do
     )
   end
 
+  defp prepare_backend!(:duckdb, repo, prefix, opts) do
+    if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
+      Exograph.DuckDB.OfflineBuild.create_stages!(repo, prefix)
+    end
+  end
+
+  defp prepare_backend!(_backend, _repo, _prefix, _opts), do: :ok
+
   defp finalize_backend!(:duckdb, repo, prefix, opts) do
+    if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
+      Exograph.DuckDB.OfflineBuild.finalize!(repo, prefix)
+    end
+
     if Keyword.get(opts, :bm25?, true) do
       Exograph.DuckDB.create_bm25_indexes!(repo: repo, prefix: prefix)
     else
@@ -835,6 +850,7 @@ defmodule Exograph.Hex.Corpus do
         postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
         defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
         duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
+        duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
         package_version: [
           ecosystem: :hex,
           name: entry.name,
