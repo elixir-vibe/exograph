@@ -139,9 +139,23 @@ A follow-up investigation found two correctness issues around this comparison ra
 - File lookup after file upserts must be scoped by `{package_version_id, sha256}`, not only by SHA, because different package versions can legitimately share identical files.
 - `duckdb_fragment_append` was recorded in Hex index reports but was not forwarded from `Exograph.Hex.Corpus` into per-package `Exograph.index_sources/2` calls, so earlier corpus-level MERGE comparisons were not a clean test of the MERGE path.
 
-A focused `mariaex@0.9.1` rerun after forwarding the option showed Ecto and MERGE fact counts match exactly (`fragments` 4614, `definitions` 1043, `references` 5307, `comments` 59). This restores confidence in MERGE correctness for the known repro, but the previous top500 MERGE numbers should be treated as invalidated; rerun larger topN benchmarks only when ready to regenerate clean artifacts.
+A focused `mariaex@0.9.1` rerun after forwarding the option showed Ecto and MERGE fact counts match exactly (`fragments` 4614, `definitions` 1043, `references` 5307, `comments` 59). This restores confidence in MERGE correctness for the known repro, but the previous top500 MERGE numbers should be treated as invalidated.
 
-Top500 representative checks matched for `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, `defmodule`, and package fragment counts for `jason`, `ecto`, and `phoenix`. Historical artifacts: `/tmp/exograph-top500-ecto-report.json`, `/tmp/exograph-top500-ecto-timings.json`, `/tmp/exograph-top500-merge-report.json`, `/tmp/exograph-top500-merge-timings.json`.
+Clean follow-up artifacts live under ignored `bench-results/duckdb-merge-20260614/`; large `.duckdb` files were removed after comparison. With `--concurrency 4`, the Ecto baseline hit a DuckDB unique-constraint race in the append path while indexing `cachex@4.1.1`, so that run is not a valid quality baseline. MERGE completed the same workload successfully:
+
+| Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
+|-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
+| ecto | 4 | 378 | 121 | 1 | 1m53s | 125s | 111.3s | failed on duplicate `content_hash` unique constraint while indexing `cachex@4.1.1` |
+| merge | 4 | 379 | 121 | 0 | 1m50s | 122s | 93.3s | completed; not directly comparable because Ecto failed |
+
+A serial `top --limit 500 --concurrency 1` run gives the current clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
+
+| Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
+|-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
+| ecto | 1 | 379 | 121 | 0 | 5m04s | 315s | 86.8s | clean baseline |
+| merge | 1 | 379 | 121 | 0 | 4m44s | 296s | 73.3s | exact quality/count parity; ~19s wall improvement in this serial run |
+
+Historical invalidated artifacts: `/tmp/exograph-top500-ecto-report.json`, `/tmp/exograph-top500-ecto-timings.json`, `/tmp/exograph-top500-merge-report.json`, `/tmp/exograph-top500-merge-timings.json`.
 
 Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, fragment_terms, graph_nodes, and call_edges. Keep it explicit until quality parity and larger repeated benchmarks are complete.
 

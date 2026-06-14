@@ -31,7 +31,7 @@ mix exograph.index.hex --duckdb-build-mode offline ...
 
 The build-mode flag now selects an initial offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. The default remains online, and the offline path is still experimental until quality parity and larger benchmarks are complete.
 
-Early MERGE measurements show lower cumulative `fragment_append_rows` time, but end-to-end wall time is still noisy. Keep it experimental until repeated full-workload runs show a stable total-time win.
+Current MERGE measurements show lower cumulative `fragment_append_rows` time and exact `top --limit 500 --concurrency 1` parity. Keep it experimental until repeated full-workload runs show a stable total-time win under realistic concurrency. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate-`content_hash` unique-constraint race while the MERGE run completed; treat this as a separate online append race to investigate before changing defaults.
 
 ## QuackDB DSL requirement
 
@@ -53,7 +53,8 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
 ## Roadmap
 
 1. **Promote MERGE only with stronger evidence**
-   - Repeat top2000/top5000 runs on a quiet machine.
+   - Investigate the `cachex@4.1.1` concurrent Ecto append unique-constraint failure seen during `top --limit 500 --concurrency 4`.
+   - Repeat top500/top2000 runs on a quiet machine with clean Ecto and MERGE baselines.
    - Keep quality checks as benchmark assertions:
      - `Map.get(_, _)`
      - `Enum.map(_, _)`
