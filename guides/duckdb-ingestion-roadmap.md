@@ -74,6 +74,8 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - A top-package parity test compares online vs offline row counts and representative searches.
    - A `top --limit 100` sharded smoke matched online totals but did not improve wall time, because files/terms are still finalized during per-package puts.
    - Offline call graph staging has a top10 `--reach` smoke and a top-package online/offline parity guard for graph node/call edge counts plus caller/callee searches.
+   - A single-DB `top --limit 100 --reach` smoke completed for both online and offline; offline matched totals but was slower in wall time.
+   - A sharded online + Reach run exposed an existing dynamic-repo issue in asynchronous call-graph inserts; fix that before using sharded online Reach as a baseline.
    - Next work: batch staging across larger units, finalize once per shard/corpus, then run larger quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`

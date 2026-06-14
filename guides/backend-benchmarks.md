@@ -140,6 +140,15 @@ Initial `top --limit 100` sharded smoke, using local tarballs and `--duckdb-shar
 
 This supports the next milestone: batch staging across larger units and finalize once per shard/corpus, rather than repeatedly resolving file/term IDs during `FragmentStore.put/2`.
 
+Initial single-DB `top --limit 100 --reach` smoke results:
+
+| Build mode | Indexed | Skipped | Failed | Index elapsed | Wall time | Notes |
+|------------|--------:|--------:|-------:|--------------:|----------:|-------|
+| online + Reach | 75 | 25 | 0 | 64.35s | 69s | baseline online Reach path |
+| offline + Reach | 75 | 25 | 0 | 61.87s | 73s | stages call graph facts; slower wall due finalization/staging overhead |
+
+A sharded online + Reach top100 run exposed an existing dynamic-repo issue in asynchronous call-graph inserts (`could not lookup Ecto repo Exograph.DuckDBRepo`). The offline sharded Reach run completed, but use single-DB runs for online/offline Reach comparison until that online dynamic-repo issue is fixed.
+
 ### Package batching experiment
 
 `mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:
