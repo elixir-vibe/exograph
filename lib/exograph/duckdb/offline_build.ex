@@ -77,10 +77,12 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   def finalize_files!(repo, prefix) do
-    repo.query!(finalize_files_sql(prefix), [], timeout: :infinity)
+    stage_lock(repo, prefix, :files, fn ->
+      repo.query!(finalize_files_sql(prefix), [], timeout: :infinity)
 
-    %{rows: rows} = repo.query!(lookup_files_sql(prefix), [], timeout: :infinity)
-    Map.new(rows, fn [package_version_id, sha256, id] -> {{package_version_id, sha256}, id} end)
+      %{rows: rows} = repo.query!(lookup_files_sql(prefix), [], timeout: :infinity)
+      Map.new(rows, fn [package_version_id, sha256, id] -> {{package_version_id, sha256}, id} end)
+    end)
   end
 
   def create_stage!(repo, prefix) do
@@ -187,10 +189,12 @@ defmodule Exograph.DuckDB.OfflineBuild do
   def finalize_comments!(repo, prefix), do: finalize_facts!(repo, prefix, :comment)
 
   def finalize_terms!(repo, prefix) do
-    repo.query!(finalize_terms_sql(prefix), [], timeout: :infinity)
+    stage_lock(repo, prefix, :terms, fn ->
+      repo.query!(finalize_terms_sql(prefix), [], timeout: :infinity)
 
-    %{rows: rows} = repo.query!(lookup_terms_sql(prefix), [], timeout: :infinity)
-    Map.new(rows, fn [term, id] -> {term, id} end)
+      %{rows: rows} = repo.query!(lookup_terms_sql(prefix), [], timeout: :infinity)
+      Map.new(rows, fn [term, id] -> {term, id} end)
+    end)
   end
 
   def finalize_fragment_terms!(repo, prefix) do
@@ -548,6 +552,10 @@ defmodule Exograph.DuckDB.OfflineBuild do
       fragment_content_hash: :blob,
       term_id: :integer
     ]
+  end
+
+  defp stage_lock(repo, prefix, name, fun) do
+    :global.trans({{__MODULE__, repo, prefix, name}, self()}, fun, [node()], 1_000_000)
   end
 
   defp quote_name(name), do: QuackDB.Type.quote_identifier(to_string(name))

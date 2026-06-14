@@ -131,6 +131,15 @@ Reports include selected DuckDB experiment metadata under `options`, including `
 
 An automated top-package parity guard now compares online vs offline counts for files, fragments, terms, fragment_terms, definitions, references, comments, and representative text/definition/reference searches.
 
+Initial `top --limit 100` sharded smoke, using local tarballs and `--duckdb-shards 2`, showed quality-level totals match but no end-to-end win yet:
+
+| Build mode | Indexed | Skipped | Failed | Index elapsed | Wall time | Notes |
+|------------|--------:|--------:|-------:|--------------:|----------:|-------|
+| online | 75 | 25 | 0 | 50.54s | 52s | baseline online path |
+| offline | 75 | 25 | 0 | 50.48s | 52s | stages files/terms/fragments/facts, but still finalizes files/terms during per-package puts |
+
+This supports the next milestone: batch staging across larger units and finalize once per shard/corpus, rather than repeatedly resolving file/term IDs during `FragmentStore.put/2`.
+
 ### Package batching experiment
 
 `mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:

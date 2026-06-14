@@ -72,7 +72,8 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - It can also stage files, terms, definitions, references, comments, and fragment_terms with `fragment_content_hash` and bind them to final IDs during finalization.
    - The helper is wired behind `--duckdb-build-mode offline` for initial package/corpus benchmarking.
    - A top-package parity test compares online vs offline row counts and representative searches.
-   - Next work: extend the same idea to call graph facts, then run larger online/offline quality parity checks.
+   - A `top --limit 100` sharded smoke matched online totals but did not improve wall time, because files/terms are still finalized during per-package puts.
+   - Next work: batch staging across larger units, finalize once per shard/corpus, then extend the same idea to call graph facts and run larger quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
      - assign final IDs
