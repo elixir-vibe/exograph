@@ -148,15 +148,26 @@ Clean follow-up artifacts live under ignored `bench-results/duckdb-merge-2026061
 | ecto | 4 | 378 | 121 | 1 | 1m53s | 125s | 111.3s | failed on duplicate `content_hash` unique constraint while indexing `cachex@4.1.1` |
 | merge | 4 | 379 | 121 | 0 | 1m50s | 122s | 93.3s | completed; not directly comparable because Ecto failed |
 
-DuckDB source inspection explains the failure shape: `PhysicalInsert::OnConflictHandling` verifies conflicts before append, then concurrent transactions can still both try the same unique ART key and one fails at commit. The relevant source paths are `src/execution/operator/persistent/physical_insert.cpp`, `src/common/types/conflict_manager.cpp`, and `src/execution/index/art/art.cpp`. Exograph now retries DuckDB fragment appends when the failing key is `content_hash`, allowing the losing transaction to re-run after the winner commits.
+DuckDB source inspection explains the failure shape: `PhysicalInsert::OnConflictHandling` verifies conflicts before append, then concurrent transactions can still both try the same unique ART key and one fails at commit. The relevant source paths are `src/execution/operator/persistent/physical_insert.cpp`, `src/common/types/conflict_manager.cpp`, and `src/execution/index/art/art.cpp`. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation, allowing the losing transaction to re-run after the winner commits.
 
 After that retry guard, the same `top --limit 500 --concurrency 4` Ecto workload completed:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
 |-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
-| ecto + retry | 4 | 379 | 121 | 0 | 1m54s | 124s | 118.1s | clean completion after content-hash conflict retry |
+| ecto + retry | 4 | 379 | 121 | 0 | 1m54s | 124s | 118.1s | clean completion after unique-conflict retry |
 
-A serial `top --limit 500 --concurrency 1` run gives the current clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
+Repeated `top --limit 500 --concurrency 4` Ecto/MERGE pairs still do **not** justify making MERGE the default. Artifacts live under ignored `bench-results/duckdb-merge-repeat-20260614/`; large `.duckdb` files were removed after each comparison.
+
+| Run | Ecto result | MERGE result | Wall time Ecto/MERGE | `fragment_append_rows` Ecto/MERGE | Quality/count parity | Notes |
+|-----|-------------|--------------|----------------------:|----------------------------------:|----------------------|-------|
+| 1 | 379 indexed, 0 failed | 378 indexed, 1 failed | 127s / 123s | 119.1s / 102.4s | no | MERGE hit the same DuckDB unique-constraint commit race before broadening the retry guard |
+| 2 | 379 indexed, 0 failed | 379 indexed, 0 failed | 130s / 122s | 120.7s / 97.0s | yes | clean MERGE win |
+| 3 | 379 indexed, 0 failed | 379 indexed, 0 failed | 126s / 121s | 120.0s / 97.6s | no | representative searches matched, but fact counts differed (`definitions` +238, `references` +1227, `comments` +14) |
+| 4 | not rerun | 379 indexed, 0 failed | n/a / 125s | n/a / not summarized here | n/a | after broad retry, MERGE completed but produced the lower fact-count variant (`definitions` 175434, `references` 751847, `comments` 26135) |
+
+The concurrency-4 result is therefore: MERGE is usually faster in `fragment_append_rows`, but concurrent corpus indexing still has fact-count nondeterminism independent of the append method. Keep MERGE explicit and experimental until the concurrency nondeterminism is explained.
+
+A serial `top --limit 500 --concurrency 1` run remains the current clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
 |-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|

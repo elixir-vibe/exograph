@@ -103,9 +103,8 @@ defmodule Exograph.DuckDB.FragmentAppend do
   defp unique_constraint_race?(error) do
     message = Exception.message(error)
 
-    String.contains?(message, "content_hash") and
-      (String.contains?(message, "PRIMARY KEY or UNIQUE constraint violation") or
-         String.contains?(message, "violates unique constraint"))
+    String.contains?(message, "PRIMARY KEY or UNIQUE constraint violation") or
+      String.contains?(message, "violates unique constraint")
   end
 
   defp retry_backoff_ms(retries_left), do: max(1, 4 - retries_left) * 25

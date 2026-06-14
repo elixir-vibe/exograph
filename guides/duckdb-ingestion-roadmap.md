@@ -31,7 +31,7 @@ mix exograph.index.hex --duckdb-build-mode offline ...
 
 The build-mode flag now selects an initial offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. The default remains online, and the offline path is still experimental until quality parity and larger benchmarks are complete.
 
-Current MERGE measurements show lower cumulative `fragment_append_rows` time and exact `top --limit 500 --concurrency 1` parity. Keep it experimental until repeated full-workload runs show a stable total-time win under realistic concurrency. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate-`content_hash` unique-constraint race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on `content_hash` unique-constraint races, and the same top500 concurrency-4 Ecto workload completed after the retry guard.
+Current MERGE measurements show lower cumulative `fragment_append_rows` time and exact `top --limit 500 --concurrency 1` parity. Keep it experimental until repeated full-workload runs show stable quality under realistic concurrency. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate unique-key race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation. Follow-up concurrency-4 Ecto/MERGE pairs showed MERGE was faster in `fragment_append_rows`, but fact counts were still nondeterministic across successful concurrent runs, so MERGE is not ready to become the default.
 
 ## QuackDB DSL requirement
 
@@ -53,8 +53,9 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
 ## Roadmap
 
 1. **Promote MERGE only with stronger evidence**
-   - Repeat top500/top2000 runs on a quiet machine with clean Ecto and MERGE baselines.
-   - Track whether the Ecto content-hash conflict retry fires often enough to affect throughput.
+   - First explain concurrency-4 fact-count nondeterminism (`definitions`/`references`/`comments` drift while fragments and representative searches match).
+   - Repeat top500/top2000 runs on a quiet machine with clean Ecto and MERGE baselines only after that nondeterminism is fixed.
+   - Track whether the DuckDB fragment append retry fires often enough to affect throughput.
    - Keep quality checks as benchmark assertions:
      - `Map.get(_, _)`
      - `Enum.map(_, _)`
