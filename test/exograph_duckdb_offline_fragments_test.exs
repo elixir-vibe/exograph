@@ -26,6 +26,7 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     OfflineFragments.create_definition_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_reference_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_comment_stage!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.create_term_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_fragment_term_stage!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} = OfflineFragments.append_stage!(Exograph.DuckDBRepo, prefix, rows)
@@ -48,7 +49,14 @@ defmodule ExographDuckDBOfflineFragmentsTest do
         comment_row(<<2>>, "second comment", file_id, 3, now)
       ])
 
-    term_ids = insert_terms!(prefix)
+    {_count, _rows} =
+      OfflineFragments.append_term_stage!(Exograph.DuckDBRepo, prefix, [
+        term_row("def"),
+        term_row("def"),
+        term_row("call")
+      ])
+
+    term_ids = OfflineFragments.finalize_terms!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} =
       OfflineFragments.append_fragment_term_stage!(Exograph.DuckDBRepo, prefix, [
@@ -101,18 +109,11 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_definition_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_reference_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_comment_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_term_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_term_stage"|, [])
   end
 
-  defp insert_terms!(prefix) do
-    %{rows: rows} =
-      Exograph.DuckDBRepo.query!(
-        ~s|INSERT INTO "#{prefix}_terms" (term) VALUES ('def'), ('call') RETURNING term, id|,
-        []
-      )
-
-    Map.new(rows, fn [term, id] -> {term, id} end)
-  end
+  defp term_row(term), do: %{term: term}
 
   defp insert_file!(prefix, now) do
     %{rows: [[id]]} =

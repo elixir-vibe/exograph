@@ -72,11 +72,24 @@ defmodule Exograph.DuckDB.OfflineFragments do
   def definition_stage_table(prefix), do: fact_stage_table(prefix, :definition)
   def reference_stage_table(prefix), do: fact_stage_table(prefix, :reference)
   def comment_stage_table(prefix), do: fact_stage_table(prefix, :comment)
+  def term_stage_table(prefix), do: "#{prefix}_term_stage"
   def fragment_term_stage_table(prefix), do: "#{prefix}_fragment_term_stage"
 
   def create_definition_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :definition)
   def create_reference_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :reference)
   def create_comment_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :comment)
+
+  def create_term_stage!(repo, prefix) do
+    repo.query!(
+      QuackDB.DDL.create_table(term_stage_table(prefix), term_append_types(),
+        if_not_exists: true
+      ),
+      [],
+      timeout: :infinity
+    )
+
+    :ok
+  end
 
   def create_fragment_term_stage!(repo, prefix) do
     repo.query!(
@@ -99,6 +112,15 @@ defmodule Exograph.DuckDB.OfflineFragments do
   def append_comment_stage!(repo, prefix, rows),
     do: append_fact_stage!(repo, prefix, :comment, rows)
 
+  def append_term_stage!(repo, prefix, rows) when is_list(rows) do
+    repo.insert_all(term_stage_table(prefix), rows,
+      insert_method: :append,
+      columns: term_append_types(),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
   def append_fragment_term_stage!(repo, prefix, rows) when is_list(rows) do
     repo.insert_all(fragment_term_stage_table(prefix), rows,
       insert_method: :append,
@@ -111,6 +133,13 @@ defmodule Exograph.DuckDB.OfflineFragments do
   def finalize_definitions!(repo, prefix), do: finalize_facts!(repo, prefix, :definition)
   def finalize_references!(repo, prefix), do: finalize_facts!(repo, prefix, :reference)
   def finalize_comments!(repo, prefix), do: finalize_facts!(repo, prefix, :comment)
+
+  def finalize_terms!(repo, prefix) do
+    repo.query!(finalize_terms_sql(prefix), [], timeout: :infinity)
+
+    %{rows: rows} = repo.query!(lookup_terms_sql(prefix), [], timeout: :infinity)
+    Map.new(rows, fn [term, id] -> {term, id} end)
+  end
 
   def finalize_fragment_terms!(repo, prefix) do
     repo.query!(finalize_fragment_terms_sql(prefix), [], timeout: :infinity)
@@ -210,6 +239,45 @@ defmodule Exograph.DuckDB.OfflineFragments do
       quote_name(:content_hash),
       " = s.",
       quote_name(:fragment_content_hash)
+    ]
+  end
+
+  defp finalize_terms_sql(prefix) do
+    target = quote_name("#{prefix}_terms")
+    stage = quote_name(term_stage_table(prefix))
+
+    [
+      "INSERT INTO ",
+      target,
+      " (",
+      quote_name(:term),
+      ") SELECT DISTINCT s.",
+      quote_name(:term),
+      " FROM ",
+      stage,
+      " AS s ON CONFLICT (",
+      quote_name(:term),
+      ") DO NOTHING"
+    ]
+  end
+
+  defp lookup_terms_sql(prefix) do
+    target = quote_name("#{prefix}_terms")
+    stage = quote_name(term_stage_table(prefix))
+
+    [
+      "SELECT DISTINCT s.",
+      quote_name(:term),
+      ", t.",
+      quote_name(:id),
+      " FROM ",
+      stage,
+      " AS s INNER JOIN ",
+      target,
+      " AS t ON t.",
+      quote_name(:term),
+      " = s.",
+      quote_name(:term)
     ]
   end
 
@@ -335,6 +403,10 @@ defmodule Exograph.DuckDB.OfflineFragments do
       updated_at: :timestamp,
       fragment_content_hash: :blob
     ]
+  end
+
+  defp term_append_types do
+    [term: :varchar]
   end
 
   defp fragment_term_append_types do
