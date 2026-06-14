@@ -471,6 +471,7 @@ defmodule Exograph.Hex.Corpus do
         duckdb_threads: Keyword.get(opts, :duckdb_threads),
         min_mass: min_mass,
         index_concurrency: Keyword.get(opts, :index_concurrency) || System.schedulers_online(),
+        index_batch_size: hex_index_batch_size(opts),
         migrate?: false,
         extractors: extractors,
         postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
@@ -505,6 +506,11 @@ defmodule Exograph.Hex.Corpus do
     catch
       :no_elixir -> :skipped
     end
+  end
+
+  defp hex_index_batch_size(opts) do
+    Keyword.get(opts, :index_batch_size) ||
+      if Keyword.get(opts, :backend) == :duckdb, do: 10_000, else: 2_000
   end
 
   defp elixir_source?(path, source) do
