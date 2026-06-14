@@ -26,6 +26,7 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     OfflineFragments.create_definition_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_reference_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_comment_stage!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.create_fragment_term_stage!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} = OfflineFragments.append_stage!(Exograph.DuckDBRepo, prefix, rows)
 
@@ -47,10 +48,21 @@ defmodule ExographDuckDBOfflineFragmentsTest do
         comment_row(<<2>>, "second comment", file_id, 3, now)
       ])
 
+    term_ids = insert_terms!(prefix)
+
+    {_count, _rows} =
+      OfflineFragments.append_fragment_term_stage!(Exograph.DuckDBRepo, prefix, [
+        fragment_term_row(<<1>>, Map.fetch!(term_ids, "def")),
+        fragment_term_row(<<1>>, Map.fetch!(term_ids, "def")),
+        fragment_term_row(<<1>>, Map.fetch!(term_ids, "call")),
+        fragment_term_row(<<2>>, Map.fetch!(term_ids, "call"))
+      ])
+
     ids = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.finalize_definitions!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.finalize_references!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.finalize_comments!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.finalize_fragment_terms!(Exograph.DuckDBRepo, prefix)
 
     assert map_size(ids) == 2
     assert Map.has_key?(ids, <<1>>)
@@ -72,6 +84,13 @@ defmodule ExographDuckDBOfflineFragmentsTest do
              {"second comment", Map.fetch!(ids, <<2>>)}
            ]
 
+    assert MapSet.new(fragment_terms(prefix)) ==
+             MapSet.new([
+               {Map.fetch!(term_ids, "call"), Map.fetch!(ids, <<1>>)},
+               {Map.fetch!(term_ids, "call"), Map.fetch!(ids, <<2>>)},
+               {Map.fetch!(term_ids, "def"), Map.fetch!(ids, <<1>>)}
+             ])
+
     ids_again = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
 
     assert ids_again == ids
@@ -82,6 +101,17 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_definition_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_reference_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_comment_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_term_stage"|, [])
+  end
+
+  defp insert_terms!(prefix) do
+    %{rows: rows} =
+      Exograph.DuckDBRepo.query!(
+        ~s|INSERT INTO "#{prefix}_terms" (term) VALUES ('def'), ('call') RETURNING term, id|,
+        []
+      )
+
+    Map.new(rows, fn [term, id] -> {term, id} end)
   end
 
   defp insert_file!(prefix, now) do
@@ -126,6 +156,13 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     }
   end
 
+  defp fragment_term_row(fragment_content_hash, term_id) do
+    %{
+      fragment_content_hash: fragment_content_hash,
+      term_id: term_id
+    }
+  end
+
   defp fragment_row(content_hash, name, file_id, line, now) do
     %{
       package_id: nil,
@@ -156,6 +193,16 @@ defmodule ExographDuckDBOfflineFragmentsTest do
       )
 
     Enum.map(rows, fn [value, fragment_id] -> {value, fragment_id} end)
+  end
+
+  defp fragment_terms(prefix) do
+    %{rows: rows} =
+      Exograph.DuckDBRepo.query!(
+        ~s|SELECT term_id, fragment_id FROM "#{prefix}_fragment_terms" ORDER BY term_id, fragment_id|,
+        []
+      )
+
+    Enum.map(rows, fn [term_id, fragment_id] -> {term_id, fragment_id} end)
   end
 
   defp fragment_count(prefix) do
