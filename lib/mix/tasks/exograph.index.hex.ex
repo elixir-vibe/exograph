@@ -38,6 +38,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--manifest-path` - write a sharded DuckDB manifest to this path
     * `--report-path` - write indexing totals and failures as JSON
     * `--timings-path` - write stage timing totals as JSON
+    * `--missing-tarballs-report-path` - write missing local tarballs as JSON when `--tarball-dir` is set
     * `--retry-count` - retry transient per-package failures this many times (default: `3`)
     * `--retry-sleep` - base retry sleep in milliseconds (default: `1000`)
     * `--shard-dir` - directory for managed DuckDB shard files
@@ -95,6 +96,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           manifest_path: :string,
           report_path: :string,
           timings_path: :string,
+          missing_tarballs_report_path: :string,
           retry_count: :integer,
           retry_sleep: :integer,
           shard_dir: :string,
@@ -163,6 +165,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),
       timings_path: Keyword.get(opts, :timings_path),
+      missing_tarballs_report_path: Keyword.get(opts, :missing_tarballs_report_path),
       retry_count: Keyword.get(opts, :retry_count, 3),
       retry_sleep: Keyword.get(opts, :retry_sleep, 1_000),
       shard_directory: Keyword.get(opts, :shard_dir),

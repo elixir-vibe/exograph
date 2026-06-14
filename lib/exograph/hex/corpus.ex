@@ -30,6 +30,7 @@ defmodule Exograph.Hex.Corpus do
     resume? = Keyword.get(opts, :resume, true)
 
     entries = list_entries(mode, opts)
+    preflight_missing_tarballs(entries, opts)
     total = length(entries)
 
     backend = Keyword.fetch!(opts, :backend)
@@ -91,6 +92,7 @@ defmodule Exograph.Hex.Corpus do
     shard_count = Keyword.fetch!(opts, :shards)
     mode = Keyword.get(opts, :mode, :latest)
     entries = list_entries(mode, opts)
+    preflight_missing_tarballs(entries, opts)
     started = System.monotonic_time(:millisecond)
     Exograph.Hex.StageTimings.reset()
     Progress.start_run(length(entries))
@@ -554,6 +556,62 @@ defmodule Exograph.Hex.Corpus do
       {:error, reason} ->
         Logger.warning("Hex package batch indexing failed: #{inspect(reason, limit: 30)}")
         {:error, reason}
+    end
+  end
+
+  defp preflight_missing_tarballs(entries, opts) do
+    case Keyword.get(opts, :tarball_dir) do
+      nil ->
+        :ok
+
+      tarball_dir ->
+        missing =
+          Enum.filter(entries, fn entry ->
+            not File.exists?(tarball_path(tarball_dir, entry))
+          end)
+
+        if missing != [] do
+          Logger.warning(
+            "#{length(missing)} of #{length(entries)} requested Hex tarballs are missing from #{tarball_dir}"
+          )
+
+          write_missing_tarballs_report(missing, opts)
+        else
+          remove_missing_tarballs_report(opts)
+        end
+    end
+  end
+
+  defp tarball_path(tarball_dir, entry) do
+    Path.join(tarball_dir, "#{entry.name}-#{entry.version}.tar")
+  end
+
+  defp write_missing_tarballs_report(missing, opts) do
+    case Keyword.get(opts, :missing_tarballs_report_path) do
+      path when is_binary(path) -> write_missing_tarballs_report!(path, missing, opts)
+      _other -> :ok
+    end
+  end
+
+  defp write_missing_tarballs_report!(path, missing, opts) do
+    report = %{
+      generated_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+      tarball_dir: Keyword.get(opts, :tarball_dir),
+      missing_count: length(missing),
+      missing: Enum.map(missing, &Map.take(&1, [:name, :version]))
+    }
+
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
+    File.write!(path, Jason.encode!(report, pretty: true))
+  end
+
+  defp remove_missing_tarballs_report(opts) do
+    case Keyword.get(opts, :missing_tarballs_report_path) do
+      nil -> :ok
+      path -> File.rm(path)
     end
   end
 
