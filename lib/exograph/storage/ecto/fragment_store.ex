@@ -545,20 +545,35 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   end
 
   defp resolve_fragment_ids_by_hash(store, entries, hashed_unique) do
-    inserted_by_hash = insert_fragments_by_hash(store, entries)
+    inserted_by_hash =
+      Exograph.Hex.StageTimings.measure(:fragment_store_insert_fragments_by_hash, fn ->
+        insert_fragments_by_hash(store, entries)
+      end)
+
+    Exograph.Hex.StageTimings.count(
+      :fragment_store_inserted_fragment_rows,
+      map_size(inserted_by_hash)
+    )
 
     missing_hashes =
-      hashed_unique
-      |> Enum.map(& &1.content_hash)
-      |> Enum.reject(&Map.has_key?(inserted_by_hash, &1))
+      Exograph.Hex.StageTimings.measure(:fragment_store_missing_hashes, fn ->
+        hashed_unique
+        |> Enum.map(& &1.content_hash)
+        |> Enum.reject(&Map.has_key?(inserted_by_hash, &1))
+      end)
+
+    Exograph.Hex.StageTimings.count(:fragment_store_missing_fragment_ids, length(missing_hashes))
 
     hash_to_id =
       if missing_hashes == [] do
         inserted_by_hash
       else
-        store.repo
-        |> fragment_ids_by_hash(source(store), missing_hashes)
-        |> Map.merge(inserted_by_hash)
+        missing_by_hash =
+          Exograph.Hex.StageTimings.measure(:fragment_store_lookup_existing_fragment_ids, fn ->
+            fragment_ids_by_hash(store.repo, source(store), missing_hashes)
+          end)
+
+        Map.merge(missing_by_hash, inserted_by_hash)
       end
 
     inserted_fragment_ids =

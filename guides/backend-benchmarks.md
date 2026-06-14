@@ -236,6 +236,21 @@ After making MERGE the default, `fragment_append_rows` is no longer the only sto
 
 The next optimization target should be chosen from this profile rather than further MERGE tuning. The remaining storage-heavy cluster is fragment ID resolution + fact insertion + term normalization/upsert. Previous offline term-string batching and hybrid file handling both regressed, so prefer narrower, measurable changes such as reducing per-package ID lookup/fact flush overhead or improving fact/term batching without inflating staged payloads.
 
+A follow-up split of `fragment_store_resolve_fragment_ids` showed that the fallback lookup is **not** the bottleneck in the default MERGE path (`bench-results/fragment-id-resolution-20260615/top500-default-timings.json`):
+
+| Fragment ID resolution sub-stage / metric | Value |
+|-------------------------------------------|------:|
+| `fragment_store_resolve_fragment_ids` | 108.6s |
+| `fragment_store_insert_fragments_by_hash` | 106.5s |
+| `fragment_append_rows` | 105.4s |
+| `fragment_store_missing_hashes` | 0.4s |
+| `fragment_store_lookup_existing_fragment_ids` | 1.5s |
+| unique fragment rows | 985,178 |
+| inserted fragment rows returned | 982,754 |
+| missing existing fragment IDs | 657 |
+
+So optimizing the fallback `content_hash IN (...)` lookup is not worth pursuing now. The time attributed to ID resolution is almost entirely the MERGE append itself. Move the next optimization attempt to term/fact batching or broader flush granularity rather than fragment-ID lookup shape.
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
