@@ -363,17 +363,23 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         timeout: :infinity
       )
 
-      sha256s = Enum.map(raw_files, & &1.sha256)
-      fetch_files_by_sha256(store, sha256s)
+      fetch_files_by_package_version_and_sha256(store, raw_files)
     end
   end
 
-  defp fetch_files_by_sha256(store, sha256s) do
+  defp fetch_files_by_package_version_and_sha256(store, raw_files) do
+    keys = MapSet.new(raw_files, &{&1.package_version_id, &1.sha256})
+    package_version_ids = raw_files |> Enum.map(& &1.package_version_id) |> Enum.uniq()
+    sha256s = raw_files |> Enum.map(& &1.sha256) |> Enum.uniq()
+
     from(f in files_source(store),
-      where: f.sha256 in ^sha256s,
+      where: f.package_version_id in ^package_version_ids and f.sha256 in ^sha256s,
       select: {f.id, f.path, f.source, f.package_id, f.package_version_id, f.sha256}
     )
     |> store.repo.all()
+    |> Enum.filter(fn {_id, _path, _source, _package_id, package_version_id, sha256} ->
+      MapSet.member?(keys, {package_version_id, sha256})
+    end)
     |> Enum.map(fn {id, path, source, package_id, package_version_id, sha256} ->
       %File{
         id: id,

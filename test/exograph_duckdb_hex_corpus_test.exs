@@ -41,6 +41,44 @@ defmodule ExographDuckDBHexCorpusTest do
              reach_summary(online_prefix)
   end
 
+  test "duckdb file lookup stays scoped to package version for duplicate file hashes" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_file_scope_#{System.unique_integer([:positive])}"
+    opts = DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
+
+    source = """
+    defmodule Shared.Source do
+      def hello(name), do: {:ok, name}
+    end
+    """
+
+    for version <- ["1.0.0", "2.0.0"] do
+      assert {:ok, _index} =
+               Exograph.index_sources(
+                 [{"lib/shared/source.ex", source}],
+                 Keyword.merge(opts,
+                   migrate?: version == "1.0.0",
+                   package_version: [
+                     ecosystem: :hex,
+                     name: "same_sha",
+                     version: version,
+                     source_ref: "hex:same_sha:#{version}"
+                   ]
+                 )
+               )
+    end
+
+    assert [definition_count, definition_count] =
+             package_version_fact_counts(prefix, "definitions")
+
+    assert [reference_count, reference_count] =
+             package_version_fact_counts(prefix, "references")
+
+    assert definition_count > 0
+    assert reference_count > 0
+  end
+
   test "duckdb backend indexes Hex packages through the corpus pipeline" do
     if System.get_env("QUACKDB_TEST_URI") do
       DuckDBSupport.start_repo!()
@@ -135,6 +173,16 @@ defmodule ExographDuckDBHexCorpusTest do
       [[caller, callee] | _] -> %{caller: caller, callee: callee}
       [] -> nil
     end
+  end
+
+  defp package_version_fact_counts(prefix, suffix) do
+    %{rows: rows} =
+      Exograph.DuckDBRepo.query!(
+        ~s|SELECT count(*) FROM "#{prefix}_#{suffix}" GROUP BY package_version_id ORDER BY package_version_id|,
+        []
+      )
+
+    Enum.map(rows, fn [count] -> count end)
   end
 
   defp table_count(prefix, suffix) do
