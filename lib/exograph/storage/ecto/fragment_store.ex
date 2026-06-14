@@ -78,6 +78,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
   defp put_online(%__MODULE__{} = store, fragments) do
     now = DateTime.utc_now(:microsecond)
+    Exograph.Hex.StageTimings.count(:fragment_store_input_fragments, length(fragments))
 
     store =
       Exograph.Hex.StageTimings.measure(:fragment_store_package_context, fn ->
@@ -343,6 +344,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         })
       end)
 
+    Exograph.Hex.StageTimings.count(:fragment_store_file_rows, length(raw_files))
+
     if raw_files == [] do
       []
     else
@@ -440,6 +443,10 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     unhashed = Enum.filter(fragments_with_term_ids, &is_nil(&1.content_hash))
 
     hashed_unique = Enum.uniq_by(hashed, & &1.content_hash)
+
+    Exograph.Hex.StageTimings.count(:fragment_store_hashed_fragments, length(hashed))
+    Exograph.Hex.StageTimings.count(:fragment_store_unique_fragment_rows, length(hashed_unique))
+    Exograph.Hex.StageTimings.count(:fragment_store_unhashed_fragments, length(unhashed))
 
     {resolved_hashed, inserted_fragment_ids} =
       if hashed_unique != [] do
@@ -639,6 +646,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
       |> Enum.filter(&is_binary/1)
       |> Enum.uniq()
 
+    Exograph.Hex.StageTimings.count(:fragment_store_unique_terms, length(all_terms))
+
     if all_terms == [] do
       fragments
     else
@@ -686,6 +695,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         end
       end)
       |> Enum.uniq()
+
+    Exograph.Hex.StageTimings.count(:fragment_terms_rows, length(entries))
 
     if entries != [] do
       source = Options.fragment_terms_source(store.prefix)
@@ -1119,6 +1130,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         end)
       end)
 
+    Exograph.Hex.StageTimings.count(code_fact_row_count_stage(mapper), length(entries))
+
     Exograph.Hex.StageTimings.measure(bulk_stage, fn ->
       if store.duckdb_insert_buffer && Exograph.Backend.duckdb_repo?(store.repo) do
         Exograph.DuckDB.InsertBuffer.insert(store.duckdb_insert_buffer, source, entries)
@@ -1133,6 +1146,11 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   defp code_fact_chunk_size(repo) do
     if Exograph.Backend.duckdb_repo?(repo), do: 10_000, else: 3_000
   end
+
+  defp code_fact_row_count_stage(:from_comment), do: :code_facts_comment_rows
+  defp code_fact_row_count_stage(:from_definition), do: :code_facts_definition_rows
+  defp code_fact_row_count_stage(:from_reference), do: :code_facts_reference_rows
+  defp code_fact_row_count_stage(:from_call_edge), do: :code_facts_call_edge_rows
 
   defp code_fact_insert_stages(:from_comment),
     do: {:code_facts_build_comment_rows, :code_facts_bulk_insert_comments}

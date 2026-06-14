@@ -56,6 +56,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - Keep `--duckdb-fragment-append ecto` as the comparison/escape path.
    - Repeat top2000/top5000 runs with fixed entries or a refreshed tarball cache when changing ingestion internals.
    - Track whether the DuckDB fragment append retry fires often enough to affect throughput.
+   - Use timing counter metrics for row volumes before choosing the next batching target.
    - Keep quality checks as benchmark assertions:
      - `Map.get(_, _)`
      - `Enum.map(_, _)`
@@ -63,6 +64,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
      - package fragment counts such as `jason`.
 
 2. **Increase ingestion flush granularity**
+   - The post-MERGE cost model points at fragment ID resolution, fact insertion, and term normalization/upsert as the remaining storage-heavy cluster.
    - The current per-package flow runs many small staging/upsert/lookup cycles.
    - Explore N-package or shard-level fragment/code-fact buffers.
    - Preserve file/package context so quality does not regress.

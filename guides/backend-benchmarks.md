@@ -208,6 +208,34 @@ A final fixed-snapshot comparison of explicit Ecto vs default MERGE matched exac
 | `ecto` | 1635 | 365 | 0 | 9m49s | 613s | 696.3s | 1 | explicit comparison path |
 | default `merge` | 1635 | 365 | 0 | 9m13s | 579s | 580.4s | 0 | default path; exact parity with Ecto |
 
+### Post-MERGE cost model
+
+After making MERGE the default, `fragment_append_rows` is no longer the only story. Timing snapshots now include counter metrics for row volumes (`total`, `avg`, `max`) in addition to duration metrics (`total_ms`, `avg_ms`, `max_ms`). A fixed top500 default-MERGE run (`bench-results/stage-cost-20260615/top500-default-timings.json`) showed:
+
+| Stage / metric | Value |
+|----------------|------:|
+| wall time | 135s |
+| index elapsed | 123s |
+| `index_sources` | 485.6s cumulative |
+| `fragment_store_put` | 414.6s cumulative |
+| `fragment_store_upsert_fragments` | 239.6s cumulative |
+| `fragment_store_code_facts` | 122.5s cumulative |
+| `fragment_store_resolve_fragment_ids` | 108.8s cumulative |
+| `fragment_append_rows` | 105.6s cumulative |
+| `fragment_store_normalize_terms` | 76.3s cumulative |
+| `fragment_store_upsert_terms` | 52.8s cumulative |
+| `code_facts_insert_comments` | 52.9s cumulative |
+| input fragments | 985,339 rows |
+| unique fragment rows | 976,408 rows |
+| unique terms observed | 459,667 rows |
+| reference facts | 739,115 rows |
+| definition facts | 158,592 rows |
+| comment facts | 21,064 rows |
+| file rows | 3,714 rows |
+| fragment append retries | 1 |
+
+The next optimization target should be chosen from this profile rather than further MERGE tuning. The remaining storage-heavy cluster is fragment ID resolution + fact insertion + term normalization/upsert. Previous offline term-string batching and hybrid file handling both regressed, so prefer narrower, measurable changes such as reducing per-package ID lookup/fact flush overhead or improving fact/term batching without inflating staged payloads.
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
