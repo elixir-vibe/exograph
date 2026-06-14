@@ -69,28 +69,26 @@ defmodule Exograph.DuckDB.OfflineFragments do
     Map.new(rows, fn [content_hash, id] -> {content_hash, id} end)
   end
 
-  def definition_stage_table(prefix), do: "#{prefix}_definition_stage"
+  def definition_stage_table(prefix), do: fact_stage_table(prefix, :definition)
+  def reference_stage_table(prefix), do: fact_stage_table(prefix, :reference)
+  def comment_stage_table(prefix), do: fact_stage_table(prefix, :comment)
 
-  def create_definition_stage!(repo, prefix) do
-    repo.query!(create_definition_stage_sql(definition_stage_table(prefix)), [],
-      timeout: :infinity
-    )
+  def create_definition_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :definition)
+  def create_reference_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :reference)
+  def create_comment_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :comment)
 
-    :ok
-  end
+  def append_definition_stage!(repo, prefix, rows),
+    do: append_fact_stage!(repo, prefix, :definition, rows)
 
-  def append_definition_stage!(repo, prefix, rows) when is_list(rows) do
-    repo.insert_all(definition_stage_table(prefix), rows,
-      insert_method: :append,
-      columns: definition_append_types(),
-      chunk_every: 10_000,
-      timeout: :infinity
-    )
-  end
+  def append_reference_stage!(repo, prefix, rows),
+    do: append_fact_stage!(repo, prefix, :reference, rows)
 
-  def finalize_definitions!(repo, prefix) do
-    repo.query!(finalize_definitions_sql(prefix), [], timeout: :infinity)
-  end
+  def append_comment_stage!(repo, prefix, rows),
+    do: append_fact_stage!(repo, prefix, :comment, rows)
+
+  def finalize_definitions!(repo, prefix), do: finalize_facts!(repo, prefix, :definition)
+  def finalize_references!(repo, prefix), do: finalize_facts!(repo, prefix, :reference)
+  def finalize_comments!(repo, prefix), do: finalize_facts!(repo, prefix, :comment)
 
   defp create_stage_sql(table) do
     QuackDB.DDL.create_table(table, @append_types, if_not_exists: true)
@@ -127,22 +125,41 @@ defmodule Exograph.DuckDB.OfflineFragments do
     ]
   end
 
-  defp create_definition_stage_sql(table) do
-    QuackDB.DDL.create_table(table, definition_append_types(), if_not_exists: true)
+  defp create_fact_stage!(repo, prefix, kind) do
+    repo.query!(
+      QuackDB.DDL.create_table(fact_stage_table(prefix, kind), fact_append_types(kind),
+        if_not_exists: true
+      ),
+      [], timeout: :infinity)
+
+    :ok
   end
 
-  defp finalize_definitions_sql(prefix) do
-    target = quote_name("#{prefix}_definitions")
-    stage = quote_name(definition_stage_table(prefix))
+  defp append_fact_stage!(repo, prefix, kind, rows) when is_list(rows) do
+    repo.insert_all(fact_stage_table(prefix, kind), rows,
+      insert_method: :append,
+      columns: fact_append_types(kind),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
+  defp finalize_facts!(repo, prefix, kind) do
+    repo.query!(finalize_facts_sql(prefix, kind), [], timeout: :infinity)
+  end
+
+  defp finalize_facts_sql(prefix, kind) do
+    target = quote_name("#{prefix}_#{fact_target_suffix(kind)}")
+    stage = quote_name(fact_stage_table(prefix, kind))
     fragments = quote_name("#{prefix}_fragments")
 
     columns =
-      definition_columns()
+      fact_columns(kind)
       |> Enum.reject(&(&1 == :fragment_content_hash))
       |> Enum.map_join(", ", &quote_name/1)
 
     select_columns =
-      definition_columns()
+      fact_columns(kind)
       |> Enum.reject(&(&1 in [:fragment_content_hash, :fragment_id]))
       |> Enum.map_join(", ", &["s.", quote_name(&1)])
 
@@ -191,7 +208,15 @@ defmodule Exograph.DuckDB.OfflineFragments do
     ]
   end
 
-  defp definition_columns do
+  defp fact_stage_table(prefix, :definition), do: "#{prefix}_definition_stage"
+  defp fact_stage_table(prefix, :reference), do: "#{prefix}_reference_stage"
+  defp fact_stage_table(prefix, :comment), do: "#{prefix}_comment_stage"
+
+  defp fact_target_suffix(:definition), do: "definitions"
+  defp fact_target_suffix(:reference), do: "references"
+  defp fact_target_suffix(:comment), do: "comments"
+
+  defp fact_columns(kind) when kind in [:definition, :reference] do
     [
       :package_id,
       :package_version_id,
@@ -210,7 +235,22 @@ defmodule Exograph.DuckDB.OfflineFragments do
     ]
   end
 
-  defp definition_append_types do
+  defp fact_columns(:comment) do
+    [
+      :package_id,
+      :package_version_id,
+      :file_id,
+      :text,
+      :line,
+      :column,
+      :inserted_at,
+      :updated_at,
+      :fragment_content_hash,
+      :fragment_id
+    ]
+  end
+
+  defp fact_append_types(kind) when kind in [:definition, :reference] do
     [
       package_id: :integer,
       package_version_id: :integer,
@@ -220,6 +260,20 @@ defmodule Exograph.DuckDB.OfflineFragments do
       name: :varchar,
       arity: :integer,
       qualified_name: :varchar,
+      line: :integer,
+      column: :integer,
+      inserted_at: :timestamp,
+      updated_at: :timestamp,
+      fragment_content_hash: :blob
+    ]
+  end
+
+  defp fact_append_types(:comment) do
+    [
+      package_id: :integer,
+      package_version_id: :integer,
+      file_id: :integer,
+      text: :varchar,
       line: :integer,
       column: :integer,
       inserted_at: :timestamp,

@@ -24,26 +24,52 @@ defmodule ExographDuckDBOfflineFragmentsTest do
 
     OfflineFragments.create_stage!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.create_definition_stage!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.create_reference_stage!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.create_comment_stage!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} = OfflineFragments.append_stage!(Exograph.DuckDBRepo, prefix, rows)
 
     {_count, _rows} =
       OfflineFragments.append_definition_stage!(Exograph.DuckDBRepo, prefix, [
-        definition_row(<<1>>, "first/0", file_id, 1, now),
-        definition_row(<<2>>, "second/0", file_id, 3, now)
+        symbol_fact_row(<<1>>, "def", "first/0", file_id, 1, now),
+        symbol_fact_row(<<2>>, "def", "second/0", file_id, 3, now)
+      ])
+
+    {_count, _rows} =
+      OfflineFragments.append_reference_stage!(Exograph.DuckDBRepo, prefix, [
+        symbol_fact_row(<<1>>, "local_call", "second/0", file_id, 2, now),
+        symbol_fact_row(<<2>>, "local_call", "first/0", file_id, 4, now)
+      ])
+
+    {_count, _rows} =
+      OfflineFragments.append_comment_stage!(Exograph.DuckDBRepo, prefix, [
+        comment_row(<<1>>, "first comment", file_id, 1, now),
+        comment_row(<<2>>, "second comment", file_id, 3, now)
       ])
 
     ids = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
     OfflineFragments.finalize_definitions!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.finalize_references!(Exograph.DuckDBRepo, prefix)
+    OfflineFragments.finalize_comments!(Exograph.DuckDBRepo, prefix)
 
     assert map_size(ids) == 2
     assert Map.has_key?(ids, <<1>>)
     assert Map.has_key?(ids, <<2>>)
     assert fragment_count(prefix) == 2
 
-    assert definitions(prefix) == [
+    assert facts(prefix, "definitions", "qualified_name") == [
              {"first/0", Map.fetch!(ids, <<1>>)},
              {"second/0", Map.fetch!(ids, <<2>>)}
+           ]
+
+    assert facts(prefix, "references", "qualified_name") == [
+             {"first/0", Map.fetch!(ids, <<2>>)},
+             {"second/0", Map.fetch!(ids, <<1>>)}
+           ]
+
+    assert facts(prefix, "comments", "text") == [
+             {"first comment", Map.fetch!(ids, <<1>>)},
+             {"second comment", Map.fetch!(ids, <<2>>)}
            ]
 
     ids_again = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
@@ -54,6 +80,8 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     DuckDBSupport.drop_prefix(prefix)
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_definition_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_reference_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_comment_stage"|, [])
   end
 
   defp insert_file!(prefix, now) do
@@ -66,16 +94,30 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     id
   end
 
-  defp definition_row(fragment_content_hash, qualified_name, file_id, line, now) do
+  defp symbol_fact_row(fragment_content_hash, kind, qualified_name, file_id, line, now) do
     %{
       package_id: nil,
       package_version_id: nil,
       file_id: file_id,
-      kind: "def",
+      kind: kind,
       module: nil,
       name: qualified_name,
       arity: 0,
       qualified_name: qualified_name,
+      line: line,
+      column: 1,
+      inserted_at: now,
+      updated_at: now,
+      fragment_content_hash: fragment_content_hash
+    }
+  end
+
+  defp comment_row(fragment_content_hash, text, file_id, line, now) do
+    %{
+      package_id: nil,
+      package_version_id: nil,
+      file_id: file_id,
+      text: text,
       line: line,
       column: 1,
       inserted_at: now,
@@ -106,14 +148,14 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     }
   end
 
-  defp definitions(prefix) do
+  defp facts(prefix, table, field) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT qualified_name, fragment_id FROM "#{prefix}_definitions" ORDER BY qualified_name|,
+        ~s|SELECT "#{field}", fragment_id FROM "#{prefix}_#{table}" ORDER BY "#{field}"|,
         []
       )
 
-    Enum.map(rows, fn [qualified_name, fragment_id] -> {qualified_name, fragment_id} end)
+    Enum.map(rows, fn [value, fragment_id] -> {value, fragment_id} end)
   end
 
   defp fragment_count(prefix) do

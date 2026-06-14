@@ -58,10 +58,11 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - Preserve file/package context so quality does not regress.
 
 3. **Prototype an offline build/finalize schema**
-   - Initial fragment-only helper exists as `Exograph.DuckDB.OfflineFragments`.
+   - Initial helper exists as `Exograph.DuckDB.OfflineFragments`.
    - It appends fragments into a constraint-free `*_fragment_stage` table.
    - It finalizes by deduping staged rows by `content_hash`, inserting unique rows into `*_fragments`, and returning `content_hash => id` for staged fragments.
-   - Next work: extend the same idea to files, terms, definitions, references, comments, fragment_terms, and call graph facts.
+   - It can also stage definitions, references, and comments with `fragment_content_hash` and bind them to final `fragment_id` during finalization.
+   - Next work: extend the same idea to files, terms, fragment_terms, and call graph facts, then wire a full package/corpus path for benchmarking.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
      - assign final IDs
