@@ -343,10 +343,12 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     {resolved_hashed, inserted_fragment_ids} =
       if hashed_unique != [] do
         entries =
-          Enum.map(hashed_unique, fn fragment ->
-            fragment
-            |> FragmentRecord.from_fragment()
-            |> Map.merge(%{inserted_at: now, updated_at: now})
+          Exograph.Hex.StageTimings.measure(:fragment_store_build_fragment_rows, fn ->
+            Enum.map(hashed_unique, fn fragment ->
+              fragment
+              |> FragmentRecord.from_fragment()
+              |> Map.merge(%{inserted_at: now, updated_at: now})
+            end)
           end)
 
         {hash_to_id, inserted_fragment_ids} =
@@ -366,10 +368,12 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
     if unhashed != [] do
       entries =
-        Enum.map(unhashed, fn fragment ->
-          fragment
-          |> FragmentRecord.from_fragment()
-          |> Map.merge(%{inserted_at: now, updated_at: now})
+        Exograph.Hex.StageTimings.measure(:fragment_store_build_fragment_rows, fn ->
+          Enum.map(unhashed, fn fragment ->
+            fragment
+            |> FragmentRecord.from_fragment()
+            |> Map.merge(%{inserted_at: now, updated_at: now})
+          end)
         end)
 
       Exograph.Hex.StageTimings.measure(:fragment_store_insert_unhashed, fn ->
