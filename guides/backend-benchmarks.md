@@ -165,9 +165,18 @@ Repeated `top --limit 500 --concurrency 4` Ecto/MERGE pairs still do **not** jus
 | 3 | 379 indexed, 0 failed | 379 indexed, 0 failed | 126s / 121s | 120.0s / 97.6s | no | representative searches matched, but fact counts differed (`definitions` +238, `references` +1227, `comments` +14) |
 | 4 | not rerun | 379 indexed, 0 failed | n/a / 125s | n/a / not summarized here | n/a | after broad retry, MERGE completed but produced the lower fact-count variant (`definitions` 175434, `references` 751847, `comments` 26135) |
 
-The concurrency-4 result is therefore: MERGE is usually faster in `fragment_append_rows`, but concurrent corpus indexing still has fact-count nondeterminism independent of the append method. Keep MERGE explicit and experimental until the concurrency nondeterminism is explained.
+The concurrency-4 fact-count nondeterminism was traced to duplicate source paths inside Hex tarballs rather than MERGE itself. `mariaex@0.9.1` contains repeated identical entries for paths such as `lib/mariaex/protocol.ex` and `lib/mariaex/row_parser.ex`. Exograph now deduplicates source tuples by `{path, package_version}` before extraction, so duplicate archive entries do not insert duplicate definitions/references/comments.
 
-A serial `top --limit 500 --concurrency 1` run remains the current clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
+A focused `mariaex@0.9.1` rerun after source dedupe matched Ecto and MERGE exactly with the lower, deduplicated fact counts (`fragments` 4614, `definitions` 665, `references` 3318, `comments` 41).
+
+A post-dedupe `top --limit 500 --concurrency 4` Ecto/MERGE pair matched exactly for table counts and representative quality probes:
+
+| Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
+|-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
+| ecto + retry | 4 | 379 | 121 | 0 | 1m59s | 129s | 117.3s | deduped sources |
+| merge + retry | 4 | 379 | 121 | 0 | 1m49s | 120s | 93.7s | exact parity with Ecto for files, fragments, terms, fragment_terms, definitions, references, comments, searches, and package checks |
+
+A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
 |-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|

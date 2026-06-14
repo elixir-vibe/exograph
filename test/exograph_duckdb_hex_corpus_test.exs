@@ -53,6 +53,53 @@ defmodule ExographDuckDBHexCorpusTest do
     assert temporary_table_exists?(fragment_merge_table(prefix))
   end
 
+  test "duckdb duplicate source paths are indexed once per package version" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    single_prefix = "exograph_duckdb_single_source_#{System.unique_integer([:positive])}"
+    duplicate_prefix = "exograph_duckdb_duplicate_source_#{System.unique_integer([:positive])}"
+
+    source = """
+    defmodule Duplicate.Source do
+      def hello(name), do: {:ok, name}
+    end
+    """
+
+    single_opts =
+      DuckDBSupport.opts(single_prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        package_version: duplicate_source_package_version()
+      )
+
+    duplicate_opts =
+      DuckDBSupport.opts(duplicate_prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        package_version: duplicate_source_package_version()
+      )
+
+    assert {:ok, _index} =
+             Exograph.index_sources([{"lib/duplicate/source.ex", source}], single_opts)
+
+    assert {:ok, _index} =
+             Exograph.index_sources(
+               [
+                 {"lib/duplicate/source.ex", source},
+                 {"lib/duplicate/source.ex", source}
+               ],
+               duplicate_opts
+             )
+
+    assert table_count(duplicate_prefix, "fragments") == table_count(single_prefix, "fragments")
+
+    assert table_count(duplicate_prefix, "definitions") ==
+             table_count(single_prefix, "definitions")
+
+    assert table_count(duplicate_prefix, "references") == table_count(single_prefix, "references")
+    assert table_count(duplicate_prefix, "comments") == table_count(single_prefix, "comments")
+  end
+
   test "duckdb file lookup stays scoped to package version for duplicate file hashes" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
@@ -114,6 +161,15 @@ defmodule ExographDuckDBHexCorpusTest do
       assert [_fragment | _] = indexed_fragments(prefix)
       assert {:ok, [_hit | _]} = search_text(prefix, "defmodule")
     end
+  end
+
+  defp duplicate_source_package_version do
+    [
+      ecosystem: :hex,
+      name: "duplicate_source",
+      version: "1.0.0",
+      source_ref: "hex:duplicate_source:1.0.0"
+    ]
   end
 
   defp index_top_package!(prefix, opts) do

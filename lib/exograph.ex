@@ -47,7 +47,11 @@ defmodule Exograph do
   @doc false
   def index_sources(sources, opts \\ []) do
     opts = normalize_backend(opts)
-    do_index(ExASTExtractor.stream_sources(sources, extractor_opts(opts)), opts)
+
+    sources
+    |> dedupe_sources(opts)
+    |> ExASTExtractor.stream_sources(extractor_opts(opts))
+    |> do_index(opts)
   end
 
   @doc false
@@ -59,6 +63,18 @@ defmodule Exograph do
 
       {:ok, ShardedIndex.new(shard_indexes, manifest: manifest)}
     end
+  end
+
+  defp dedupe_sources(sources, opts) do
+    default_version = Keyword.get(opts, :package_version)
+
+    Enum.uniq_by(sources, fn
+      {path, _source} ->
+        {path, default_version}
+
+      {path, _source, source_opts} when is_list(source_opts) ->
+        {path, Keyword.get(source_opts, :package_version, default_version)}
+    end)
   end
 
   defp do_index(fragments, opts) do
