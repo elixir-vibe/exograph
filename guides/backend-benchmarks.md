@@ -59,6 +59,81 @@ For `limit 100`, the systems are close and tuned Postgres wins indexing. For `li
 
 Search/query paths usually favor DuckDB materially, especially on the larger workload.
 
+## DuckDB Hex corpus notes, June 2026
+
+A focused DuckDB Hex-corpus tuning pass used the local Hex tarball mirror and 16 DuckDB shards:
+
+```bash
+mix exograph.index.hex \
+  --backend duckdb \
+  --mode top \
+  --limit 2000 \
+  --concurrency 16 \
+  --duckdb-shards 16 \
+  --duckdb-threads 1 \
+  --duckdb-recovery-mode no_wal_writes \
+  --tarball-dir /srv/toys/hex-mirror/tarballs \
+  --missing-tarballs-report-path /tmp/exograph-missing-top2000.json
+```
+
+The clean baseline after QuackDB `0.5.7` was:
+
+| Workload | Indexed | Skipped | Failed | Index elapsed | Wall time |
+|----------|--------:|--------:|-------:|--------------:|----------:|
+| `top --limit 2000` | 1635 | 365 | 0 | 158.09s | 168.21s |
+
+No missing local tarballs were reported for that run. The largest cumulative timing buckets were:
+
+| Stage | Total |
+|-------|------:|
+| `fragment_store_put` | 1094.4s |
+| `fragment_store_upsert_fragments` | 555.0s |
+| `fragment_store_code_facts` | 433.2s |
+| `fragment_store_resolve_fragment_ids` | 237.1s |
+| `fragment_append_rows` | 230.7s |
+| `code_facts_insert_references` | 179.5s |
+| `fragment_store_build_fragment_rows` | 160.6s |
+| `fragment_store_normalize_terms` | 150.9s |
+
+QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ecto native append paths. They were positive but not large enough to change the main bottleneck: fragment append/upsert remains dominated by the append + conflict-ignore + returning/staging path.
+
+### Package batching experiment
+
+`mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:
+
+| Query/check | Default | Batch size 4 |
+|-------------|--------:|-------------:|
+| `Map.get(_, _)` | 7 | 7 |
+| `Enum.map(_, _)` | 959 | 959 |
+| `_ |> _` | 1864 | 1864 |
+| `jason` fragments | 1391 | 1391 |
+
+Controlled `top --limit 1000` benchmarks with 16 shards were noisy and did not justify changing the default:
+
+| `--package-batch-size` | Run 1 | Run 2 | Median |
+|-----------------------:|------:|------:|-------:|
+| 1 | 134.5s | 116.8s | 125.6s |
+| 2 | 145.7s | 150.1s | 147.9s |
+| 4 | 126.2s | 130.3s | 128.2s |
+
+Keep package batching explicit until a larger corpus or repeated low-noise runs show a consistent win.
+
+### Dead ends from the tuning pass
+
+The following experiments were reverted because they were neutral or worse on the full workload, even when some looked promising in microbenchmarks:
+
+- Prelooking up existing fragment hashes and direct-appending only missing rows.
+- Removing post-insert temp-table cleanup.
+- Combining temp-table create and clear statements.
+- Switching temp-table cleanup from `DELETE` to `TRUNCATE`.
+- Increasing DuckDB code-fact insert buffer size from 50k to 100k.
+- Changing AST compression level or selectively changing fragment row construction.
+- Fusing code-fact extraction passes.
+- Special-casing int64, blob, or LIST vector encoding in QuackDB without full-workload wins.
+- Lowering per-package source parsing concurrency.
+
+The next meaningful design target is a dedicated bulk fragment upsert/staging path that reduces append + conflict-ignore + ID lookup work, rather than further local map-building or protocol micro-optimizations.
+
 ## Artifacts
 
 Machine-readable benchmark artifacts are generated locally and intentionally not committed to git. Use `--output-json` for the JSON report and `--explain-dir` for Postgres plans, for example:
