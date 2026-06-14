@@ -41,6 +41,18 @@ defmodule ExographDuckDBHexCorpusTest do
              reach_summary(online_prefix)
   end
 
+  test "duckdb fragment append mode is forwarded through the corpus pipeline" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_append_mode_#{System.unique_integer([:positive])}"
+
+    results =
+      index_top_package!(prefix, duckdb_build_mode: :online, duckdb_fragment_append: :merge)
+
+    assert results.ok == 1
+    assert temporary_table_exists?(fragment_merge_table(prefix))
+  end
+
   test "duckdb file lookup stays scoped to package version for duplicate file hashes" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
@@ -173,6 +185,19 @@ defmodule ExographDuckDBHexCorpusTest do
       [[caller, callee] | _] -> %{caller: caller, callee: callee}
       [] -> nil
     end
+  end
+
+  defp fragment_merge_table(prefix) do
+    source = "#{prefix}_fragments"
+    hash = :erlang.phash2(source, 4_294_967_296) |> Integer.to_string(36)
+    "exograph_fragment_merge_#{hash}"
+  end
+
+  defp temporary_table_exists?(table) do
+    Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{table}"|, [])
+    true
+  rescue
+    _ -> false
   end
 
   defp package_version_fact_counts(prefix, suffix) do

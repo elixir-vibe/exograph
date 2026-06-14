@@ -134,14 +134,14 @@ A later single-DB `top --limit 500` comparison with local tarballs still did not
 | ecto | 379 | 121 | 0 | 1m42s | 112s | 97.3s | baseline |
 | merge | 379 | 121 | 0 | 1m41s | 111s | 96.2s | representative structural/text/package checks matched, but fact table counts differed (`definitions` +140, `references` +762, `comments` +4) and need investigation before further promotion |
 
-A follow-up run after scoping file lookup by `{package_version_id, sha256}` still showed only marginal MERGE timing change and fact-count drift localized to `mariaex@0.9.1`:
+A follow-up investigation found two correctness issues around this comparison rather than a proven MERGE quality regression:
 
-| Fragment append | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
-|-----------------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
-| ecto | 379 | 121 | 0 | 1m55s | 128s | 113.4s | baseline after file-scope fix |
-| merge | 379 | 121 | 0 | 1m54s | 126s | 107.5s | structural/text/package checks still matched; fact count drift remained localized to `mariaex@0.9.1` |
+- File lookup after file upserts must be scoped by `{package_version_id, sha256}`, not only by SHA, because different package versions can legitimately share identical files.
+- `duckdb_fragment_append` was recorded in Hex index reports but was not forwarded from `Exograph.Hex.Corpus` into per-package `Exograph.index_sources/2` calls, so earlier corpus-level MERGE comparisons were not a clean test of the MERGE path.
 
-Top500 representative checks matched for `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, `defmodule`, and package fragment counts for `jason`, `ecto`, and `phoenix`. Artifacts: `/tmp/exograph-top500-ecto-report.json`, `/tmp/exograph-top500-ecto-timings.json`, `/tmp/exograph-top500-merge-report.json`, `/tmp/exograph-top500-merge-timings.json`, `/tmp/exograph-top500-fix-ecto-report.json`, `/tmp/exograph-top500-fix-ecto-timings.json`, `/tmp/exograph-top500-fix-merge-report.json`, `/tmp/exograph-top500-fix-merge-timings.json`.
+A focused `mariaex@0.9.1` rerun after forwarding the option showed Ecto and MERGE fact counts match exactly (`fragments` 4614, `definitions` 1043, `references` 5307, `comments` 59). This restores confidence in MERGE correctness for the known repro, but the previous top500 MERGE numbers should be treated as invalidated; rerun larger topN benchmarks only when ready to regenerate clean artifacts.
+
+Top500 representative checks matched for `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, `defmodule`, and package fragment counts for `jason`, `ecto`, and `phoenix`. Historical artifacts: `/tmp/exograph-top500-ecto-report.json`, `/tmp/exograph-top500-ecto-timings.json`, `/tmp/exograph-top500-merge-report.json`, `/tmp/exograph-top500-merge-timings.json`.
 
 Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, fragment_terms, graph_nodes, and call_edges. Keep it explicit until quality parity and larger repeated benchmarks are complete.
 

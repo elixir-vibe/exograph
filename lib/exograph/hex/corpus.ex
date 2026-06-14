@@ -853,6 +853,7 @@ defmodule Exograph.Hex.Corpus do
         defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
         duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
         duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
+        duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :ecto),
         package_version: [
           ecosystem: :hex,
           name: entry.name,
