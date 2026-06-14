@@ -48,6 +48,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             postgres_copy?: false,
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
+            duckdb_fragment_append: :ecto,
             static_atoms: :existing
 
   @type t :: %__MODULE__{
@@ -59,6 +60,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           postgres_copy?: boolean(),
           defer_fragment_terms?: boolean(),
           duckdb_insert_buffer: pid() | nil,
+          duckdb_fragment_append: :ecto | :merge,
           static_atoms: atom()
         }
 
@@ -427,7 +429,9 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
   defp insert_fragments_by_hash(%{repo: repo} = store, entries) do
     if Exograph.Backend.duckdb_repo?(repo) do
-      Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries)
+      Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries,
+        mode: store.duckdb_fragment_append
+      )
     else
       entries
       |> Enum.chunk_every(2_000)

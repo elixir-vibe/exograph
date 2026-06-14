@@ -17,7 +17,13 @@ defmodule Exograph.Hex.IndexReport do
           }
   end
 
-  defstruct generated_at: nil, elapsed_ms: 0, ok: 0, skipped: 0, error: 0, failures: []
+  defstruct generated_at: nil,
+            elapsed_ms: 0,
+            ok: 0,
+            skipped: 0,
+            error: 0,
+            failures: [],
+            options: %{}
 
   @type t :: %__MODULE__{
           generated_at: String.t() | nil,
@@ -25,6 +31,7 @@ defmodule Exograph.Hex.IndexReport do
           ok: non_neg_integer(),
           skipped: non_neg_integer(),
           error: non_neg_integer(),
-          failures: [Failure.t()]
+          failures: [Failure.t()],
+          options: map()
         }
 end

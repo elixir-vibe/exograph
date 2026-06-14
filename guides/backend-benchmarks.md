@@ -103,7 +103,7 @@ QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ect
 DuckDB docs and source notes indicate that recent `MERGE` paths can choose better bulk strategies than older `ON CONFLICT` index-conflict paths. Exograph therefore has an experimental DuckDB fragment append path enabled with:
 
 ```bash
-EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge mix exograph.index.hex ...
+mix exograph.index.hex --duckdb-fragment-append merge ...
 ```
 
 This keeps the default Ecto `insert_all(..., insert_method: :append, on_conflict: :nothing, returning: ...)` path unchanged unless explicitly requested.
@@ -113,8 +113,8 @@ Initial `top --limit 2000` results:
 | Mode | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total |
 |------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|
 | default (`0.5.8`) | 1635 | 365 | 0 | 156.99s | 166.86s | 241.2s |
-| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` run 1 | 1635 | 365 | 0 | 153.91s | 158.99s | 188.0s |
-| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` run 2 | 1635 | 365 | 0 | 157.16s | 166.95s | 186.1s |
+| `--duckdb-fragment-append merge` run 1 | 1635 | 365 | 0 | 153.91s | 158.99s | 188.0s |
+| `--duckdb-fragment-append merge` run 2 | 1635 | 365 | 0 | 157.16s | 166.95s | 186.1s |
 
 A persisted `top --limit 500` quality check matched the default path:
 

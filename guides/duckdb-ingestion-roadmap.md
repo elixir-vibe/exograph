@@ -20,7 +20,7 @@ This is intentionally idiomatic, but it still pays DuckDB unique/ART index maint
 An experimental MERGE path exists behind:
 
 ```bash
-EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge
+mix exograph.index.hex --duckdb-fragment-append merge ...
 ```
 
 Early measurements show lower cumulative `fragment_append_rows` time, but end-to-end wall time is still noisy. Keep it experimental until repeated full-workload runs show a stable total-time win.
@@ -44,12 +44,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
 
 ## Roadmap
 
-1. **Make MERGE explicit in the CLI**
-   - Add `--duckdb-fragment-append ecto|merge`.
-   - Keep `ecto` as the default until MERGE is proven stable.
-   - Record the selected mode in benchmark reports.
-
-2. **Promote MERGE only with stronger evidence**
+1. **Promote MERGE only with stronger evidence**
    - Repeat top2000/top5000 runs on a quiet machine.
    - Keep quality checks as benchmark assertions:
      - `Map.get(_, _)`
@@ -57,12 +52,12 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
      - `_ |> _`
      - package fragment counts such as `jason`.
 
-3. **Increase ingestion flush granularity**
+2. **Increase ingestion flush granularity**
    - The current per-package flow runs many small staging/upsert/lookup cycles.
    - Explore N-package or shard-level fragment/code-fact buffers.
    - Preserve file/package context so quality does not regress.
 
-4. **Prototype an offline build/finalize schema**
+3. **Prototype an offline build/finalize schema**
    - Append all fragments into constraint-free staging tables.
    - Store facts against stable temporary keys or content hashes.
    - Finalize with set-oriented SQL:
@@ -71,16 +66,16 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
      - join facts to final fragments
      - build indexes after bulk load.
 
-5. **Delay integer fragment ID resolution**
+4. **Delay integer fragment ID resolution**
    - Prefer stable identities during extraction, e.g. `content_hash` or `{file_id, line, hash}`.
    - Resolve integer `fragment_id` only in the finalization step.
    - This should remove much of the online `fragment_store_resolve_fragment_ids` pressure.
 
-6. **Split online and offline DuckDB strategies**
+5. **Split online and offline DuckDB strategies**
    - Postgres and small DuckDB indexes can keep online Ecto-style insertion.
    - Large DuckDB corpora can use an offline analytical build pipeline if the public query API remains the same.
 
-7. **Move proven patterns into QuackDB**
+6. **Move proven patterns into QuackDB**
    - Keep Exograph code small and idiomatic.
    - If MERGE remains useful, make QuackDB's Ecto append path choose MERGE internally when DuckDB version/capability supports it.
    - Preserve Ecto semantics: conflicting existing rows should not be returned from `insert_all(..., returning: ...)` unless Ecto itself would return them.

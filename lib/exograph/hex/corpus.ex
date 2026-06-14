@@ -683,18 +683,19 @@ defmodule Exograph.Hex.Corpus do
   defp write_report(results, elapsed, opts) do
     case Keyword.get(opts, :report_path) do
       nil -> :ok
-      path -> write_report!(path, results, elapsed)
+      path -> write_report!(path, results, elapsed, opts)
     end
   end
 
-  defp write_report!(path, results, elapsed) do
+  defp write_report!(path, results, elapsed, opts) do
     report = %Exograph.Hex.IndexReport{
       generated_at: DateTime.utc_now() |> DateTime.to_iso8601(),
       elapsed_ms: elapsed,
       ok: results.ok,
       skipped: results.skipped,
       error: results.error,
-      failures: Enum.map(Map.get(results, :failures, []), &index_report_failure/1)
+      failures: Enum.map(Map.get(results, :failures, []), &index_report_failure/1),
+      options: report_options(opts)
     }
 
     path
@@ -702,6 +703,12 @@ defmodule Exograph.Hex.Corpus do
     |> File.mkdir_p!()
 
     File.write!(path, Jason.encode!(JSONCodec.dump(report), pretty: true))
+  end
+
+  defp report_options(opts) do
+    %{
+      duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :ecto)
+    }
   end
 
   defp index_report_failure(%{name: name, version: version, reason: reason}) do

@@ -61,9 +61,11 @@ defmodule Exograph.DuckDB.FragmentAppend do
     updated_at: "TIMESTAMP"
   ]
 
-  def insert_by_hash(_repo, _source, _schema, []), do: %{}
+  def insert_by_hash(repo, source, schema, entries, opts \\ [])
 
-  def insert_by_hash(repo, source, schema, entries) do
+  def insert_by_hash(_repo, _source, _schema, [], _opts), do: %{}
+
+  def insert_by_hash(repo, source, schema, entries, opts) do
     target = {source, schema}
 
     rows =
@@ -75,7 +77,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
       %{}
     else
       Exograph.Hex.StageTimings.measure(:fragment_append_rows, fn ->
-        if merge_append?() do
+        if merge_append?(opts) do
           merge_insert_by_hash(repo, source, rows)
         else
           ecto_insert_by_hash(repo, target, rows)
@@ -84,7 +86,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
     end
   end
 
-  defp merge_append?, do: System.get_env("EXOGRAPH_DUCKDB_FRAGMENT_APPEND") == "merge"
+  defp merge_append?(opts), do: Keyword.get(opts, :mode, :ecto) == :merge
 
   defp ecto_insert_by_hash(repo, target, rows) do
     {_count, returning} =
