@@ -32,7 +32,12 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   }
 
   @noise_references MapSet.new(
-                      ~w(|/2 ::/2 =/2 %{}/1 ->/2 |>/2 %/2 @/1 fn/1 __block__/1 __block__/2 __block__/3 __block__/4 __block__/5 __block__/6 __block__/7 __block__/8 __block__/9 __block__/10)
+                      ~w(|/2 ::/2 =/2 %{}/0 %{}/1 {}/2 {}/3 ->/2 |>/2 %/2 @/1 fn/1 \\/2
+                         __block__/1 __block__/2 __block__/3 __block__/4 __block__/5 __block__/6 __block__/7 __block__/8 __block__/9 __block__/10
+                         __exograph_unknown_atom__ __exograph_unknown_atom__/0 __exograph_unknown_atom__/1 __exograph_unknown_atom__/2 __exograph_unknown_atom__/3
+                         @doc @moduledoc @typedoc @spec @type @typep @callback @macrocallback
+                         doc/1 moduledoc/1 typedoc/1 spec/1 type/1 typep/1 callback/1 macrocallback/1
+                         any/0 atom/0 binary/0 boolean/0 float/0 function/0 integer/0 list/0 map/0 none/0 non_neg_integer/0 number/0 pid/0 port/0 reference/0 term/0 timeout/0)
                     )
 
   defstruct repo: nil,
@@ -656,11 +661,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           references =
             ast
             |> symbols_from(file.source || "", &ExAST.Symbols.references/1)
-            |> Enum.reject(fn ref ->
-              MapSet.member?(@noise_references, ref.qualified_name) or
-                String.starts_with?(ref.qualified_name, "__block__/") or
-                (ref.kind == :local_call and ref.name == "__block__")
-            end)
+            |> Enum.reject(&noise_reference?/1)
 
           fragment_ids_by_line =
             Exograph.Hex.StageTimings.measure(:code_facts_locate_references, fn ->
@@ -808,6 +809,17 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     fun.(ast)
   rescue
     _ -> []
+  end
+
+  defp noise_reference?(ref) do
+    qualified_name = ref.qualified_name || ""
+
+    MapSet.member?(@noise_references, qualified_name) or
+      String.starts_with?(qualified_name, "__block__/") or
+      String.contains?(qualified_name, "__exograph_unknown_atom__") or
+      qualified_name in ["\\\\/2", "String.t/0"] or
+      (ref.kind == :alias and qualified_name in ["String"]) or
+      (ref.kind == :local_call and ref.name == "__block__")
   end
 
   defp fragment_ids_by_line(fragments, facts) do
