@@ -38,6 +38,7 @@ defmodule Exograph.MixProject do
 
   defp deps do
     [
+      {:pi_bridge, "== 0.6.20", only: :dev, runtime: false},
       {:ex_ast, "~> 0.11"},
       {:ex_dna, "~> 1.5"},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
