@@ -56,14 +56,7 @@ defmodule Exograph.Extractor.ExAST do
   def index_source(file, source, opts \\ []) do
     opts = Keyword.merge(@default_opts, opts)
 
-    with {:ok, ast} <-
-           Exograph.ElixirParser.string_to_quoted(source,
-             line: 1,
-             columns: true,
-             token_metadata: true,
-             file: file,
-             emit_warnings: false
-           ) do
+    with {:ok, ast} <- Exograph.ElixirParser.string_to_quoted(source, parser_opts(file, opts)) do
       package_context = package_context(opts)
       source_file = SourceFile.new(file, source, package_context)
 
@@ -111,6 +104,20 @@ defmodule Exograph.Extractor.ExAST do
       sub_hashes: fingerprint.sub_hashes
     }
   end
+
+  defp parser_opts(file, opts) do
+    [
+      line: 1,
+      columns: true,
+      token_metadata: true,
+      file: file,
+      emit_warnings: false
+    ]
+    |> put_optional(:static_atoms, Keyword.get(opts, :static_atoms))
+  end
+
+  defp put_optional(opts, _key, nil), do: opts
+  defp put_optional(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp effective_min_mass(file, source, opts) do
     min_mass = Keyword.fetch!(opts, :min_mass)

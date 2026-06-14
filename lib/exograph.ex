@@ -360,7 +360,8 @@ defmodule Exograph do
       :package_version,
       :extractors,
       :defer_fragment_terms?,
-      :duckdb_insert_buffer
+      :duckdb_insert_buffer,
+      :static_atoms
     ])
   end
 

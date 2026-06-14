@@ -47,7 +47,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             extractors: [:ex_ast, :reach],
             postgres_copy?: false,
             defer_fragment_terms?: false,
-            duckdb_insert_buffer: nil
+            duckdb_insert_buffer: nil,
+            static_atoms: :existing
 
   @type t :: %__MODULE__{
           repo: module(),
@@ -57,7 +58,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           extractors: keyword() | [atom()],
           postgres_copy?: boolean(),
           defer_fragment_terms?: boolean(),
-          duckdb_insert_buffer: pid() | nil
+          duckdb_insert_buffer: pid() | nil,
+          static_atoms: atom()
         }
 
   def new(opts \\ []), do: {:ok, Options.store(__MODULE__, opts)}
@@ -614,7 +616,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             case Exograph.ElixirParser.string_to_quoted(file.source || "",
                    line: 1,
                    columns: true,
-                   emit_warnings: false
+                   emit_warnings: false,
+                   static_atoms: store.static_atoms
                  ) do
               {:ok, ast} -> ast
               _ -> nil

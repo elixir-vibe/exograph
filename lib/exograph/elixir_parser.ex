@@ -12,7 +12,15 @@ defmodule Exograph.ElixirParser do
   end
 
   defp parser_opts(opts) do
-    Keyword.put_new(opts, :static_atoms_encoder, &safe_atom/2)
+    case Keyword.get(opts, :static_atoms, :existing) do
+      :create ->
+        Keyword.delete(opts, :static_atoms)
+
+      :existing ->
+        opts
+        |> Keyword.delete(:static_atoms)
+        |> Keyword.put_new(:static_atoms_encoder, &safe_atom/2)
+    end
   end
 
   defp safe_atom(name, _metadata) do

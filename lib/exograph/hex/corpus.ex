@@ -471,6 +471,7 @@ defmodule Exograph.Hex.Corpus do
         duckdb_threads: Keyword.get(opts, :duckdb_threads),
         min_mass: min_mass,
         generated_min_mass: Keyword.get(opts, :generated_min_mass),
+        static_atoms: Keyword.get(opts, :static_atoms, :create),
         index_concurrency: Keyword.get(opts, :index_concurrency) || System.schedulers_online(),
         index_batch_size: hex_index_batch_size(opts),
         migrate?: false,
