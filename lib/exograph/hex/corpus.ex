@@ -534,6 +534,7 @@ defmodule Exograph.Hex.Corpus do
     index_opts = [
       backend: Keyword.fetch!(opts, :backend),
       repo: repo,
+      dynamic_repo: Keyword.get(opts, :dynamic_repo),
       prefix: prefix,
       bm25?: Keyword.get(opts, :bm25?, true),
       duckdb_threads: Keyword.get(opts, :duckdb_threads),
@@ -837,6 +838,7 @@ defmodule Exograph.Hex.Corpus do
       index_opts = [
         backend: Keyword.fetch!(opts, :backend),
         repo: repo,
+        dynamic_repo: Keyword.get(opts, :dynamic_repo),
         prefix: prefix,
         bm25?: Keyword.get(opts, :bm25?, true),
         duckdb_threads: Keyword.get(opts, :duckdb_threads),

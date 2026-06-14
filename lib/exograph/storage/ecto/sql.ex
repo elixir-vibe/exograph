@@ -62,9 +62,13 @@ defmodule Exograph.Storage.Ecto.SQL do
   end
 
   defp insert_chunks(chunks, repo, source, opts, max_concurrency) do
+    dynamic_repo = current_dynamic_repo(repo)
+
     chunks
     |> Task.async_stream(
-      fn chunk -> repo.insert_all(source, chunk, opts) end,
+      fn chunk ->
+        with_dynamic_repo(repo, dynamic_repo, fn -> repo.insert_all(source, chunk, opts) end)
+      end,
       max_concurrency: max_concurrency,
       ordered: false,
       timeout: :infinity
@@ -73,6 +77,28 @@ defmodule Exograph.Storage.Ecto.SQL do
       {:ok, _result} -> :ok
       {:exit, reason} -> exit(reason)
     end)
+  end
+
+  defp current_dynamic_repo(repo) do
+    if function_exported?(repo, :get_dynamic_repo, 0), do: repo.get_dynamic_repo(), else: nil
+  end
+
+  defp with_dynamic_repo(_repo, nil, fun), do: fun.()
+
+  defp with_dynamic_repo(repo, dynamic_repo, fun) do
+    if function_exported?(repo, :put_dynamic_repo, 1) and
+         function_exported?(repo, :get_dynamic_repo, 0) do
+      previous = repo.get_dynamic_repo()
+      repo.put_dynamic_repo(dynamic_repo)
+
+      try do
+        fun.()
+      after
+        repo.put_dynamic_repo(previous)
+      end
+    else
+      fun.()
+    end
   end
 
   defp repo_pool_size(repo) do
