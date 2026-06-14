@@ -65,6 +65,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
 
 2. **Increase ingestion flush granularity**
    - The post-MERGE cost model points at fact insertion and term normalization/upsert as the next likely targets; fragment ID resolution was split and proved to be almost entirely MERGE append time, with fallback existing-ID lookup only ~1.5s in a fixed top500 run.
+   - Fact insertion timing is largely synchronous InsertBuffer backpressure: comment row volume is small, but comment enqueue calls can wait behind reference/definition buffer flushes on the shared GenServer.
    - The current per-package flow runs many small staging/upsert/lookup cycles.
    - Explore N-package or shard-level fragment/code-fact buffers.
    - Preserve file/package context so quality does not regress.

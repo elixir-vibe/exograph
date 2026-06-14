@@ -11,6 +11,8 @@ defmodule Exograph.DuckDB.InsertBuffer do
   def insert(nil, _source, _entries), do: :ok
 
   def insert(buffer, source, entries) when is_pid(buffer) do
+    entries = List.wrap(entries)
+    Exograph.Hex.StageTimings.count(metric(source, :enqueue_rows), length(entries))
     GenServer.call(buffer, {:insert, source, entries}, :infinity)
   end
 
@@ -79,12 +81,16 @@ defmodule Exograph.DuckDB.InsertBuffer do
       |> Enum.flat_map(& &1)
 
     if entries != [] do
-      with_dynamic_repo(state, fn ->
-        state.repo.insert_all(source, entries,
-          insert_method: :append,
-          chunk_every: 10_000,
-          timeout: :infinity
-        )
+      Exograph.Hex.StageTimings.count(metric(source, :flush_rows), length(entries))
+
+      Exograph.Hex.StageTimings.measure(metric(source, :flush), fn ->
+        with_dynamic_repo(state, fn ->
+          state.repo.insert_all(source, entries,
+            insert_method: :append,
+            chunk_every: 10_000,
+            timeout: :infinity
+          )
+        end)
       end)
     end
 
@@ -93,6 +99,35 @@ defmodule Exograph.DuckDB.InsertBuffer do
       | buffers: Map.delete(state.buffers, source),
         counts: Map.delete(state.counts, source)
     }
+  end
+
+  defp metric(source, kind) do
+    case source_suffix(source) do
+      "comments" -> metric_atom(kind, :comments)
+      "definitions" -> metric_atom(kind, :definitions)
+      "references" -> metric_atom(kind, :references)
+      "graph_nodes" -> metric_atom(kind, :graph_nodes)
+      "call_edges" -> metric_atom(kind, :call_edges)
+      _other -> metric_atom(kind, :other)
+    end
+  end
+
+  defp metric_atom(:enqueue_rows, suffix), do: :"duckdb_insert_buffer_enqueue_#{suffix}_rows"
+  defp metric_atom(:flush_rows, suffix), do: :"duckdb_insert_buffer_flush_#{suffix}_rows"
+  defp metric_atom(:flush, suffix), do: :"duckdb_insert_buffer_flush_#{suffix}"
+
+  defp source_suffix({table, _schema}), do: source_suffix(table)
+
+  defp source_suffix(source) when is_binary(source) do
+    source
+    |> String.split("_")
+    |> Enum.reverse()
+    |> case do
+      ["edges", "call" | _] -> "call_edges"
+      ["nodes", "graph" | _] -> "graph_nodes"
+      [suffix | _] -> suffix
+      [] -> source
+    end
   end
 
   defp with_dynamic_repo(%{dynamic_repo: nil}, fun), do: fun.()

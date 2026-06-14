@@ -251,6 +251,26 @@ A follow-up split of `fragment_store_resolve_fragment_ids` showed that the fallb
 
 So optimizing the fallback `content_hash IN (...)` lookup is not worth pursuing now. The time attributed to ID resolution is almost entirely the MERGE append itself. Move the next optimization attempt to term/fact batching or broader flush granularity rather than fragment-ID lookup shape.
 
+A follow-up fact-buffer split (`bench-results/fact-buffer-cost-20260615/top500-default-timings.json`) showed that code-fact insert time is mostly synchronous `InsertBuffer.insert/3` backpressure rather than final flush cost:
+
+| Fact/buffer metric | Value |
+|--------------------|------:|
+| `fragment_store_code_facts` | 109.7s |
+| `code_facts_insert_comments` | 41.4s |
+| `code_facts_bulk_insert_comments` | 41.3s |
+| `code_facts_insert_references` | 28.3s |
+| `code_facts_bulk_insert_references` | 27.0s |
+| `code_facts_insert_definitions` | 8.6s |
+| `code_facts_bulk_insert_definitions` | 8.3s |
+| `duckdb_insert_buffer_flush_references` | 26.0s across 14 flushes |
+| `duckdb_insert_buffer_flush_definitions` | 5.6s across 4 flushes |
+| `duckdb_insert_buffer_flush_comments` | 0.25s across 1 flush |
+| reference rows enqueued/flushed | 732,375 / 750,994 |
+| definition rows enqueued/flushed | 158,315 / 175,266 |
+| comment rows enqueued/flushed | 20,283 / 26,131 |
+
+The surprising comments cost is not comment row volume: comments flush only took ~0.25s. The expensive `code_facts_bulk_insert_comments` timing is the synchronous call into a shared InsertBuffer, which can block behind reference/definition flushes from other package tasks. The next low-risk experiment should therefore target InsertBuffer flush granularity/serialization (for example, larger per-source thresholds or per-source workers), not comment extraction or direct comment insert SQL.
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
