@@ -77,6 +77,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - A single-DB `top --limit 100 --reach` smoke completed for both online and offline; offline matched totals but was slower in wall time.
    - A sharded online + Reach run exposed a dynamic-repo issue in asynchronous call-graph inserts; async bulk insert tasks now preserve the current dynamic repo, and sharded online + Reach top10/top100 smokes pass.
    - A term-batching variant that staged term strings and resolved `fragment_terms` only during finalization passed parity but regressed `top --limit 100` wall time (`75s` vs `60s` adjacent online), because staging large per-fragment term-string payloads made `offline_build_stage_fragments` dominate. Keep term ID resolution during per-package puts until a lower-overhead representation is designed.
+   - A hybrid variant that used online file upserts with offline fragment/fact staging also passed parity but remained slower (`73s` vs `62s` adjacent online), so file finalization was not the dominant unlock.
    - Next work: batch staging across larger units without inflating per-fragment payloads, finalize once per shard/corpus, then run larger quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
