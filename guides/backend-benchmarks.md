@@ -123,6 +123,7 @@ Keep package batching explicit until a larger corpus or repeated low-noise runs 
 The following experiments were reverted because they were neutral or worse on the full workload, even when some looked promising in microbenchmarks:
 
 - Prelooking up existing fragment hashes and direct-appending only missing rows.
+- Replacing the Ecto append/conflict path with an Exograph-local temp staging table plus `INSERT ... SELECT ... WHERE NOT EXISTS`; a `top --limit 500` run was slower than the default path (`1m12s` vs `1m05s` index elapsed in adjacent runs).
 - Removing post-insert temp-table cleanup.
 - Combining temp-table create and clear statements.
 - Switching temp-table cleanup from `DELETE` to `TRUNCATE`.
@@ -132,7 +133,7 @@ The following experiments were reverted because they were neutral or worse on th
 - Special-casing int64, blob, or LIST vector encoding in QuackDB without full-workload wins.
 - Lowering per-package source parsing concurrency.
 
-The next meaningful design target is a dedicated bulk fragment upsert/staging path that reduces append + conflict-ignore + ID lookup work, rather than further local map-building or protocol micro-optimizations.
+The next meaningful design target is a dedicated bulk fragment upsert/staging path below the current SQL/Ecto shape. A local SQL staging rewrite was not enough; the larger design likely needs adapter-level support that reduces append + conflict-ignore + ID lookup work together rather than rearranging the same operations.
 
 ## Artifacts
 
