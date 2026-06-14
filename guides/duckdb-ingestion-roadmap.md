@@ -73,7 +73,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - The helper is wired behind `--duckdb-build-mode offline` for initial package/corpus benchmarking.
    - A top-package parity test compares online vs offline row counts and representative searches.
    - A `top --limit 100` sharded smoke matched online totals but did not improve wall time, because files/terms are still finalized during per-package puts.
-   - Offline call graph staging has a top10 `--reach` smoke, but still needs online/offline parity checks on graph node and call edge counts.
+   - Offline call graph staging has a top10 `--reach` smoke and a top-package online/offline parity guard for graph node/call edge counts plus caller/callee searches.
    - Next work: batch staging across larger units, finalize once per shard/corpus, then run larger quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
