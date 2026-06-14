@@ -49,7 +49,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
             duckdb_build_mode: :online,
-            duckdb_fragment_append: :ecto,
+            duckdb_fragment_append: :merge,
             static_atoms: :existing
 
   @type t :: %__MODULE__{

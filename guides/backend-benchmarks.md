@@ -98,15 +98,13 @@ No missing local tarballs were reported for either completed run. The largest cu
 
 QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ecto native append paths. QuackDB `0.5.8` reused QuackDB's DML builder for the same Ecto append temporary-table SQL and was performance-neutral in the full workload. These changes were positive or neutral but not large enough to change the main bottleneck: fragment append/upsert remains dominated by the append + conflict-ignore + returning/staging path.
 
-### Experimental MERGE fragment append
+### MERGE fragment append
 
-DuckDB docs and source notes indicate that recent `MERGE` paths can choose better bulk strategies than older `ON CONFLICT` index-conflict paths. Exograph therefore has an experimental DuckDB fragment append path enabled with:
+DuckDB docs and source notes indicate that recent `MERGE` paths can choose better bulk strategies than older `ON CONFLICT` index-conflict paths. After repeated parity benchmarks, Exograph uses the DuckDB MERGE fragment append path by default. The previous Ecto-style path remains available for comparison with:
 
 ```bash
-mix exograph.index.hex --duckdb-fragment-append merge ...
+mix exograph.index.hex --duckdb-fragment-append ecto ...
 ```
-
-This keeps the default Ecto `insert_all(..., insert_method: :append, on_conflict: :nothing, returning: ...)` path unchanged unless explicitly requested.
 
 Initial `top --limit 2000` results:
 
@@ -125,7 +123,7 @@ A persisted `top --limit 500` quality check matched the default path:
 | `_ |> _` | 1864 | 1864 |
 | `jason` fragments | 1391 | 1391 |
 
-This is promising but still experimental. `fragment_append_rows` consistently improved, but end-to-end wall time remained noisy; do not make it the default until more repeated full-workload runs show a stable total-time win.
+These early results made MERGE promising, but not yet sufficient to change the default. Later runs below resolved correctness blockers and provided the stronger evidence used to switch the DuckDB default to MERGE.
 
 A later single-DB `top --limit 500` comparison with local tarballs still did not justify changing the default:
 
@@ -169,12 +167,24 @@ The concurrency-4 fact-count nondeterminism was traced to duplicate source paths
 
 A focused `mariaex@0.9.1` rerun after source dedupe matched Ecto and MERGE exactly with the lower, deduplicated fact counts (`fragments` 4614, `definitions` 665, `references` 3318, `comments` 41).
 
-A post-dedupe `top --limit 500 --concurrency 4` Ecto/MERGE pair matched exactly for table counts and representative quality probes:
+Post-dedupe repeated `top --limit 500 --concurrency 4` Ecto/MERGE pairs matched exactly for table counts and representative quality probes in clean runs:
+
+| Run | Ecto wall / append | MERGE wall / append | Result |
+|-----|--------------------:|---------------------:|--------|
+| post-dedupe smoke | 129s / 117.3s | 120s / 93.7s | exact parity |
+| decision run 1 | 132s / 117.5s | 122s / 96.1s | exact parity |
+| decision run 4 | 132s / 115.2s | 153s / 123.2s | exact parity; MERGE wall-time outlier |
+| decision run 5 | 132s / 109.7s | 131s / 101.0s | exact parity |
+| decision run 6 | 129s / 117.6s | 123s / 99.9s | exact parity |
+
+A clean `top --limit 2000 --concurrency 4` pair, after filling missing local tarballs, also matched exactly:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
 |-----------------|------------:|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
-| ecto + retry | 4 | 379 | 121 | 0 | 1m59s | 129s | 117.3s | deduped sources |
-| merge + retry | 4 | 379 | 121 | 0 | 1m49s | 120s | 93.7s | exact parity with Ecto for files, fragments, terms, fragment_terms, definitions, references, comments, searches, and package checks |
+| ecto + retry | 4 | 1635 | 365 | 0 | 9m00s | 569s | 652.9s | exact parity baseline |
+| merge + retry | 4 | 1635 | 365 | 0 | 8m52s | 565s | 548.4s | exact parity; lower append time |
+
+Based on the repeated exact-parity runs and the larger append-time reduction, DuckDB fragment append now defaults to MERGE while retaining `--duckdb-fragment-append ecto` as an escape hatch/comparison path.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 

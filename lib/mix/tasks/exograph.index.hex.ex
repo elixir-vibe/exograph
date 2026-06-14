@@ -36,7 +36,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-queue-interval` - DBConnection queue interval in milliseconds for DuckDB shard repos (default: `120000`)
     * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
     * `--duckdb-build-mode` - DuckDB corpus build strategy: `online` (default) or experimental `offline` metadata flag
-    * `--duckdb-fragment-append` - fragment insert strategy: `ecto` (default) or experimental `merge`
+    * `--duckdb-fragment-append` - DuckDB fragment insert strategy: `merge` (default) or `ecto`
     * `--manifest-path` - write a sharded DuckDB manifest to this path
     * `--report-path` - write indexing totals and failures as JSON
     * `--timings-path` - write stage timing totals as JSON
@@ -272,7 +272,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     Mix.raise("Unknown DuckDB build mode #{inspect(value)}; use online or offline")
   end
 
-  defp duckdb_fragment_append(nil), do: :ecto
+  defp duckdb_fragment_append(nil), do: :merge
   defp duckdb_fragment_append("ecto"), do: :ecto
   defp duckdb_fragment_append("merge"), do: :merge
 
