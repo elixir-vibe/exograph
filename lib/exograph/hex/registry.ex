@@ -5,7 +5,7 @@ defmodule Exograph.Hex.Registry do
   @api_url "https://hex.pm/api/packages"
 
   def versions(opts \\ []) do
-    registry_url = Keyword.get(opts, :registry_url, @repo_url)
+    registry_url = Keyword.get(opts, :registry_url) || @repo_url
     config = hex_config(registry_url)
 
     case :hex_repo.get_versions(config) do
@@ -33,7 +33,7 @@ defmodule Exograph.Hex.Registry do
   def top(opts \\ []) do
     limit = Keyword.get(opts, :limit, 300)
     timeout = Keyword.get(opts, :timeout, 120_000)
-    api_url = Keyword.get(opts, :api_url, @api_url)
+    api_url = Keyword.get(opts, :api_url) || @api_url
 
     Stream.iterate(1, &(&1 + 1))
     |> Enum.reduce_while([], fn page, acc ->
