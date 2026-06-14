@@ -147,7 +147,14 @@ Initial single-DB `top --limit 100 --reach` smoke results:
 | online + Reach | 75 | 25 | 0 | 64.35s | 69s | baseline online Reach path |
 | offline + Reach | 75 | 25 | 0 | 61.87s | 73s | stages call graph facts; slower wall due finalization/staging overhead |
 
-A sharded online + Reach top100 run exposed a dynamic-repo issue in asynchronous call-graph inserts (`could not lookup Ecto repo Exograph.DuckDBRepo`). `Exograph.Storage.Ecto.SQL.bulk_insert_all/4` now preserves the current dynamic repo in async chunk insert tasks; a sharded online + Reach top10 smoke completed successfully after the fix.
+A sharded online + Reach top100 run exposed a dynamic-repo issue in asynchronous call-graph inserts (`could not lookup Ecto repo Exograph.DuckDBRepo`). `Exograph.Storage.Ecto.SQL.bulk_insert_all/4` now preserves the current dynamic repo in async chunk insert tasks; sharded online + Reach top10 and top100 runs completed successfully after the fix.
+
+Sharded `top --limit 100 --reach`, using local tarballs and `--duckdb-shards 2` after the dynamic-repo fix:
+
+| Build mode | Indexed | Skipped | Failed | Index elapsed | Wall time | Notes |
+|------------|--------:|--------:|-------:|--------------:|----------:|-------|
+| online + Reach | 75 | 25 | 0 | 65.46s | 67s | sharded baseline after dynamic-repo fix |
+| offline + Reach | 75 | 25 | 0 | 61.51s | 63s | stages call graph facts; still pays larger finalization cost |
 
 ### Package batching experiment
 
