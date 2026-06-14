@@ -125,6 +125,7 @@ The following experiments were reverted because they were neutral or worse on th
 
 - Prelooking up existing fragment hashes and direct-appending only missing rows.
 - Replacing the Ecto append/conflict path with an Exograph-local temp staging table plus `INSERT ... SELECT ... WHERE NOT EXISTS`; a `top --limit 500` run was slower than the default path (`1m12s` vs `1m05s` index elapsed in adjacent runs).
+- Resolving existing fragment IDs through a DuckDB temp hash table and join. Isolated lookups were faster for large hash sets, but full `top --limit 2000` indexing regressed (`2m43s` index elapsed vs `2m37s` for the adjacent `0.5.8` baseline), likely because transaction/temp-table overhead outweighed lookup gains in the real workload.
 - Removing post-insert temp-table cleanup.
 - Combining temp-table create and clear statements.
 - Switching temp-table cleanup from `DELETE` to `TRUNCATE`.
