@@ -27,11 +27,17 @@ defmodule Exograph.DuckDBSupport do
         )
       end)
 
-    {:ok, server} = QuackDB.Server.start_link(duckdb: :managed, database: database, token: "test")
+    token = Keyword.get(opts, :token, "test")
+
+    server_opts =
+      [duckdb: :managed, database: database, token: token]
+      |> put_optional(:endpoint, Keyword.get(opts, :endpoint))
+
+    {:ok, server} = QuackDB.Server.start_link(server_opts)
 
     Application.put_env(:exograph, Exograph.DuckDBRepo,
       uri: QuackDB.Server.uri(server),
-      token: "test",
+      token: token,
       pool_size: 1,
       log: Keyword.get(opts, :log, false),
       timeout: Keyword.get(opts, :timeout, 120_000)
@@ -40,6 +46,9 @@ defmodule Exograph.DuckDBSupport do
     ExUnit.Callbacks.start_supervised!(Exograph.DuckDBRepo)
     database
   end
+
+  defp put_optional(opts, _key, nil), do: opts
+  defp put_optional(opts, key, value), do: Keyword.put(opts, key, value)
 
   def opts(prefix, opts \\ []) do
     Keyword.merge(
