@@ -273,7 +273,7 @@ defmodule Exograph do
 
   defp put_fragment_stream(fragments, batch_size, inverted, fragment_store, tree_store) do
     fragments
-    |> Stream.chunk_every(batch_size)
+    |> chunk_fragments(batch_size)
     |> Enum.reduce_while({:ok, {inverted, fragment_store, tree_store}}, fn batch,
                                                                            {:ok,
                                                                             {inverted,
@@ -296,6 +296,24 @@ defmodule Exograph do
 
       {:cont, {:ok, {inverted, fragment_store, tree_store}}}
     end)
+  end
+
+  defp chunk_fragments(fragments, batch_size) do
+    Stream.chunk_while(
+      fragments,
+      {[], 0, nil},
+      fn fragment, {batch, count, current_file} ->
+        if count >= batch_size and current_file != fragment.file and batch != [] do
+          {:cont, Enum.reverse(batch), {[fragment], 1, fragment.file}}
+        else
+          {:cont, {[fragment | batch], count + 1, fragment.file}}
+        end
+      end,
+      fn
+        {[], _count, _current_file} -> {:cont, []}
+        {batch, _count, _current_file} -> {:cont, Enum.reverse(batch), {[], 0, nil}}
+      end
+    )
   end
 
   defp normalize_backend(opts) do
