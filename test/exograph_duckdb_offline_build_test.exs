@@ -1,7 +1,7 @@
-defmodule ExographDuckDBOfflineFragmentsTest do
+defmodule ExographDuckDBOfflineBuildTest do
   use ExUnit.Case, async: false
 
-  alias Exograph.DuckDB.OfflineFragments
+  alias Exograph.DuckDB.OfflineBuild
   alias Exograph.DuckDBSupport
 
   @moduletag :integration
@@ -15,15 +15,15 @@ defmodule ExographDuckDBOfflineFragmentsTest do
 
     now = DateTime.utc_now(:microsecond)
 
-    OfflineFragments.create_file_stage!(Exograph.DuckDBRepo, prefix)
+    OfflineBuild.create_stages!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} =
-      OfflineFragments.append_file_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_file_stage!(Exograph.DuckDBRepo, prefix, [
         file_row("lib/sample.ex", "sample-sha", now),
         file_row("lib/duplicate.ex", "sample-sha", now)
       ])
 
-    file_ids = OfflineFragments.finalize_files!(Exograph.DuckDBRepo, prefix)
+    file_ids = OfflineBuild.finalize_files!(Exograph.DuckDBRepo, prefix)
     file_id = Map.fetch!(file_ids, {nil, "sample-sha"})
 
     rows = [
@@ -32,55 +32,45 @@ defmodule ExographDuckDBOfflineFragmentsTest do
       fragment_row(<<2>>, "second", file_id, 3, now)
     ]
 
-    OfflineFragments.create_stage!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.create_definition_stage!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.create_reference_stage!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.create_comment_stage!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.create_term_stage!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.create_fragment_term_stage!(Exograph.DuckDBRepo, prefix)
-
-    {_count, _rows} = OfflineFragments.append_stage!(Exograph.DuckDBRepo, prefix, rows)
+    {_count, _rows} = OfflineBuild.append_stage!(Exograph.DuckDBRepo, prefix, rows)
 
     {_count, _rows} =
-      OfflineFragments.append_definition_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_definition_stage!(Exograph.DuckDBRepo, prefix, [
         symbol_fact_row(<<1>>, "def", "first/0", file_id, 1, now),
         symbol_fact_row(<<2>>, "def", "second/0", file_id, 3, now)
       ])
 
     {_count, _rows} =
-      OfflineFragments.append_reference_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_reference_stage!(Exograph.DuckDBRepo, prefix, [
         symbol_fact_row(<<1>>, "local_call", "second/0", file_id, 2, now),
         symbol_fact_row(<<2>>, "local_call", "first/0", file_id, 4, now)
       ])
 
     {_count, _rows} =
-      OfflineFragments.append_comment_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_comment_stage!(Exograph.DuckDBRepo, prefix, [
         comment_row(<<1>>, "first comment", file_id, 1, now),
         comment_row(<<2>>, "second comment", file_id, 3, now)
       ])
 
     {_count, _rows} =
-      OfflineFragments.append_term_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_term_stage!(Exograph.DuckDBRepo, prefix, [
         term_row("def"),
         term_row("def"),
         term_row("call")
       ])
 
-    term_ids = OfflineFragments.finalize_terms!(Exograph.DuckDBRepo, prefix)
+    term_ids = OfflineBuild.finalize_terms!(Exograph.DuckDBRepo, prefix)
 
     {_count, _rows} =
-      OfflineFragments.append_fragment_term_stage!(Exograph.DuckDBRepo, prefix, [
+      OfflineBuild.append_fragment_term_stage!(Exograph.DuckDBRepo, prefix, [
         fragment_term_row(<<1>>, Map.fetch!(term_ids, "def")),
         fragment_term_row(<<1>>, Map.fetch!(term_ids, "def")),
         fragment_term_row(<<1>>, Map.fetch!(term_ids, "call")),
         fragment_term_row(<<2>>, Map.fetch!(term_ids, "call"))
       ])
 
-    ids = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.finalize_definitions!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.finalize_references!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.finalize_comments!(Exograph.DuckDBRepo, prefix)
-    OfflineFragments.finalize_fragment_terms!(Exograph.DuckDBRepo, prefix)
+    finalized = OfflineBuild.finalize!(Exograph.DuckDBRepo, prefix)
+    ids = finalized.fragments
 
     assert map_size(ids) == 2
     assert Map.has_key?(ids, <<1>>)
@@ -109,7 +99,7 @@ defmodule ExographDuckDBOfflineFragmentsTest do
                {Map.fetch!(term_ids, "def"), Map.fetch!(ids, <<1>>)}
              ])
 
-    ids_again = OfflineFragments.finalize!(Exograph.DuckDBRepo, prefix)
+    ids_again = OfflineBuild.finalize_fragments!(Exograph.DuckDBRepo, prefix)
 
     assert ids_again == ids
     assert fragment_count(prefix) == 2

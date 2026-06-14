@@ -1,4 +1,4 @@
-defmodule Exograph.DuckDB.OfflineFragments do
+defmodule Exograph.DuckDB.OfflineBuild do
   @moduledoc false
 
   @columns [
@@ -43,6 +43,17 @@ defmodule Exograph.DuckDB.OfflineFragments do
 
   def stage_table(prefix), do: "#{prefix}_fragment_stage"
   def file_stage_table(prefix), do: "#{prefix}_file_stage"
+
+  def create_stages!(repo, prefix) do
+    create_file_stage!(repo, prefix)
+    create_stage!(repo, prefix)
+    create_term_stage!(repo, prefix)
+    create_definition_stage!(repo, prefix)
+    create_reference_stage!(repo, prefix)
+    create_comment_stage!(repo, prefix)
+    create_fragment_term_stage!(repo, prefix)
+    :ok
+  end
 
   def create_file_stage!(repo, prefix) do
     repo.query!(
@@ -92,6 +103,18 @@ defmodule Exograph.DuckDB.OfflineFragments do
   end
 
   def finalize!(repo, prefix) do
+    %{
+      files: finalize_files!(repo, prefix),
+      terms: finalize_terms!(repo, prefix),
+      fragments: finalize_fragments!(repo, prefix),
+      definitions: finalize_definitions!(repo, prefix),
+      references: finalize_references!(repo, prefix),
+      comments: finalize_comments!(repo, prefix),
+      fragment_terms: finalize_fragment_terms!(repo, prefix)
+    }
+  end
+
+  def finalize_fragments!(repo, prefix) do
     repo.query!(finalize_sql(prefix), [], timeout: :infinity)
 
     %{rows: rows} = repo.query!(lookup_ids_sql(prefix), [], timeout: :infinity)
