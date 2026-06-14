@@ -108,14 +108,24 @@ EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge mix exograph.index.hex ...
 
 This keeps the default Ecto `insert_all(..., insert_method: :append, on_conflict: :nothing, returning: ...)` path unchanged unless explicitly requested.
 
-Initial `top --limit 2000` result:
+Initial `top --limit 2000` results:
 
 | Mode | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total |
 |------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|
 | default (`0.5.8`) | 1635 | 365 | 0 | 156.99s | 166.86s | 241.2s |
-| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` | 1635 | 365 | 0 | 153.91s | 158.99s | 188.0s |
+| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` run 1 | 1635 | 365 | 0 | 153.91s | 158.99s | 188.0s |
+| `EXOGRAPH_DUCKDB_FRAGMENT_APPEND=merge` run 2 | 1635 | 365 | 0 | 157.16s | 166.95s | 186.1s |
 
-This is promising but still experimental; do not make it the default until repeat runs show the improvement is stable and search quality checks match.
+A persisted `top --limit 500` quality check matched the default path:
+
+| Query/check | Default | MERGE |
+|-------------|--------:|------:|
+| `Map.get(_, _)` | 7 | 7 |
+| `Enum.map(_, _)` | 959 | 959 |
+| `_ |> _` | 1864 | 1864 |
+| `jason` fragments | 1391 | 1391 |
+
+This is promising but still experimental. `fragment_append_rows` consistently improved, but end-to-end wall time remained noisy; do not make it the default until more repeated full-workload runs show a stable total-time win.
 
 ### Package batching experiment
 
