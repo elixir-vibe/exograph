@@ -42,6 +42,35 @@ defmodule Exograph.DuckDB.OfflineFragments do
   ]
 
   def stage_table(prefix), do: "#{prefix}_fragment_stage"
+  def file_stage_table(prefix), do: "#{prefix}_file_stage"
+
+  def create_file_stage!(repo, prefix) do
+    repo.query!(
+      QuackDB.DDL.create_table(file_stage_table(prefix), file_append_types(),
+        if_not_exists: true
+      ),
+      [],
+      timeout: :infinity
+    )
+
+    :ok
+  end
+
+  def append_file_stage!(repo, prefix, rows) when is_list(rows) do
+    repo.insert_all(file_stage_table(prefix), rows,
+      insert_method: :append,
+      columns: file_append_types(),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
+  def finalize_files!(repo, prefix) do
+    repo.query!(finalize_files_sql(prefix), [], timeout: :infinity)
+
+    %{rows: rows} = repo.query!(lookup_files_sql(prefix), [], timeout: :infinity)
+    Map.new(rows, fn [package_version_id, sha256, id] -> {{package_version_id, sha256}, id} end)
+  end
 
   def create_stage!(repo, prefix) do
     repo.query!(create_stage_sql(stage_table(prefix)), [], timeout: :infinity)
@@ -143,6 +172,62 @@ defmodule Exograph.DuckDB.OfflineFragments do
 
   def finalize_fragment_terms!(repo, prefix) do
     repo.query!(finalize_fragment_terms_sql(prefix), [], timeout: :infinity)
+  end
+
+  defp finalize_files_sql(prefix) do
+    target = quote_name("#{prefix}_files")
+    stage = quote_name(file_stage_table(prefix))
+
+    columns = file_columns() |> Enum.map_join(", ", &quote_name/1)
+    select_columns = file_columns() |> Enum.map_join(", ", &["s.", quote_name(&1)])
+
+    [
+      "INSERT INTO ",
+      target,
+      " (",
+      columns,
+      ") SELECT ",
+      select_columns,
+      " FROM (SELECT *, row_number() OVER (PARTITION BY ",
+      quote_name(:package_version_id),
+      ", ",
+      quote_name(:sha256),
+      " ORDER BY ",
+      quote_name(:path),
+      ") AS exograph_stage_row FROM ",
+      stage,
+      ") AS s WHERE s.exograph_stage_row = 1 ON CONFLICT (",
+      quote_name(:package_version_id),
+      ", ",
+      quote_name(:sha256),
+      ") DO NOTHING"
+    ]
+  end
+
+  defp lookup_files_sql(prefix) do
+    target = quote_name("#{prefix}_files")
+    stage = quote_name(file_stage_table(prefix))
+
+    [
+      "SELECT DISTINCT s.",
+      quote_name(:package_version_id),
+      ", s.",
+      quote_name(:sha256),
+      ", f.",
+      quote_name(:id),
+      " FROM ",
+      stage,
+      " AS s INNER JOIN ",
+      target,
+      " AS f ON f.",
+      quote_name(:sha256),
+      " = s.",
+      quote_name(:sha256),
+      " AND f.",
+      quote_name(:package_version_id),
+      " IS NOT DISTINCT FROM s.",
+      quote_name(:package_version_id)
+    ]
   end
 
   defp create_stage_sql(table) do
@@ -328,6 +413,32 @@ defmodule Exograph.DuckDB.OfflineFragments do
       " WHERE s.",
       quote_name(:content_hash),
       " IS NOT NULL"
+    ]
+  end
+
+  defp file_columns do
+    [
+      :package_id,
+      :package_version_id,
+      :path,
+      :source,
+      :comments_text,
+      :sha256,
+      :inserted_at,
+      :updated_at
+    ]
+  end
+
+  defp file_append_types do
+    [
+      package_id: :integer,
+      package_version_id: :integer,
+      path: :varchar,
+      source: :varchar,
+      comments_text: :varchar,
+      sha256: :varchar,
+      inserted_at: :timestamp,
+      updated_at: :timestamp
     ]
   end
 

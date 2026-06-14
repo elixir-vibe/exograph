@@ -14,7 +14,17 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
 
     now = DateTime.utc_now(:microsecond)
-    file_id = insert_file!(prefix, now)
+
+    OfflineFragments.create_file_stage!(Exograph.DuckDBRepo, prefix)
+
+    {_count, _rows} =
+      OfflineFragments.append_file_stage!(Exograph.DuckDBRepo, prefix, [
+        file_row("lib/sample.ex", "sample-sha", now),
+        file_row("lib/duplicate.ex", "sample-sha", now)
+      ])
+
+    file_ids = OfflineFragments.finalize_files!(Exograph.DuckDBRepo, prefix)
+    file_id = Map.fetch!(file_ids, {nil, "sample-sha"})
 
     rows = [
       fragment_row(<<1>>, "first", file_id, 1, now),
@@ -105,6 +115,7 @@ defmodule ExographDuckDBOfflineFragmentsTest do
     assert fragment_count(prefix) == 2
 
     DuckDBSupport.drop_prefix(prefix)
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_file_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_definition_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_reference_stage"|, [])
@@ -115,14 +126,17 @@ defmodule ExographDuckDBOfflineFragmentsTest do
 
   defp term_row(term), do: %{term: term}
 
-  defp insert_file!(prefix, now) do
-    %{rows: [[id]]} =
-      Exograph.DuckDBRepo.query!(
-        ~s|INSERT INTO "#{prefix}_files" (path, source, comments_text, sha256, inserted_at, updated_at) VALUES ('lib/sample.ex', '', '', 'sample-sha', ?, ?) RETURNING id|,
-        [now, now]
-      )
-
-    id
+  defp file_row(path, sha256, now) do
+    %{
+      package_id: nil,
+      package_version_id: nil,
+      path: path,
+      source: "",
+      comments_text: "",
+      sha256: sha256,
+      inserted_at: now,
+      updated_at: now
+    }
   end
 
   defp symbol_fact_row(fragment_content_hash, kind, qualified_name, file_id, line, now) do
