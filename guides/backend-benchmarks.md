@@ -127,6 +127,8 @@ A persisted `top --limit 500` quality check matched the default path:
 
 This is promising but still experimental. `fragment_append_rows` consistently improved, but end-to-end wall time remained noisy; do not make it the default until more repeated full-workload runs show a stable total-time win.
 
+Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag is currently a benchmark/report label for the offline-build prototype; the normal online corpus path still runs until offline ingestion is wired explicitly.
+
 ### Package batching experiment
 
 `mix exograph.index.hex` has an explicit `--package-batch-size` option for experimenting with flushing multiple packages together. Quality checks on `top --limit 500` matched the default mode for representative structural queries:

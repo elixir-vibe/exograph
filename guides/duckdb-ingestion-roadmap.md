@@ -23,7 +23,15 @@ An experimental MERGE path exists behind:
 mix exograph.index.hex --duckdb-fragment-append merge ...
 ```
 
-Early measurements show lower cumulative `fragment_append_rows` time, but end-to-end wall time is still noisy. Keep it experimental until repeated full-workload runs show a stable total-time win.
+There is also an experimental DuckDB build-mode option for report/benchmark labeling:
+
+```bash
+mix exograph.index.hex --duckdb-build-mode offline ...
+```
+
+The build-mode flag currently records intent in report metadata; the default online ingestion path remains active until the offline pipeline is wired explicitly.
+
+Early MERGE measurements show lower cumulative `fragment_append_rows` time, but end-to-end wall time is still noisy. Keep it experimental until repeated full-workload runs show a stable total-time win.
 
 ## QuackDB DSL requirement
 

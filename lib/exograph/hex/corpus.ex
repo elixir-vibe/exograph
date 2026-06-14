@@ -707,6 +707,7 @@ defmodule Exograph.Hex.Corpus do
 
   defp report_options(opts) do
     %{
+      duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
       duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :ecto)
     }
   end

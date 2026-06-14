@@ -35,6 +35,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-queue-target` - DBConnection queue target in milliseconds for DuckDB shard repos (default: `60000`)
     * `--duckdb-queue-interval` - DBConnection queue interval in milliseconds for DuckDB shard repos (default: `120000`)
     * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
+    * `--duckdb-build-mode` - DuckDB corpus build strategy: `online` (default) or experimental `offline` metadata flag
     * `--duckdb-fragment-append` - fragment insert strategy: `ecto` (default) or experimental `merge`
     * `--manifest-path` - write a sharded DuckDB manifest to this path
     * `--report-path` - write indexing totals and failures as JSON
@@ -94,6 +95,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           duckdb_queue_target: :integer,
           duckdb_queue_interval: :integer,
           duckdb_recovery_mode: :string,
+          duckdb_build_mode: :string,
           duckdb_fragment_append: :string,
           manifest_path: :string,
           report_path: :string,
@@ -164,6 +166,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       duckdb_queue_target: Keyword.get(opts, :duckdb_queue_target, 60_000),
       duckdb_queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000),
       recovery_mode: recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)),
+      duckdb_build_mode: duckdb_build_mode(Keyword.get(opts, :duckdb_build_mode)),
       duckdb_fragment_append: duckdb_fragment_append(Keyword.get(opts, :duckdb_fragment_append)),
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),
@@ -260,6 +263,14 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
   defp recovery_mode(nil), do: nil
   defp recovery_mode("no_wal_writes"), do: :no_wal_writes
   defp recovery_mode(value), do: Mix.raise("Unknown DuckDB recovery mode #{inspect(value)}")
+
+  defp duckdb_build_mode(nil), do: :online
+  defp duckdb_build_mode("online"), do: :online
+  defp duckdb_build_mode("offline"), do: :offline
+
+  defp duckdb_build_mode(value) do
+    Mix.raise("Unknown DuckDB build mode #{inspect(value)}; use online or offline")
+  end
 
   defp duckdb_fragment_append(nil), do: :ecto
   defp duckdb_fragment_append("ecto"), do: :ecto
