@@ -1,6 +1,8 @@
 defmodule Exograph.DuckDB.OfflineBuild do
   @moduledoc false
 
+  import QuackDB.SQL.Fragment
+
   @columns [
     :package_id,
     :package_version_id,
@@ -258,58 +260,54 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_files_sql(prefix) do
-    target = quote_name("#{prefix}_files")
-    stage = quote_name(file_stage_table(prefix))
-
-    columns = file_columns() |> Enum.map_join(", ", &quote_name/1)
-    select_columns = file_columns() |> Enum.map_join(", ", &["s.", quote_name(&1)])
+    target = table("#{prefix}_files")
+    stage = table(file_stage_table(prefix))
 
     [
       "INSERT INTO ",
       target,
-      " (",
-      columns,
-      ") SELECT ",
-      select_columns,
-      " FROM (SELECT *, row_number() OVER (PARTITION BY ",
-      quote_name(:package_version_id),
-      ", ",
-      quote_name(:sha256),
-      " ORDER BY ",
-      quote_name(:path),
-      ") AS exograph_stage_row FROM ",
+      insert_columns(file_columns()),
+      " SELECT ",
+      qualified_column_list(file_columns(), :s),
+      " FROM (SELECT *, ",
+      row_number_over(
+        partition_by: [:package_version_id, :sha256],
+        order_by: [:path],
+        as: :exograph_stage_row
+      ),
+      " FROM ",
       stage,
-      ") AS s WHERE s.exograph_stage_row = 1 ON CONFLICT (",
-      quote_name(:package_version_id),
-      ", ",
-      quote_name(:sha256),
-      ") DO NOTHING"
+      ") AS ",
+      alias_name(:s),
+      " WHERE ",
+      qualified_column(:s, :exograph_stage_row),
+      " = 1",
+      on_conflict({:nothing, [:package_version_id, :sha256]})
     ]
   end
 
   defp lookup_files_sql(prefix) do
-    target = quote_name("#{prefix}_files")
-    stage = quote_name(file_stage_table(prefix))
+    stage = table(file_stage_table(prefix))
 
     [
-      "SELECT DISTINCT s.",
-      quote_name(:package_version_id),
-      ", s.",
-      quote_name(:sha256),
-      ", f.",
-      quote_name(:id),
+      "SELECT DISTINCT ",
+      qualified_column(:s, :package_version_id),
+      ", ",
+      qualified_column(:s, :sha256),
+      ", ",
+      qualified_column(:f, :id),
       " FROM ",
       stage,
-      " AS s INNER JOIN ",
-      target,
-      " AS f ON f.",
-      quote_name(:sha256),
-      " = s.",
-      quote_name(:sha256),
-      " AND f.",
-      quote_name(:package_version_id),
-      " IS NOT DISTINCT FROM s.",
-      quote_name(:package_version_id)
+      " AS ",
+      alias_name(:s),
+      join(:inner, "#{prefix}_files",
+        as: :f,
+        on: [
+          qualified_equality(:f, :sha256, :s, :sha256),
+          " AND ",
+          qualified_not_distinct(:f, :package_version_id, :s, :package_version_id)
+        ]
+      )
     ]
   end
 
@@ -318,33 +316,30 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_sql(prefix) do
-    target = quote_name("#{prefix}_fragments")
-    stage = quote_name(stage_table(prefix))
-    columns = Enum.map_join(@columns, ", ", &quote_name/1)
-    select_columns = Enum.map_join(@columns, ", ", &["s.", quote_name(&1)])
+    target = table("#{prefix}_fragments")
+    stage = table(stage_table(prefix))
 
     [
       "INSERT INTO ",
       target,
-      " (",
-      columns,
-      ") SELECT ",
-      select_columns,
-      " FROM (SELECT *, row_number() OVER (PARTITION BY ",
-      quote_name(:content_hash),
-      " ORDER BY ",
-      quote_name(:file_id),
-      " NULLS LAST, ",
-      quote_name(:line),
-      ", ",
-      quote_name(:end_line),
-      " NULLS LAST) AS exograph_stage_row FROM ",
+      insert_columns(@columns),
+      " SELECT ",
+      qualified_column_list(@columns, :s),
+      " FROM (SELECT *, ",
+      row_number_over(
+        partition_by: [:content_hash],
+        order_by: [{:file_id, :asc, nulls: :last}, :line, {:end_line, :asc, nulls: :last}],
+        as: :exograph_stage_row
+      ),
+      " FROM ",
       stage,
+      where([column(:content_hash), " IS NOT NULL"]),
+      ") AS ",
+      alias_name(:s),
       " WHERE ",
-      quote_name(:content_hash),
-      " IS NOT NULL) AS s WHERE s.exograph_stage_row = 1 ON CONFLICT (",
-      quote_name(:content_hash),
-      ") DO NOTHING"
+      qualified_column(:s, :exograph_stage_row),
+      " = 1",
+      on_conflict({:nothing, [:content_hash]})
     ]
   end
 
@@ -374,115 +369,82 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_facts_sql(prefix, kind) do
-    target = quote_name("#{prefix}_#{fact_target_suffix(kind)}")
-    stage = quote_name(fact_stage_table(prefix, kind))
-    fragments = quote_name("#{prefix}_fragments")
-
-    columns =
-      fact_columns(kind)
-      |> Enum.reject(&(&1 == :fragment_content_hash))
-      |> Enum.map_join(", ", &quote_name/1)
+    columns = Enum.reject(fact_columns(kind), &(&1 == :fragment_content_hash))
 
     select_columns =
-      fact_columns(kind)
-      |> Enum.reject(&(&1 in [:fragment_content_hash, :fragment_id]))
-      |> Enum.map_join(", ", &["s.", quote_name(&1)])
+      Enum.reject(fact_columns(kind), &(&1 in [:fragment_content_hash, :fragment_id]))
 
     [
       "INSERT INTO ",
-      target,
-      " (",
-      columns,
-      ") SELECT ",
-      select_columns,
-      ", f.",
-      quote_name(:id),
+      table("#{prefix}_#{fact_target_suffix(kind)}"),
+      insert_columns(columns),
+      " SELECT ",
+      qualified_column_list(select_columns, :s),
+      ", ",
+      qualified_column(:f, :id),
       " AS ",
-      quote_name(:fragment_id),
+      column(:fragment_id),
       " FROM ",
-      stage,
-      " AS s INNER JOIN ",
-      fragments,
-      " AS f ON f.",
-      quote_name(:content_hash),
-      " = s.",
-      quote_name(:fragment_content_hash)
+      table(fact_stage_table(prefix, kind)),
+      " AS ",
+      alias_name(:s),
+      join(:inner, "#{prefix}_fragments",
+        as: :f,
+        on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
+      )
     ]
   end
 
   defp finalize_terms_sql(prefix) do
-    target = quote_name("#{prefix}_terms")
-    stage = quote_name(term_stage_table(prefix))
-
     [
       "INSERT INTO ",
-      target,
-      " (",
-      quote_name(:term),
-      ") SELECT DISTINCT s.",
-      quote_name(:term),
+      table("#{prefix}_terms"),
+      insert_columns([:term]),
+      " SELECT DISTINCT ",
+      qualified_column(:s, :term),
       " FROM ",
-      stage,
-      " AS s ON CONFLICT (",
-      quote_name(:term),
-      ") DO NOTHING"
+      table(term_stage_table(prefix)),
+      " AS ",
+      alias_name(:s),
+      on_conflict({:nothing, [:term]})
     ]
   end
 
   defp lookup_terms_sql(prefix) do
-    target = quote_name("#{prefix}_terms")
-    stage = quote_name(term_stage_table(prefix))
-
     [
-      "SELECT DISTINCT s.",
-      quote_name(:term),
-      ", t.",
-      quote_name(:id),
+      "SELECT DISTINCT ",
+      qualified_column(:s, :term),
+      ", ",
+      qualified_column(:t, :id),
       " FROM ",
-      stage,
-      " AS s INNER JOIN ",
-      target,
-      " AS t ON t.",
-      quote_name(:term),
-      " = s.",
-      quote_name(:term)
+      table(term_stage_table(prefix)),
+      " AS ",
+      alias_name(:s),
+      join(:inner, "#{prefix}_terms", as: :t, on: qualified_equality(:t, :term, :s, :term))
     ]
   end
 
   defp finalize_fragment_terms_sql(prefix) do
-    target = quote_name("#{prefix}_fragment_terms")
-    stage = quote_name(fragment_term_stage_table(prefix))
-    fragments = quote_name("#{prefix}_fragments")
-
     [
       "INSERT INTO ",
-      target,
-      " (",
-      quote_name(:term_id),
+      table("#{prefix}_fragment_terms"),
+      insert_columns([:term_id, :fragment_id]),
+      " SELECT DISTINCT ",
+      qualified_column(:s, :term_id),
       ", ",
-      quote_name(:fragment_id),
-      ") SELECT DISTINCT s.",
-      quote_name(:term_id),
-      ", f.",
-      quote_name(:id),
+      qualified_column(:f, :id),
       " FROM ",
-      stage,
-      " AS s INNER JOIN ",
-      fragments,
-      " AS f ON f.",
-      quote_name(:content_hash),
-      " = s.",
-      quote_name(:fragment_content_hash)
+      table(fragment_term_stage_table(prefix)),
+      " AS ",
+      alias_name(:s),
+      join(:inner, "#{prefix}_fragments",
+        as: :f,
+        on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
+      )
     ]
   end
 
   defp finalize_graph_nodes_sql(prefix) do
-    target = quote_name("#{prefix}_graph_nodes")
-    stage = quote_name(graph_node_stage_table(prefix))
-    fragments = quote_name("#{prefix}_fragments")
-
-    columns = graph_node_columns() |> Enum.map_join(", ", &quote_name/1)
-
     select_columns =
       graph_node_columns()
       |> Enum.reject(&(&1 == :fragment_id))
@@ -490,23 +452,22 @@ defmodule Exograph.DuckDB.OfflineBuild do
 
     [
       "INSERT INTO ",
-      target,
-      " (",
-      columns,
-      ") SELECT ",
+      table("#{prefix}_graph_nodes"),
+      insert_columns(graph_node_columns()),
+      " SELECT ",
       select_columns,
-      ", f.",
-      quote_name(:id),
+      ", ",
+      qualified_column(:f, :id),
       " AS ",
-      quote_name(:fragment_id),
+      column(:fragment_id),
       " FROM ",
-      stage,
-      " AS s LEFT JOIN ",
-      fragments,
-      " AS f ON f.",
-      quote_name(:content_hash),
-      " = s.",
-      quote_name(:fragment_content_hash)
+      table(graph_node_stage_table(prefix)),
+      " AS ",
+      alias_name(:s),
+      join(:left, "#{prefix}_fragments",
+        as: :f,
+        on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
+      )
     ]
   end
 
@@ -582,25 +543,20 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp lookup_ids_sql(prefix) do
-    target = quote_name("#{prefix}_fragments")
-    stage = quote_name(stage_table(prefix))
-
     [
-      "SELECT DISTINCT s.",
-      quote_name(:content_hash),
-      ", f.",
-      quote_name(:id),
+      "SELECT DISTINCT ",
+      qualified_column(:s, :content_hash),
+      ", ",
+      qualified_column(:f, :id),
       " FROM ",
-      stage,
-      " AS s INNER JOIN ",
-      target,
-      " AS f ON f.",
-      quote_name(:content_hash),
-      " = s.",
-      quote_name(:content_hash),
-      " WHERE s.",
-      quote_name(:content_hash),
-      " IS NOT NULL"
+      table(stage_table(prefix)),
+      " AS ",
+      alias_name(:s),
+      join(:inner, "#{prefix}_fragments",
+        as: :f,
+        on: qualified_equality(:f, :content_hash, :s, :content_hash)
+      ),
+      where([qualified_column(:s, :content_hash), " IS NOT NULL"])
     ]
   end
 
