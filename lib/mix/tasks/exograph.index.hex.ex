@@ -40,7 +40,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--retry-count` - retry transient per-package failures this many times (default: `3`)
     * `--retry-sleep` - base retry sleep in milliseconds (default: `1000`)
     * `--shard-dir` - directory for managed DuckDB shard files
-    * `--min-mass` - minimum fragment AST mass (default: `16` for DuckDB, `8` for Postgres)
+    * `--min-mass` - minimum fragment AST mass (default: `8`)
     * `--reach` - include Reach call graph extraction
     * `--force` - re-index already-indexed packages
     * `--no-bm25` - skip ParadeDB BM25 index creation
@@ -161,7 +161,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       retry_count: Keyword.get(opts, :retry_count, 3),
       retry_sleep: Keyword.get(opts, :retry_sleep, 1_000),
       shard_directory: Keyword.get(opts, :shard_dir),
-      min_mass: Keyword.get(opts, :min_mass, default_min_mass(backend)),
+      min_mass: Keyword.get(opts, :min_mass, 8),
       resume: not Keyword.get(opts, :force, false),
       bm25?: !Keyword.get(opts, :no_bm25, false),
       extractors: extractors,
@@ -194,9 +194,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       unless iex_running?(), do: Process.sleep(:infinity)
     end
   end
-
-  defp default_min_mass(:duckdb), do: 16
-  defp default_min_mass(_backend), do: 8
 
   defp put_entries(opts, nil), do: opts
   defp put_entries(opts, path), do: Keyword.put(opts, :entries, entries_from_file(path))
