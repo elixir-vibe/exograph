@@ -76,13 +76,14 @@ mix exograph.index.hex \
   --missing-tarballs-report-path /tmp/exograph-missing-top2000.json
 ```
 
-The clean baseline after QuackDB `0.5.7` was:
+The clean baseline after QuackDB `0.5.7` was later rechecked after QuackDB `0.5.8`'s DML-builder refactor. The `0.5.8` run used an equivalent temporary tarball mirror because `amqp@4.1.1` was missing from the shared mirror.
 
-| Workload | Indexed | Skipped | Failed | Index elapsed | Wall time |
-|----------|--------:|--------:|-------:|--------------:|----------:|
-| `top --limit 2000` | 1635 | 365 | 0 | 158.09s | 168.21s |
+| QuackDB | Workload | Indexed | Skipped | Failed | Index elapsed | Wall time |
+|---------|----------|--------:|--------:|-------:|--------------:|----------:|
+| `0.5.7` | `top --limit 2000` | 1635 | 365 | 0 | 158.09s | 168.21s |
+| `0.5.8` | `top --limit 2000` | 1635 | 365 | 0 | 156.99s | 166.86s |
 
-No missing local tarballs were reported for that run. The largest cumulative timing buckets were:
+No missing local tarballs were reported for either completed run. The largest cumulative timing buckets in the `0.5.7` baseline were:
 
 | Stage | Total |
 |-------|------:|
@@ -95,7 +96,7 @@ No missing local tarballs were reported for that run. The largest cumulative tim
 | `fragment_store_build_fragment_rows` | 160.6s |
 | `fragment_store_normalize_terms` | 150.9s |
 
-QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ecto native append paths. They were positive but not large enough to change the main bottleneck: fragment append/upsert remains dominated by the append + conflict-ignore + returning/staging path.
+QuackDB `0.5.6` and `0.5.7` included small adapter/protocol improvements for Ecto native append paths. QuackDB `0.5.8` reused QuackDB's DML builder for the same Ecto append temporary-table SQL and was performance-neutral in the full workload. These changes were positive or neutral but not large enough to change the main bottleneck: fragment append/upsert remains dominated by the append + conflict-ignore + returning/staging path.
 
 ### Package batching experiment
 
