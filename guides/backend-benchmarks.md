@@ -201,6 +201,13 @@ The benchmark workflow now supports entry snapshots with `--entries-output-path`
 |-----|--------:|--------:|-------:|--------------:|----------:|--------------------------|-----------------------------:|------------:|-------|
 | fixed `top2000` entries | 1635 | 365 | 0 | 9m14s | 582s | `merge` | 596.1s | 1 | `--entries-file bench-results/fixed-top2000-20260614/entries.ndjson` |
 
+A final fixed-snapshot comparison of explicit Ecto vs default MERGE matched exactly for table counts and representative probes:
+
+| Fragment append | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Retry count | Notes |
+|-----------------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|------------:|-------|
+| `ecto` | 1635 | 365 | 0 | 9m49s | 613s | 696.3s | 1 | explicit comparison path |
+| default `merge` | 1635 | 365 | 0 | 9m13s | 579s | 580.4s | 0 | default path; exact parity with Ecto |
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
