@@ -186,6 +186,15 @@ A clean `top --limit 2000 --concurrency 4` pair, after filling missing local tar
 
 Based on the repeated exact-parity runs and the larger append-time reduction, DuckDB fragment append now defaults to MERGE while retaining `--duckdb-fragment-append ecto` as an escape hatch/comparison path.
 
+Default-path validation after switching the default:
+
+| Run | Indexed | Skipped | Failed | Index elapsed | Wall time | `duckdb_fragment_append` | `fragment_append_rows` total | Retry count | Notes |
+|-----|--------:|--------:|-------:|--------------:|----------:|--------------------------|-----------------------------:|------------:|-------|
+| `top --limit 500` | 379 | 121 | 0 | 1m58s | 130s | `merge` | 100.6s | 0 | default path, no explicit append flag |
+| `top --limit 100 --reach` | 75 | 25 | 0 | 1m11s | 78s | `merge` | 21.6s | 0 | default path with Reach enabled |
+
+A default `top --limit 2000` run also reported `duckdb_fragment_append: merge`, but the live top list had moved beyond the local tarball cache (`ash@3.29.0`, then `llm_db@2026.6.2`), so those runs are not clean quality/timing baselines. Use fixed entries or refresh the tarball cache before future top2000 default validation.
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |

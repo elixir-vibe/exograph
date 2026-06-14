@@ -91,6 +91,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
   rescue
     error ->
       if retries_left > 0 and unique_constraint_race?(error) do
+        Exograph.Hex.StageTimings.count(:fragment_append_retries)
         Process.sleep(retry_backoff_ms(retries_left))
         insert_rows_by_hash(repo, source, target, rows, opts, retries_left - 1)
       else

@@ -31,7 +31,7 @@ mix exograph.index.hex --duckdb-build-mode offline ...
 
 The build-mode flag now selects an initial offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. The default remains online, and the offline path is still experimental until quality parity and larger benchmarks are complete.
 
-MERGE measurements show lower cumulative `fragment_append_rows` time, exact `top --limit 500 --concurrency 1` parity, repeated exact post-dedupe `top --limit 500 --concurrency 4` parity, and exact `top --limit 2000 --concurrency 4` parity. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate unique-key race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation. The later fact-count nondeterminism was traced to duplicate source paths inside Hex tarballs; Exograph now deduplicates source tuples by `{path, package_version}` before extraction.
+MERGE measurements show lower cumulative `fragment_append_rows` time, exact `top --limit 500 --concurrency 1` parity, repeated exact post-dedupe `top --limit 500 --concurrency 4` parity, and exact `top --limit 2000 --concurrency 4` parity. The default path was then validated on `top --limit 500` and `top --limit 100 --reach`; both reported `duckdb_fragment_append: merge` without requiring the explicit flag. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate unique-key race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation and records `fragment_append_retries` in timing snapshots. The later fact-count nondeterminism was traced to duplicate source paths inside Hex tarballs; Exograph now deduplicates source tuples by `{path, package_version}` before extraction.
 
 ## QuackDB DSL requirement
 
@@ -54,7 +54,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
 
 1. **Watch the MERGE default on larger workloads**
    - Keep `--duckdb-fragment-append ecto` as the comparison/escape path.
-   - Repeat top2000/top5000 runs when changing ingestion internals.
+   - Repeat top2000/top5000 runs with fixed entries or a refreshed tarball cache when changing ingestion internals.
    - Track whether the DuckDB fragment append retry fires often enough to affect throughput.
    - Keep quality checks as benchmark assertions:
      - `Map.get(_, _)`

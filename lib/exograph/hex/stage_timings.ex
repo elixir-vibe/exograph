@@ -19,6 +19,11 @@ defmodule Exograph.Hex.StageTimings do
     end
   end
 
+  def count(stage) when is_atom(stage) do
+    ensure_table!()
+    :ets.insert(@table, {stage, 0})
+  end
+
   def snapshot do
     ensure_table!()
 
