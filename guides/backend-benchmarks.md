@@ -127,7 +127,7 @@ A persisted `top --limit 500` quality check matched the default path:
 
 This is promising but still experimental. `fragment_append_rows` consistently improved, but end-to-end wall time remained noisy; do not make it the default until more repeated full-workload runs show a stable total-time win.
 
-Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. Keep it explicit until quality parity and larger repeated benchmarks are complete.
+Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, fragment_terms, graph_nodes, and call_edges. Keep it explicit until quality parity and larger repeated benchmarks are complete.
 
 An automated top-package parity guard now compares online vs offline counts for files, fragments, terms, fragment_terms, definitions, references, comments, and representative text/definition/reference searches.
 

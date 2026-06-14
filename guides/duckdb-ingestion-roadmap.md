@@ -69,11 +69,12 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - Initial helper exists as `Exograph.DuckDB.OfflineBuild`.
    - It appends fragments into a constraint-free `*_fragment_stage` table.
    - It finalizes by deduping staged rows by `content_hash`, inserting unique rows into `*_fragments`, and returning `content_hash => id` for staged fragments.
-   - It can also stage files, terms, definitions, references, comments, and fragment_terms with `fragment_content_hash` and bind them to final IDs during finalization.
+   - It can also stage files, terms, definitions, references, comments, fragment_terms, graph_nodes, and call_edges with `fragment_content_hash` and bind them to final IDs during finalization.
    - The helper is wired behind `--duckdb-build-mode offline` for initial package/corpus benchmarking.
    - A top-package parity test compares online vs offline row counts and representative searches.
    - A `top --limit 100` sharded smoke matched online totals but did not improve wall time, because files/terms are still finalized during per-package puts.
-   - Next work: batch staging across larger units, finalize once per shard/corpus, then extend the same idea to call graph facts and run larger quality parity checks.
+   - Offline call graph staging has a top10 `--reach` smoke, but still needs online/offline parity checks on graph node and call edge counts.
+   - Next work: batch staging across larger units, finalize once per shard/corpus, then run larger quality parity checks.
    - Long-term finalization should:
      - dedupe fragments by `content_hash`
      - assign final IDs

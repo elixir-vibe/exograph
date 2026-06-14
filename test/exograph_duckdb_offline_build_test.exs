@@ -69,6 +69,17 @@ defmodule ExographDuckDBOfflineBuildTest do
         fragment_term_row(<<2>>, Map.fetch!(term_ids, "call"))
       ])
 
+    {_count, _rows} =
+      OfflineBuild.append_graph_node_stage!(Exograph.DuckDBRepo, prefix, [
+        graph_node_row(101, <<1>>, "first/0", file_id, 1, now),
+        graph_node_row(102, <<2>>, "second/0", file_id, 3, now)
+      ])
+
+    {_count, _rows} =
+      OfflineBuild.append_call_edge_stage!(Exograph.DuckDBRepo, prefix, [
+        call_edge_row(101, 102, <<1>>, "first/0", "second/0", file_id, 2, now)
+      ])
+
     finalized = OfflineBuild.finalize!(Exograph.DuckDBRepo, prefix)
     ids = finalized.fragments
 
@@ -99,6 +110,9 @@ defmodule ExographDuckDBOfflineBuildTest do
                {Map.fetch!(term_ids, "def"), Map.fetch!(ids, <<1>>)}
              ])
 
+    assert graph_node_count(prefix) == 2
+    assert call_edges(prefix) == [{"first/0", "second/0", Map.fetch!(ids, <<1>>)}]
+
     ids_again = OfflineBuild.finalize_fragments!(Exograph.DuckDBRepo, prefix)
 
     assert ids_again == ids
@@ -112,6 +126,8 @@ defmodule ExographDuckDBOfflineBuildTest do
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_comment_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_term_stage"|, [])
     Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_term_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_graph_node_stage"|, [])
+    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_call_edge_stage"|, [])
   end
 
   defp term_row(term), do: %{term: term}
@@ -168,6 +184,55 @@ defmodule ExographDuckDBOfflineBuildTest do
     }
   end
 
+  defp graph_node_row(original_node_id, fragment_content_hash, qualified_name, file_id, line, now) do
+    %{
+      original_node_id: original_node_id,
+      package_id: nil,
+      package_version_id: nil,
+      file_id: file_id,
+      engine: "reach",
+      external_id: "node:#{original_node_id}",
+      kind: "function",
+      module: nil,
+      name: qualified_name,
+      arity: 0,
+      qualified_name: qualified_name,
+      line: line,
+      column: 1,
+      metadata: "{}",
+      inserted_at: now,
+      updated_at: now,
+      fragment_content_hash: fragment_content_hash
+    }
+  end
+
+  defp call_edge_row(
+         caller_id,
+         callee_id,
+         fragment_content_hash,
+         caller,
+         callee,
+         file_id,
+         line,
+         now
+       ) do
+    %{
+      package_id: nil,
+      package_version_id: nil,
+      file_id: file_id,
+      caller_original_node_id: caller_id,
+      callee_original_node_id: callee_id,
+      call_site_fragment_content_hash: fragment_content_hash,
+      caller_qualified_name: caller,
+      callee_qualified_name: callee,
+      line: line,
+      column: 1,
+      metadata: "{}",
+      inserted_at: now,
+      updated_at: now
+    }
+  end
+
   defp fragment_row(content_hash, name, file_id, line, now) do
     %{
       package_id: nil,
@@ -208,6 +273,23 @@ defmodule ExographDuckDBOfflineBuildTest do
       )
 
     Enum.map(rows, fn [term_id, fragment_id] -> {term_id, fragment_id} end)
+  end
+
+  defp graph_node_count(prefix) do
+    %{rows: [[count]]} =
+      Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{prefix}_graph_nodes"|, [])
+
+    count
+  end
+
+  defp call_edges(prefix) do
+    %{rows: rows} =
+      Exograph.DuckDBRepo.query!(
+        ~s|SELECT caller_qualified_name, callee_qualified_name, call_site_fragment_id FROM "#{prefix}_call_edges" ORDER BY caller_qualified_name, callee_qualified_name|,
+        []
+      )
+
+    Enum.map(rows, fn [caller, callee, fragment_id] -> {caller, callee, fragment_id} end)
   end
 
   defp fragment_count(prefix) do

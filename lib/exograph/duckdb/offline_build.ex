@@ -52,6 +52,8 @@ defmodule Exograph.DuckDB.OfflineBuild do
     create_reference_stage!(repo, prefix)
     create_comment_stage!(repo, prefix)
     create_fragment_term_stage!(repo, prefix)
+    create_graph_node_stage!(repo, prefix)
+    create_call_edge_stage!(repo, prefix)
     :ok
   end
 
@@ -112,7 +114,9 @@ defmodule Exograph.DuckDB.OfflineBuild do
       definitions: finalize_definitions!(repo, prefix),
       references: finalize_references!(repo, prefix),
       comments: finalize_comments!(repo, prefix),
-      fragment_terms: finalize_fragment_terms!(repo, prefix)
+      fragment_terms: finalize_fragment_terms!(repo, prefix),
+      graph_nodes: finalize_graph_nodes!(repo, prefix),
+      call_edges: finalize_call_edges!(repo, prefix)
     }
   end
 
@@ -128,6 +132,8 @@ defmodule Exograph.DuckDB.OfflineBuild do
   def comment_stage_table(prefix), do: fact_stage_table(prefix, :comment)
   def term_stage_table(prefix), do: "#{prefix}_term_stage"
   def fragment_term_stage_table(prefix), do: "#{prefix}_fragment_term_stage"
+  def graph_node_stage_table(prefix), do: "#{prefix}_graph_node_stage"
+  def call_edge_stage_table(prefix), do: "#{prefix}_call_edge_stage"
 
   def create_definition_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :definition)
   def create_reference_stage!(repo, prefix), do: create_fact_stage!(repo, prefix, :reference)
@@ -148,6 +154,30 @@ defmodule Exograph.DuckDB.OfflineBuild do
   def create_fragment_term_stage!(repo, prefix) do
     repo.query!(
       QuackDB.DDL.create_table(fragment_term_stage_table(prefix), fragment_term_append_types(),
+        if_not_exists: true
+      ),
+      [],
+      timeout: :infinity
+    )
+
+    :ok
+  end
+
+  def create_graph_node_stage!(repo, prefix) do
+    repo.query!(
+      QuackDB.DDL.create_table(graph_node_stage_table(prefix), graph_node_append_types(),
+        if_not_exists: true
+      ),
+      [],
+      timeout: :infinity
+    )
+
+    :ok
+  end
+
+  def create_call_edge_stage!(repo, prefix) do
+    repo.query!(
+      QuackDB.DDL.create_table(call_edge_stage_table(prefix), call_edge_append_types(),
         if_not_exists: true
       ),
       [],
@@ -184,6 +214,24 @@ defmodule Exograph.DuckDB.OfflineBuild do
     )
   end
 
+  def append_graph_node_stage!(repo, prefix, rows) when is_list(rows) do
+    repo.insert_all(graph_node_stage_table(prefix), rows,
+      insert_method: :append,
+      columns: graph_node_append_types(),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
+  def append_call_edge_stage!(repo, prefix, rows) when is_list(rows) do
+    repo.insert_all(call_edge_stage_table(prefix), rows,
+      insert_method: :append,
+      columns: call_edge_append_types(),
+      chunk_every: 10_000,
+      timeout: :infinity
+    )
+  end
+
   def finalize_definitions!(repo, prefix), do: finalize_facts!(repo, prefix, :definition)
   def finalize_references!(repo, prefix), do: finalize_facts!(repo, prefix, :reference)
   def finalize_comments!(repo, prefix), do: finalize_facts!(repo, prefix, :comment)
@@ -199,6 +247,14 @@ defmodule Exograph.DuckDB.OfflineBuild do
 
   def finalize_fragment_terms!(repo, prefix) do
     repo.query!(finalize_fragment_terms_sql(prefix), [], timeout: :infinity)
+  end
+
+  def finalize_graph_nodes!(repo, prefix) do
+    repo.query!(finalize_graph_nodes_sql(prefix), [], timeout: :infinity)
+  end
+
+  def finalize_call_edges!(repo, prefix) do
+    repo.query!(finalize_call_edges_sql(prefix), [], timeout: :infinity)
   end
 
   defp finalize_files_sql(prefix) do
@@ -420,6 +476,111 @@ defmodule Exograph.DuckDB.OfflineBuild do
     ]
   end
 
+  defp finalize_graph_nodes_sql(prefix) do
+    target = quote_name("#{prefix}_graph_nodes")
+    stage = quote_name(graph_node_stage_table(prefix))
+    fragments = quote_name("#{prefix}_fragments")
+
+    columns = graph_node_columns() |> Enum.map_join(", ", &quote_name/1)
+
+    select_columns =
+      graph_node_columns()
+      |> Enum.reject(&(&1 == :fragment_id))
+      |> Enum.map_join(", ", &staged_select_column/1)
+
+    [
+      "INSERT INTO ",
+      target,
+      " (",
+      columns,
+      ") SELECT ",
+      select_columns,
+      ", f.",
+      quote_name(:id),
+      " AS ",
+      quote_name(:fragment_id),
+      " FROM ",
+      stage,
+      " AS s LEFT JOIN ",
+      fragments,
+      " AS f ON f.",
+      quote_name(:content_hash),
+      " = s.",
+      quote_name(:fragment_content_hash)
+    ]
+  end
+
+  defp finalize_call_edges_sql(prefix) do
+    target = quote_name("#{prefix}_call_edges")
+    stage = quote_name(call_edge_stage_table(prefix))
+    node_stage = quote_name(graph_node_stage_table(prefix))
+    graph_nodes = quote_name("#{prefix}_graph_nodes")
+    fragments = quote_name("#{prefix}_fragments")
+
+    columns = call_edge_columns() |> Enum.map_join(", ", &quote_name/1)
+
+    [
+      "INSERT INTO ",
+      target,
+      " (",
+      columns,
+      ") SELECT s.",
+      quote_name(:package_id),
+      ", s.",
+      quote_name(:package_version_id),
+      ", s.",
+      quote_name(:file_id),
+      ", caller_node.",
+      quote_name(:id),
+      ", callee_node.",
+      quote_name(:id),
+      ", call_fragment.",
+      quote_name(:id),
+      ", s.",
+      quote_name(:caller_qualified_name),
+      ", s.",
+      quote_name(:callee_qualified_name),
+      ", s.",
+      quote_name(:line),
+      ", s.",
+      quote_name(:column),
+      ", CAST(s.",
+      quote_name(:metadata),
+      " AS JSON), s.",
+      quote_name(:inserted_at),
+      ", s.",
+      quote_name(:updated_at),
+      " FROM ",
+      stage,
+      " AS s INNER JOIN ",
+      node_stage,
+      " AS caller_stage ON caller_stage.",
+      quote_name(:original_node_id),
+      " = s.",
+      quote_name(:caller_original_node_id),
+      " INNER JOIN ",
+      node_stage,
+      " AS callee_stage ON callee_stage.",
+      quote_name(:original_node_id),
+      " = s.",
+      quote_name(:callee_original_node_id),
+      " INNER JOIN ",
+      graph_nodes,
+      " AS caller_node ON ",
+      graph_node_match_sql("caller_node", "caller_stage"),
+      " INNER JOIN ",
+      graph_nodes,
+      " AS callee_node ON ",
+      graph_node_match_sql("callee_node", "callee_stage"),
+      " LEFT JOIN ",
+      fragments,
+      " AS call_fragment ON call_fragment.",
+      quote_name(:content_hash),
+      " = s.",
+      quote_name(:call_site_fragment_content_hash)
+    ]
+  end
+
   defp lookup_ids_sql(prefix) do
     target = quote_name("#{prefix}_fragments")
     stage = quote_name(stage_table(prefix))
@@ -551,6 +712,140 @@ defmodule Exograph.DuckDB.OfflineBuild do
     [
       fragment_content_hash: :blob,
       term_id: :integer
+    ]
+  end
+
+  defp graph_node_columns do
+    [
+      :package_id,
+      :package_version_id,
+      :file_id,
+      :engine,
+      :external_id,
+      :kind,
+      :module,
+      :name,
+      :arity,
+      :qualified_name,
+      :line,
+      :column,
+      :metadata,
+      :inserted_at,
+      :updated_at,
+      :fragment_id
+    ]
+  end
+
+  defp graph_node_append_types do
+    [
+      original_node_id: :integer,
+      package_id: :integer,
+      package_version_id: :integer,
+      file_id: :integer,
+      engine: :varchar,
+      external_id: :varchar,
+      kind: :varchar,
+      module: :varchar,
+      name: :varchar,
+      arity: :integer,
+      qualified_name: :varchar,
+      line: :integer,
+      column: :integer,
+      metadata: :varchar,
+      inserted_at: :timestamp,
+      updated_at: :timestamp,
+      fragment_content_hash: :blob
+    ]
+  end
+
+  defp call_edge_columns do
+    [
+      :package_id,
+      :package_version_id,
+      :file_id,
+      :caller_node_id,
+      :callee_node_id,
+      :call_site_fragment_id,
+      :caller_qualified_name,
+      :callee_qualified_name,
+      :line,
+      :column,
+      :metadata,
+      :inserted_at,
+      :updated_at
+    ]
+  end
+
+  defp call_edge_append_types do
+    [
+      package_id: :integer,
+      package_version_id: :integer,
+      file_id: :integer,
+      caller_original_node_id: :integer,
+      callee_original_node_id: :integer,
+      call_site_fragment_content_hash: :blob,
+      caller_qualified_name: :varchar,
+      callee_qualified_name: :varchar,
+      line: :integer,
+      column: :integer,
+      metadata: :varchar,
+      inserted_at: :timestamp,
+      updated_at: :timestamp
+    ]
+  end
+
+  defp staged_select_column(:metadata), do: ["CAST(s.", quote_name(:metadata), " AS JSON)"]
+  defp staged_select_column(column), do: ["s.", quote_name(column)]
+
+  defp graph_node_match_sql(node_alias, stage_alias) do
+    [
+      node_alias,
+      ".",
+      quote_name(:package_version_id),
+      " IS NOT DISTINCT FROM ",
+      stage_alias,
+      ".",
+      quote_name(:package_version_id),
+      " AND ",
+      node_alias,
+      ".",
+      quote_name(:file_id),
+      " IS NOT DISTINCT FROM ",
+      stage_alias,
+      ".",
+      quote_name(:file_id),
+      " AND ",
+      node_alias,
+      ".",
+      quote_name(:engine),
+      " = ",
+      stage_alias,
+      ".",
+      quote_name(:engine),
+      " AND ",
+      node_alias,
+      ".",
+      quote_name(:kind),
+      " = ",
+      stage_alias,
+      ".",
+      quote_name(:kind),
+      " AND ",
+      node_alias,
+      ".",
+      quote_name(:qualified_name),
+      " = ",
+      stage_alias,
+      ".",
+      quote_name(:qualified_name),
+      " AND ",
+      node_alias,
+      ".",
+      quote_name(:external_id),
+      " IS NOT DISTINCT FROM ",
+      stage_alias,
+      ".",
+      quote_name(:external_id)
     ]
   end
 

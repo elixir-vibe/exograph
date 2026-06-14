@@ -783,6 +783,19 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     stage_offline_facts(store, comments, CommentRecord, :from_comment, now)
     stage_offline_facts(store, definitions, DefinitionRecord, :from_definition, now)
     stage_offline_facts(store, references, ReferenceRecord, :from_reference, now)
+
+    if extractor_enabled?(store, :reach) do
+      fragments_by_file_id = Enum.group_by(fragments, & &1.file_id)
+
+      %{graph_nodes: graph_nodes, call_edges: call_edges} =
+        Exograph.Hex.StageTimings.measure(:code_facts_extract_reach, fn ->
+          ReachExtractor.extract_files(files, fragments_by_file_id)
+        end)
+
+      Exograph.Hex.StageTimings.measure(:code_facts_stage_reach, fn ->
+        stage_graph_nodes_and_edges(store, graph_nodes, call_edges, now)
+      end)
+    end
   end
 
   defp upsert_code_facts(_store, [], _fragments, _now), do: :ok
@@ -914,6 +927,41 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
       end)
 
     %{comments: comments, definitions: definitions, references: references}
+  end
+
+  defp stage_graph_nodes_and_edges(_store, [], _call_edges, _now), do: :ok
+
+  defp stage_graph_nodes_and_edges(store, graph_nodes, call_edges, now) do
+    node_entries =
+      Enum.map(graph_nodes, fn node ->
+        node
+        |> GraphNodeRecord.from_graph_node()
+        |> Map.put(:original_node_id, node.id)
+        |> Map.put(:fragment_content_hash, node.fragment_id)
+        |> Map.update(:metadata, "{}", &Jason.encode!/1)
+        |> Map.delete(:fragment_id)
+        |> Map.merge(%{inserted_at: now, updated_at: now})
+      end)
+
+    Exograph.DuckDB.OfflineBuild.append_graph_node_stage!(store.repo, store.prefix, node_entries)
+
+    if call_edges != [] do
+      edge_entries =
+        Enum.map(call_edges, fn edge ->
+          edge
+          |> CallEdgeRecord.from_call_edge()
+          |> Map.put(:caller_original_node_id, edge.caller_node_id)
+          |> Map.put(:callee_original_node_id, edge.callee_node_id)
+          |> Map.put(:call_site_fragment_content_hash, edge.call_site_fragment_id)
+          |> Map.update(:metadata, "{}", &Jason.encode!/1)
+          |> Map.delete(:caller_node_id)
+          |> Map.delete(:callee_node_id)
+          |> Map.delete(:call_site_fragment_id)
+          |> Map.merge(%{inserted_at: now, updated_at: now})
+        end)
+
+      Exograph.DuckDB.OfflineBuild.append_call_edge_stage!(store.repo, store.prefix, edge_entries)
+    end
   end
 
   defp insert_graph_nodes_and_edges(store, graph_nodes, call_edges, now) do
