@@ -195,6 +195,12 @@ Default-path validation after switching the default:
 
 A default `top --limit 2000` run also reported `duckdb_fragment_append: merge`, but the live top list had moved beyond the local tarball cache (`ash@3.29.0`, then `llm_db@2026.6.2`), so those runs are not clean quality/timing baselines. Use fixed entries or refresh the tarball cache before future top2000 default validation.
 
+The benchmark workflow now supports entry snapshots with `--entries-output-path`, writing NDJSON lines like `{\"name\":\"jason\",\"version\":\"1.4.5\"}`. Rerun a fixed set with `--entries-file`. A fixed top2000 snapshot was created under ignored `bench-results/fixed-top2000-20260614/entries.ndjson`; after downloading the single missing tarball, the default MERGE run completed cleanly:
+
+| Run | Indexed | Skipped | Failed | Index elapsed | Wall time | `duckdb_fragment_append` | `fragment_append_rows` total | Retry count | Notes |
+|-----|--------:|--------:|-------:|--------------:|----------:|--------------------------|-----------------------------:|------------:|-------|
+| fixed `top2000` entries | 1635 | 365 | 0 | 9m14s | 582s | `merge` | 596.1s | 1 | `--entries-file bench-results/fixed-top2000-20260614/entries.ndjson` |
+
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
 | Fragment append | Concurrency | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |

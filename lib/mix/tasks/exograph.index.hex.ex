@@ -23,6 +23,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--mode` - `latest` (default), `top`, or `all`
     * `--limit` - max packages to index
     * `--entries-file` - JSON report or NDJSON file with `name` and `version` entries to index
+    * `--entries-output-path` - write the resolved entry list as NDJSON for reproducible reruns
     * `--prefix` - table prefix (default: `hex`)
     * `--concurrency` - global download+index worker target (default: `4`)
     * `--package-batch-size` - packages to extract and flush together per worker (default: `1`)
@@ -83,6 +84,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           mode: :string,
           limit: :integer,
           entries_file: :string,
+          entries_output_path: :string,
           prefix: :string,
           concurrency: :integer,
           package_batch_size: :integer,
@@ -172,6 +174,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       report_path: Keyword.get(opts, :report_path),
       timings_path: Keyword.get(opts, :timings_path),
       missing_tarballs_report_path: Keyword.get(opts, :missing_tarballs_report_path),
+      entries_output_path: Keyword.get(opts, :entries_output_path),
       retry_count: Keyword.get(opts, :retry_count, 3),
       retry_sleep: Keyword.get(opts, :retry_sleep, 1_000),
       shard_directory: Keyword.get(opts, :shard_dir),

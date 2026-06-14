@@ -30,6 +30,7 @@ defmodule Exograph.Hex.Corpus do
     resume? = Keyword.get(opts, :resume, true)
 
     entries = list_entries(mode, opts)
+    write_entries_snapshot(entries, opts)
     preflight_missing_tarballs(entries, opts)
     total = length(entries)
 
@@ -93,6 +94,7 @@ defmodule Exograph.Hex.Corpus do
     shard_count = Keyword.fetch!(opts, :shards)
     mode = Keyword.get(opts, :mode, :latest)
     entries = list_entries(mode, opts)
+    write_entries_snapshot(entries, opts)
     preflight_missing_tarballs(entries, opts)
     started = System.monotonic_time(:millisecond)
     Exograph.Hex.StageTimings.reset()
@@ -561,6 +563,26 @@ defmodule Exograph.Hex.Corpus do
         Logger.warning("Hex package batch indexing failed: #{inspect(reason, limit: 30)}")
         {:error, reason}
     end
+  end
+
+  defp write_entries_snapshot(entries, opts) do
+    case Keyword.get(opts, :entries_output_path) do
+      path when is_binary(path) -> write_entries_snapshot!(path, entries)
+      _other -> :ok
+    end
+  end
+
+  defp write_entries_snapshot!(path, entries) do
+    content =
+      Enum.map_join(entries, "\n", fn entry ->
+        Jason.encode!(%{name: entry.name, version: entry.version})
+      end)
+
+    path
+    |> Path.dirname()
+    |> File.mkdir_p!()
+
+    File.write!(path, content <> "\n")
   end
 
   defp preflight_missing_tarballs(entries, opts) do
