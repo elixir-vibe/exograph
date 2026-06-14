@@ -127,6 +127,15 @@ A persisted `top --limit 500` quality check matched the default path:
 
 This is promising but still experimental. `fragment_append_rows` consistently improved, but end-to-end wall time remained noisy; do not make it the default until more repeated full-workload runs show a stable total-time win.
 
+A later single-DB `top --limit 500` comparison with local tarballs still did not justify changing the default:
+
+| Fragment append | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` total | Notes |
+|-----------------|--------:|--------:|-------:|--------------:|----------:|-----------------------------:|-------|
+| ecto | 379 | 121 | 0 | 1m42s | 112s | 97.3s | baseline |
+| merge | 379 | 121 | 0 | 1m41s | 111s | 96.2s | representative structural/text/package checks matched, but fact table counts differed (`definitions` +140, `references` +762, `comments` +4) and need investigation before further promotion |
+
+Top500 representative checks matched for `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, `defmodule`, and package fragment counts for `jason`, `ecto`, and `phoenix`. Artifacts: `/tmp/exograph-top500-ecto-report.json`, `/tmp/exograph-top500-ecto-timings.json`, `/tmp/exograph-top500-merge-report.json`, `/tmp/exograph-top500-merge-timings.json`.
+
 Reports include selected DuckDB experiment metadata under `options`, including `duckdb_fragment_append` and `duckdb_build_mode`. The `--duckdb-build-mode offline` flag selects the experimental offline staging path for files, terms, fragments, definitions, references, comments, fragment_terms, graph_nodes, and call_edges. Keep it explicit until quality parity and larger repeated benchmarks are complete.
 
 Automated top-package parity guards now compare online vs offline counts for files, fragments, terms, fragment_terms, definitions, references, comments, graph_nodes, call_edges, and representative text/definition/reference/caller/callee searches.
