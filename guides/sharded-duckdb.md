@@ -29,6 +29,12 @@ Known differences from the fixed top500 probe:
 
 Do not present sharded DuckDB as an invisible performance flag until global search semantics are redesigned.
 
+## QuackDB boundary
+
+Exograph owns sharded corpus semantics: package-to-shard ownership, shard-local versus global fragment identity, search fanout, ranking, and result aggregation. QuackDB should not grow generic application-level sharded search semantics at this stage.
+
+If repeated infrastructure appears, only low-level primitives should move down to QuackDB later, such as managed server groups, connection-group lifecycle helpers, fanout execution helpers, or telemetry aggregation across connections.
+
 ## Product choices before making sharding default
 
 A sharded read architecture needs explicit product semantics for global queries. Possible directions:
