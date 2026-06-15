@@ -30,7 +30,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--shard-concurrency` - workers per DuckDB shard (default: `ceil(concurrency / duckdb_shards)`)
     * `--shard-pool-size` - DB connections per DuckDB shard (default: shard concurrency)
     * `--pipeline` - `task` (default) or `broadway`
-    * `--duckdb-shards` - shard count for DuckDB corpus indexing (recommended for large corpora)
+    * `--duckdb-shards` - opt-in shard count for DuckDB corpus indexing. Sharding can improve large-corpus ingestion, but it has shard-local global search/count semantics; see `guides/sharded-duckdb.md`.
     * `--duckdb-threads` - DuckDB execution threads per shard/server
     * `--duckdb-memory-limit` - DuckDB memory limit per shard/server, e.g. `2GB`
     * `--duckdb-queue-target` - DBConnection queue target in milliseconds for DuckDB shard repos (default: `60000`)
@@ -39,7 +39,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-build-mode` - DuckDB corpus build strategy: `online` (default) or experimental `offline` metadata flag
     * `--duckdb-fragment-append` - DuckDB fragment insert strategy: `merge` (default) or `ecto`
     * `--duckdb-insert-buffer-size` - buffered DuckDB fact rows per table before flushing (default: `50000`)
-    * `--manifest-path` - write a sharded DuckDB manifest to this path
+    * `--manifest-path` - write a sharded DuckDB manifest to this path for `mix exograph.web --manifest-path ...`
     * `--report-path` - write indexing totals and failures as JSON
     * `--timings-path` - write stage timing totals as JSON
     * `--missing-tarballs-report-path` - write missing local tarballs as JSON when `--tarball-dir` is set

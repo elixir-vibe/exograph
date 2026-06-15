@@ -3,6 +3,7 @@ defmodule Mix.Tasks.Exograph.Web do
   Starts a standalone web interface for exploring an Exograph index.
 
       mix exograph.web --prefix exograph
+      mix exograph.web --manifest-path data/hex-shards/manifest.term
 
   Options:
 
@@ -14,7 +15,7 @@ defmodule Mix.Tasks.Exograph.Web do
     * `--quackdb-uri` — QuackDB URI (or starts managed DuckDB when omitted)
     * `--quackdb-token` — QuackDB token
     * `--duckdb-database` — managed DuckDB database path
-    * `--manifest-path` — sharded DuckDB manifest path
+    * `--manifest-path` — sharded DuckDB manifest path from `mix exograph.index.hex --manifest-path ...`
     * `--duckdb-threads` — DuckDB execution threads per shard/server
     * `--duckdb-memory-limit` — DuckDB memory limit per shard/server, e.g. `2GB`
     * `--shard-pool-size` — DB connections per shard when opening a manifest

@@ -4,6 +4,35 @@ Sharded DuckDB indexes split a corpus across multiple independent DuckDB databas
 
 Sharding is currently an opt-in architecture, not the default DuckDB backend.
 
+## CLI usage
+
+Build a sharded Hex corpus by choosing a shard count, shard directory, and manifest path:
+
+```bash
+mix exograph.index.hex \
+  --backend duckdb \
+  --entries-file bench-results/fixed-top2000-20260614/entries.ndjson \
+  --tarball-dir /tmp/exograph-top2000-tarballs \
+  --concurrency 8 \
+  --duckdb-shards 4 \
+  --shard-concurrency 2 \
+  --shard-pool-size 2 \
+  --duckdb-threads 2 \
+  --shard-dir data/hex-shards \
+  --manifest-path data/hex-shards/manifest.term
+```
+
+Open a sharded corpus in the web UI with the manifest:
+
+```bash
+mix exograph.web \
+  --manifest-path data/hex-shards/manifest.term \
+  --duckdb-threads 2 \
+  --shard-pool-size 1
+```
+
+The manifest stores shard file paths and package/version ownership metadata. Keep it with the shard database files; moving shard files requires updating or rebuilding the manifest.
+
 ## What is intended to match single-DB behavior
 
 Package/version-scoped queries should route to the shard that owns the package version and should match the corresponding single-package results. Use package/version filters with the same identity stored in the manifest. Filters may be maps/keywords with `:name` and `:version`, or `Exograph.PackageVersion` structs with `:package_name` and `:version`:
