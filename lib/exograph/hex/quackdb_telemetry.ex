@@ -71,13 +71,41 @@ defmodule Exograph.Hex.QuackDBTelemetry do
     command = query_command(metadata)
     count(metric(:query_calls, command))
     count(metric(:query_rows, command), Map.get(metadata, :rows, 0))
+    count(metric(:query_request_bytes, command), Map.get(metadata, :request_bytes, 0))
+    count(metric(:query_response_bytes, command), Map.get(metadata, :response_bytes, 0))
     count_native(metric(:query_duration_us, command), Map.get(measurements, :duration, 0))
+
+    count_native(
+      metric(:query_encode_duration_us, command),
+      Map.get(metadata, :encode_duration, 0)
+    )
+
+    count_native(
+      metric(:query_transport_duration_us, command),
+      Map.get(metadata, :transport_duration, 0)
+    )
+
+    count_native(
+      metric(:query_decode_duration_us, command),
+      Map.get(metadata, :decode_duration, 0)
+    )
+
+    count_native(
+      metric(:query_normalize_duration_us, command),
+      Map.get(metadata, :normalize_duration, 0)
+    )
   end
 
   def handle_event([:quackdb, :fetch, :stop], measurements, metadata, _agent) do
     count(:quackdb_fetch_calls)
     count(:quackdb_fetch_chunks, Map.get(metadata, :chunks, 0))
+    count(:quackdb_fetch_request_bytes, Map.get(metadata, :request_bytes, 0))
+    count(:quackdb_fetch_response_bytes, Map.get(metadata, :response_bytes, 0))
     count_native(:quackdb_fetch_duration_us, Map.get(measurements, :duration, 0))
+    count_native(:quackdb_fetch_encode_duration_us, Map.get(metadata, :encode_duration, 0))
+    count_native(:quackdb_fetch_transport_duration_us, Map.get(metadata, :transport_duration, 0))
+    count_native(:quackdb_fetch_decode_duration_us, Map.get(metadata, :decode_duration, 0))
+    count_native(:quackdb_fetch_normalize_duration_us, Map.get(metadata, :normalize_duration, 0))
   end
 
   def handle_event(_event, _measurements, _metadata, _agent), do: :ok
