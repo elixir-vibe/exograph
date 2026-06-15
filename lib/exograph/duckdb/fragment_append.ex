@@ -82,6 +82,9 @@ defmodule Exograph.DuckDB.FragmentAppend do
   end
 
   defp insert_rows_by_hash(repo, source, target, rows, opts, retries_left) do
+    Exograph.Hex.StageTimings.count(:fragment_append_attempts)
+    Exograph.Hex.StageTimings.count(:fragment_append_attempt_rows, length(rows))
+
     Exograph.Hex.StageTimings.measure(:fragment_append_rows, fn ->
       if merge_append?(opts) do
         merge_insert_by_hash(repo, source, rows)
