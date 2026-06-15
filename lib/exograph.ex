@@ -452,7 +452,7 @@ defmodule Exograph do
 
       package_key ->
         case shard_package_version_id(shard, package_key) do
-          nil -> Keyword.delete(opts, :package_version)
+          nil -> Keyword.put(opts, :package_version, -1)
           id -> Keyword.put(opts, :package_version, id)
         end
     end

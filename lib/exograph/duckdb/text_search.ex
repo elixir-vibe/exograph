@@ -8,16 +8,18 @@ defmodule Exograph.DuckDB.TextSearch do
     limit = Keyword.get(opts, :limit, 50)
 
     if index.bm25? do
-      bm25_file_search(index, literal, field, limit)
+      bm25_file_search(index, literal, field, limit, opts)
     else
-      ilike_file_search(index, literal, field, limit)
+      ilike_file_search(index, literal, field, limit, opts)
     end
   end
 
-  defp bm25_file_search(index, literal, field, limit) do
+  defp bm25_file_search(index, literal, field, limit, opts) do
     {files_table, _schema} = Options.files_source(index.prefix)
     schema = QuackDB.FTS.schema_name("main.#{files_table}")
     field_name = Atom.to_string(field)
+
+    {scope_sql, scope_params} = package_version_scope(opts)
 
     statement = """
     WITH matched_files AS (
@@ -27,7 +29,7 @@ defmodule Exograph.DuckDB.TextSearch do
         path,
         "#{schema}".match_bm25(id, ?, fields := '#{field_name}') AS score
       FROM #{Exograph.Storage.Ecto.SQL.table(index.prefix, "files")}
-      WHERE "#{schema}".match_bm25(id, ?, fields := '#{field_name}') > 0
+      WHERE "#{schema}".match_bm25(id, ?, fields := '#{field_name}') > 0#{scope_sql}
       ORDER BY score DESC, path ASC
       LIMIT ?
     )
@@ -35,21 +37,24 @@ defmodule Exograph.DuckDB.TextSearch do
     ORDER BY matched_files.score DESC, matched_files.path ASC, fr.line ASC
     """
 
-    {:ok, hits_from_rows(index.repo.query!(statement, [literal, literal, limit]).rows)}
+    params = [literal, literal] ++ scope_params ++ [limit]
+    {:ok, hits_from_rows(index.repo.query!(statement, params).rows)}
   rescue
     _ in [QuackDB.Error, Ecto.QueryError] ->
-      ilike_file_search(index, literal, field, limit)
+      ilike_file_search(index, literal, field, limit, opts)
   end
 
-  defp ilike_file_search(index, literal, field, limit) do
+  defp ilike_file_search(index, literal, field, limit, opts) do
     column = Atom.to_string(field)
     pattern = "%#{escape_like(literal)}%"
+
+    {scope_sql, scope_params} = package_version_scope(opts)
 
     statement = """
     WITH matched_files AS (
       SELECT id, source, path
       FROM #{Exograph.Storage.Ecto.SQL.table(index.prefix, "files")}
-      WHERE "#{column}" ILIKE ?
+      WHERE "#{column}" ILIKE ?#{scope_sql}
       ORDER BY path ASC
       LIMIT ?
     )
@@ -57,7 +62,15 @@ defmodule Exograph.DuckDB.TextSearch do
     ORDER BY matched_files.path ASC, fr.line ASC
     """
 
-    {:ok, hits_from_rows(index.repo.query!(statement, [pattern, limit]).rows)}
+    params = [pattern] ++ scope_params ++ [limit]
+    {:ok, hits_from_rows(index.repo.query!(statement, params).rows)}
+  end
+
+  defp package_version_scope(opts) do
+    case Keyword.get(opts, :package_version_id) || Keyword.get(opts, :package_version) do
+      id when is_integer(id) -> {" AND package_version_id = ?", [id]}
+      _ -> {"", []}
+    end
   end
 
   defp first_fragment_statement(prefix) do

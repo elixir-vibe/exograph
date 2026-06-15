@@ -19,6 +19,7 @@ defmodule Mix.Tasks.Exograph.Web do
     * `--duckdb-threads` — DuckDB execution threads per shard/server
     * `--duckdb-memory-limit` — DuckDB memory limit per shard/server, e.g. `2GB`
     * `--shard-pool-size` — DB connections per shard when opening a manifest
+    * `--shard-port-base` — first local QuackDB port when opening a sharded manifest (default: `9700`)
 
   """
   use Mix.Task
@@ -44,7 +45,8 @@ defmodule Mix.Tasks.Exograph.Web do
           manifest_path: :string,
           duckdb_threads: :integer,
           duckdb_memory_limit: :string,
-          shard_pool_size: :integer
+          shard_pool_size: :integer,
+          shard_port_base: :integer
         ]
       )
 
@@ -100,7 +102,8 @@ defmodule Mix.Tasks.Exograph.Web do
           Exograph.DuckDBShards.open(path,
             duckdb_threads: opts[:duckdb_threads],
             duckdb_memory_limit: opts[:duckdb_memory_limit],
-            pool_size: opts[:shard_pool_size] || 1
+            pool_size: opts[:shard_pool_size] || 1,
+            port_base: opts[:shard_port_base] || 9_700
           )
 
         shard_indexes = Exograph.DuckDBShards.open_indexes(shards, bm25?: true)

@@ -28,7 +28,8 @@ Open a sharded corpus in the web UI with the manifest:
 mix exograph.web \
   --manifest-path data/hex-shards/manifest.term \
   --duckdb-threads 2 \
-  --shard-pool-size 1
+  --shard-pool-size 1 \
+  --shard-port-base 19700
 ```
 
 The manifest stores shard file paths and package/version ownership metadata. Keep it with the shard database files; moving shard files requires updating or rebuilding the manifest.

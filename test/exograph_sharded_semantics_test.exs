@@ -83,6 +83,17 @@ defmodule ExographShardedSemanticsTest do
                package_version: beta_filter,
                limit: 10
              )
+
+    sharded_with_missing_manifest_package =
+      ShardedIndex.new([
+        %{index: alpha_index, packages: [%{name: "missing", version: "9.9.9"}]}
+      ])
+
+    assert {:ok, []} =
+             Exograph.search_text(sharded_with_missing_manifest_package, "alpha",
+               package_version: %{name: "missing", version: "9.9.9"},
+               limit: 10
+             )
   end
 
   test "opened manifests preserve package-scoped routing" do
