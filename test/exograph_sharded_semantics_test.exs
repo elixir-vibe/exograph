@@ -96,6 +96,97 @@ defmodule ExographShardedSemanticsTest do
              )
   end
 
+  test "package-scoped sharded text search matches a single logical DuckDB index" do
+    alpha_path =
+      fixture("single_alpha.ex", """
+      defmodule Demo.SingleAlpha do
+        def alpha_value do
+          :alpha
+        end
+      end
+      """)
+
+    beta_path =
+      fixture("single_beta.ex", """
+      defmodule Demo.SingleBeta do
+        def beta_value do
+          :beta
+        end
+      end
+      """)
+
+    {:ok, single_alpha_index} =
+      Exograph.index(alpha_path,
+        backend: :duckdb,
+        repo: Exograph.DuckDBRepo,
+        prefix: "single_package_parity",
+        migrate?: true,
+        min_mass: 4,
+        package: %{name: "alpha"},
+        package_version: %{name: "alpha", version: "1.0.0"}
+      )
+
+    {:ok, _single_beta_index} =
+      Exograph.index(beta_path,
+        backend: :duckdb,
+        repo: Exograph.DuckDBRepo,
+        prefix: "single_package_parity",
+        migrate?: false,
+        min_mass: 4,
+        package: %{name: "beta"},
+        package_version: %{name: "beta", version: "1.0.0"}
+      )
+
+    {:ok, single_index} =
+      Exograph.index([],
+        backend: :duckdb,
+        repo: Exograph.DuckDBRepo,
+        prefix: "single_package_parity",
+        migrate?: false
+      )
+
+    {:ok, sharded_alpha_index} =
+      Exograph.index(alpha_path,
+        backend: :duckdb,
+        repo: Exograph.DuckDBRepo,
+        prefix: "sharded_parity_alpha",
+        migrate?: true,
+        min_mass: 4,
+        package: %{name: "alpha"},
+        package_version: %{name: "alpha", version: "1.0.0"}
+      )
+
+    {:ok, sharded_beta_index} =
+      Exograph.index(beta_path,
+        backend: :duckdb,
+        repo: Exograph.DuckDBRepo,
+        prefix: "sharded_parity_beta",
+        migrate?: true,
+        min_mass: 4,
+        package: %{name: "beta"},
+        package_version: %{name: "beta", version: "1.0.0"}
+      )
+
+    sharded_index =
+      ShardedIndex.new([
+        %{index: sharded_alpha_index, packages: [%{name: "alpha", version: "1.0.0"}]},
+        %{index: sharded_beta_index, packages: [%{name: "beta", version: "1.0.0"}]}
+      ])
+
+    alpha_id = single_alpha_index.fragment_store.package_version.id
+
+    assert {:ok, single_hits} =
+             Exograph.search_text(single_index, "alpha", package_version_id: alpha_id, limit: 10)
+
+    assert {:ok, sharded_hits} =
+             Exograph.search_text(sharded_index, "alpha",
+               package_version: %{name: "alpha", version: "1.0.0"},
+               limit: 10
+             )
+
+    assert length(sharded_hits) == length(single_hits)
+  end
+
   test "opened manifests preserve package-scoped routing" do
     shard_dir =
       Path.join(
