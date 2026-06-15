@@ -342,6 +342,8 @@ The gap between QuackDB append duration and `fragment_append_stage_rows` suggest
 
 This means a QuackDB/Ecto active-transaction append helper is technically possible, but it is not yet justified by the measured workload.
 
+A follow-up telemetry run also attached to QuackDB fetch spans and compared against an offline DuckDB CLI profile. Fixed top500 with fetch telemetry (`bench-results/fetch-telemetry-20260615/top500-fetch-timings.json`) completed in `91.9s` elapsed with `79.9s` fragment append, `28.1s` stage append, and `21.3s` MERGE query. Fetching the MERGE `RETURNING content_hash, id` result was not the bottleneck (`1` fetch, `36` chunks, `0.55s`). A DuckDB CLI profile over the completed database (`bench-results/fetch-telemetry-20260615/cli-merge-returning-summary.json`) recreated a MERGE-with-RETURNING shape from `hex_fragments` into an empty profiled table and reported only `3.53s` latency / `2.61s` CPU, with the `MERGE_INTO` operator at `2.10s` and table scan at `0.51s`. This is not the exact temp-stage transaction path, but it strongly suggests the `21s+` app-side MERGE query time is not primarily result fetching or DuckDB's logical MERGE operator alone; Quack request/response, server-side prepare/materialization, checkpoint/storage effects, or temp-stage specifics remain likely.
+
 A fragment payload attribution run (`bench-results/fragment-payload-20260615/top500-payload-summary.json`) confirmed the wide payload is dominated by AST and token-list columns:
 
 | Column | Approx payload |

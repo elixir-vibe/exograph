@@ -6,7 +6,8 @@ defmodule Exograph.Hex.QuackDBTelemetry do
   @events [
     [:quackdb, :append, :start],
     [:quackdb, :append, :stop],
-    [:quackdb, :query, :stop]
+    [:quackdb, :query, :stop],
+    [:quackdb, :fetch, :stop]
   ]
 
   def attach(false), do: nil
@@ -71,6 +72,12 @@ defmodule Exograph.Hex.QuackDBTelemetry do
     count(metric(:query_calls, command))
     count(metric(:query_rows, command), Map.get(metadata, :rows, 0))
     count_native(metric(:query_duration_us, command), Map.get(measurements, :duration, 0))
+  end
+
+  def handle_event([:quackdb, :fetch, :stop], measurements, metadata, _agent) do
+    count(:quackdb_fetch_calls)
+    count(:quackdb_fetch_chunks, Map.get(metadata, :chunks, 0))
+    count_native(:quackdb_fetch_duration_us, Map.get(measurements, :duration, 0))
   end
 
   def handle_event(_event, _measurements, _metadata, _agent), do: :ok
