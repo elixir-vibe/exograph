@@ -32,6 +32,29 @@ defmodule ExographDuckDBShardsTest do
            ]
   end
 
+  test "stop terminates linked shard processes without exiting caller" do
+    {:ok, repo} = Agent.start_link(fn -> :repo end)
+    {:ok, server} = Agent.start_link(fn -> :server end)
+
+    assert Process.alive?(repo)
+    assert Process.alive?(server)
+
+    assert :ok = DuckDBShards.stop(%{dynamic_repo: repo, server: server})
+
+    refute Process.alive?(repo)
+    refute Process.alive?(server)
+  end
+
+  test "stop accepts shard lists" do
+    {:ok, repo} = Agent.start_link(fn -> :repo end)
+    {:ok, server} = Agent.start_link(fn -> :server end)
+
+    assert :ok = DuckDBShards.stop([%{dynamic_repo: repo, server: server}])
+
+    refute Process.alive?(repo)
+    refute Process.alive?(server)
+  end
+
   test "manifest file round-trips package ownership metadata" do
     path =
       Path.join(System.tmp_dir!(), "exograph-shards-#{System.unique_integer([:positive])}.term")

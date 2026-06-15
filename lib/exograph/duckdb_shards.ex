@@ -123,6 +123,19 @@ defmodule Exograph.DuckDBShards do
 
   def open(path, opts) when is_binary(path), do: path |> load_manifest() |> open(opts)
 
+  def stop(shards) when is_list(shards) do
+    Enum.each(shards, &stop/1)
+    :ok
+  end
+
+  def stop(%{dynamic_repo: dynamic_repo, server: server}) do
+    stop_pid(dynamic_repo)
+    stop_pid(server)
+    :ok
+  end
+
+  def stop(_shard), do: :ok
+
   def with_repo(%{dynamic_repo: dynamic_repo}, fun) when is_function(fun, 0) do
     previous = Exograph.DuckDBRepo.get_dynamic_repo()
     Exograph.DuckDBRepo.put_dynamic_repo(dynamic_repo)
@@ -169,6 +182,34 @@ defmodule Exograph.DuckDBShards do
         end)
     }
   end
+
+  defp stop_pid(pid) when is_pid(pid) do
+    if Process.alive?(pid) do
+      Process.unlink(pid)
+      ref = Process.monitor(pid)
+
+      try do
+        GenServer.stop(pid, :normal, 5_000)
+      catch
+        :exit, _reason -> Process.exit(pid, :shutdown)
+      end
+
+      receive do
+        {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+      after
+        5_000 ->
+          Process.exit(pid, :kill)
+
+          receive do
+            {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+          after
+            1_000 -> :ok
+          end
+      end
+    end
+  end
+
+  defp stop_pid(_pid), do: :ok
 
   defp server_opts(opts, base) do
     base

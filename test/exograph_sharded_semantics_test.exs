@@ -85,6 +85,105 @@ defmodule ExographShardedSemanticsTest do
              )
   end
 
+  test "opened manifests preserve package-scoped routing" do
+    shard_dir =
+      Path.join(
+        System.tmp_dir!(),
+        "exograph-sharded-manifest-#{System.unique_integer([:positive])}"
+      )
+
+    port_base = 18_000 + rem(System.unique_integer([:positive]), 20_000)
+
+    {:ok, shards} =
+      Exograph.DuckDBShards.start_managed(2,
+        directory: shard_dir,
+        prefix: "manifest_shard",
+        port_base: port_base,
+        pool_size: 1,
+        duckdb_threads: 2
+      )
+
+    on_exit(fn -> File.rm_rf(shard_dir) end)
+
+    alpha_path =
+      fixture("manifest_alpha.ex", """
+      defmodule Demo.ManifestAlpha do
+        def manifest_alpha do
+          :alpha
+        end
+      end
+      """)
+
+    beta_path =
+      fixture("manifest_beta.ex", """
+      defmodule Demo.ManifestBeta do
+        def manifest_beta do
+          :beta
+        end
+      end
+      """)
+
+    [alpha_shard, beta_shard] = shards
+
+    Exograph.DuckDBShards.with_repo(alpha_shard, fn ->
+      {:ok, _index} =
+        Exograph.index(alpha_path,
+          backend: :duckdb,
+          repo: alpha_shard.repo,
+          prefix: alpha_shard.prefix,
+          migrate?: true,
+          min_mass: 4,
+          package: %{name: "alpha"},
+          package_version: %{name: "alpha", version: "1.0.0"}
+        )
+    end)
+
+    Exograph.DuckDBShards.with_repo(beta_shard, fn ->
+      {:ok, _index} =
+        Exograph.index(beta_path,
+          backend: :duckdb,
+          repo: beta_shard.repo,
+          prefix: beta_shard.prefix,
+          migrate?: true,
+          min_mass: 4,
+          package: %{name: "beta"},
+          package_version: %{name: "beta", version: "1.0.0"}
+        )
+    end)
+
+    manifest =
+      Exograph.DuckDBShards.manifest(
+        [
+          %{alpha_shard | packages: [%{name: "alpha", version: "1.0.0"}]},
+          %{beta_shard | packages: [%{name: "beta", version: "1.0.0"}]}
+        ],
+        prefix: "manifest_shard"
+      )
+
+    assert :ok = Exograph.DuckDBShards.stop(shards)
+
+    {:ok, opened} =
+      Exograph.open_sharded(manifest,
+        port_base: port_base + 100,
+        pool_size: 1,
+        duckdb_threads: 2
+      )
+
+    on_exit(fn -> Exograph.DuckDBShards.stop(opened.shards) end)
+
+    assert {:ok, [_alpha_hit | _]} =
+             Exograph.search_text(opened, "alpha",
+               package_version: %{name: "alpha", version: "1.0.0"},
+               limit: 10
+             )
+
+    assert {:ok, []} =
+             Exograph.search_text(opened, "alpha",
+               package_version: %{name: "beta", version: "1.0.0"},
+               limit: 10
+             )
+  end
+
   defp fixture(name, source) do
     dir =
       Path.join(
