@@ -313,9 +313,14 @@ The temp-table DDL/cleanup is not the bottleneck. Increasing the fragment temp-s
 
 A temporary cardinality probe showed the temp stage was already unique per call (`661,790` rows / `661,790` distinct hashes in the fixed top500 probe), and only `308` staged hashes already existed in the target at the sampled MERGE point. That does not support revisiting the earlier prelookup/minimal-key path: there are too few existing hashes to offset an extra lookup/staging pass. The probe was removed after recording the result because it added query overhead.
 
-A local QuackDB prototype optimized ordinary signed 64-bit vector encoding, including large `BIGINT[]` child vectors. Dogfooding it through a temporary local path dependency produced a fixed top500 run with `379 indexed / 121 skipped / 0 failed`, `91.6s` elapsed, and `fragment_append_rows` at `78.8s` (`stage_rows` 28.7s, `merge_query` 20.0s). The change shipped in QuackDB `0.5.12`; after updating Exograph to the released dependency, a fixed top500 smoke completed with `379 indexed / 121 skipped / 0 failed`, `90.4s` elapsed, and `fragment_append_rows` at `82.0s` (`stage_rows` 29.1s, `merge_query` 25.4s).
+A local QuackDB prototype optimized ordinary signed 64-bit vector encoding, including large `BIGINT[]` child vectors. Dogfooding it through a temporary local path dependency produced a fixed top500 run with `379 indexed / 121 skipped / 0 failed`, `91.6s` elapsed, and `fragment_append_rows` at `78.8s` (`stage_rows` 28.7s, `merge_query` 20.0s). The change shipped in QuackDB `0.5.12`; after updating Exograph to the released dependency, fixed-snapshot runs completed cleanly:
 
-The next fragment-append work should target staging append + MERGE query execution, row payload size, or adapter/transaction overhead rather than further cleanup or prelookup tweaks.
+| Run | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_append_rows` | `stage_rows` | MERGE query |
+|-----|--------:|--------:|-------:|--------------:|----------:|-----------------------:|-------------:|------------:|
+| fixed top500, QuackDB `0.5.12` | 379 | 121 | 0 | 90.4s | 101.1s | 82.0s | 29.1s | 25.4s |
+| fixed top2000, QuackDB `0.5.12` | 1635 | 365 | 0 | 465.1s | 489.4s | 522.6s | 92.5s | 213.7s |
+
+A follow-up attempt to replace MERGE with `INSERT INTO ... SELECT ... WHERE NOT EXISTS ... RETURNING` using the same temp stage regressed fixed top500 (`114.2s` elapsed, `98.6s` append, `36.4s` stage append, `29.7s` insert query), so the MERGE shape remains better. The experiment was reverted. The next fragment-append work should target staging append + MERGE query execution, row payload size, or adapter/transaction overhead rather than further cleanup, prelookup, or anti-join insert-select tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
