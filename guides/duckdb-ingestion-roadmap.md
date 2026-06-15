@@ -67,7 +67,9 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - The post-MERGE cost model points at fact insertion and term normalization/upsert as the next likely targets; fragment ID resolution was split and proved to be almost entirely MERGE append time, with fallback existing-ID lookup only ~1.5s in a fixed top500 run.
    - Fact insertion timing was largely synchronous InsertBuffer backpressure: comment row volume is small, but comment enqueue calls waited behind reference/definition buffer flushes on the shared GenServer.
    - A larger shared buffer threshold (`200000`) and a naive async flush prototype did not help.
-   - Per-source InsertBuffer workers did help: fixed top500 index elapsed improved from 116.9s to 97.6s, and fixed top2000 improved from 553.3s to 470.9s while preserving `1635 indexed / 365 skipped / 0 failed`. Continue watching DuckDB append contention and retry counts because fact flushes are now per-source serialized rather than globally serialized.
+   - Per-source InsertBuffer workers did help: fixed top500 index elapsed improved from 116.9s to 97.6s, and fixed top2000 improved from 553.3s to 470.9s in the first run while preserving `1635 indexed / 365 skipped / 0 failed`; a repeat was noisier at 536.1s but still completed cleanly.
+   - Non-blocking enqueue into those per-source workers moved same-source worker queueing out of per-package indexing: fixed top500 improved to 89.6s elapsed and fixed top2000 completed at 466.1s with matching flushed fact row counts. Final `InsertBuffer.flush/1` is now the durability barrier for buffered DuckDB facts.
+   - Continue watching memory, DuckDB append contention, and retry counts because fact flushes are now per-source serialized and enqueue no longer provides as much producer backpressure.
    - The current per-package flow runs many small staging/upsert/lookup cycles.
    - Explore N-package or shard-level fragment/code-fact buffers.
    - Preserve file/package context so quality does not regress.

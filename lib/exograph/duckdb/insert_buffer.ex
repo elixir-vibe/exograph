@@ -16,9 +16,11 @@ defmodule Exograph.DuckDB.InsertBuffer do
     entries = List.wrap(entries)
     Exograph.Hex.StageTimings.count(metric(source, :enqueue_rows), length(entries))
 
-    buffer
-    |> worker_for(source)
-    |> Worker.insert(entries)
+    Exograph.Hex.StageTimings.measure(metric(source, :call), fn ->
+      buffer
+      |> worker_for(source)
+      |> Worker.insert(entries)
+    end)
   end
 
   def flush(nil), do: :ok
@@ -113,6 +115,8 @@ defmodule Exograph.DuckDB.InsertBuffer do
 
   defp metric_atom(:enqueue_rows, suffix), do: :"duckdb_insert_buffer_enqueue_#{suffix}_rows"
   defp metric_atom(:flush_rows, suffix), do: :"duckdb_insert_buffer_flush_#{suffix}_rows"
+  defp metric_atom(:call, suffix), do: :"duckdb_insert_buffer_call_#{suffix}"
+  defp metric_atom(:service, suffix), do: :"duckdb_insert_buffer_service_#{suffix}"
   defp metric_atom(:flush, suffix), do: :"duckdb_insert_buffer_flush_#{suffix}"
 
   defp source_suffix({table, _schema}), do: source_suffix(table)
@@ -142,7 +146,7 @@ defmodule Exograph.DuckDB.InsertBuffer.Worker do
   end
 
   def insert(worker, entries) do
-    GenServer.call(worker, {:insert, entries}, :infinity)
+    GenServer.cast(worker, {:insert, entries})
   end
 
   def flush(worker) do
@@ -163,14 +167,20 @@ defmodule Exograph.DuckDB.InsertBuffer.Worker do
   end
 
   @impl true
-  def handle_call({:insert, entries}, _from, state) do
+  def handle_cast({:insert, entries}, state) do
     entries = List.wrap(entries)
-    count = state.count + length(entries)
-    state = %{state | buffers: [entries | state.buffers], count: count}
-    state = if count >= state.chunk_size, do: flush_source(state), else: state
-    {:reply, :ok, state}
+
+    state =
+      Exograph.Hex.StageTimings.measure(InsertBuffer.metric(state.source, :service), fn ->
+        count = state.count + length(entries)
+        state = %{state | buffers: [entries | state.buffers], count: count}
+        if count >= state.chunk_size, do: flush_source(state), else: state
+      end)
+
+    {:noreply, state}
   end
 
+  @impl true
   def handle_call(:flush, _from, state) do
     {:reply, :ok, flush_source(state)}
   end

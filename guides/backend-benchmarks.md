@@ -286,8 +286,18 @@ A proper per-source worker version of the InsertBuffer did help. The public buff
 | fixed top500 per-source workers | 379 | 121 | 0 | 97.6s | 106.7s | 72.8s | 0.05s | n/a in adjacent baseline |
 | fixed top2000 default MERGE | 1635 | 365 | 0 | 553.3s | 579s | 537.1s | 233.8s | 580.4s |
 | fixed top2000 per-source workers | 1635 | 365 | 0 | 470.9s | 495s | 459.6s | 7.9s | 435.7s |
+| fixed top2000 per-source workers repeat | 1635 | 365 | 0 | 536.1s | 561s | 515.6s | 7.3s | 486.8s |
 
-The top2000 run used `bench-results/fixed-top2000-20260614/entries.ndjson`, completed with `1635 indexed / 365 skipped / 0 failed`, and still reported the default `duckdb_fragment_append: merge`. This is a real win, but it changes fact flushing from globally serialized to per-source serialized. Keep watching larger fixed-entry runs for DuckDB append contention and retry counts.
+The top2000 runs used `bench-results/fixed-top2000-20260614/entries.ndjson`, completed with `1635 indexed / 365 skipped / 0 failed`, and still reported the default `duckdb_fragment_append: merge`. This is a real win, but it changes fact flushing from globally serialized to per-source serialized. Keep watching larger fixed-entry runs for DuckDB append contention and retry counts.
+
+A follow-up split showed the remaining `code_facts_bulk_insert_references` time was mostly same-source worker queueing, not row construction. Switching worker enqueue from synchronous call to non-blocking cast keeps final `InsertBuffer.flush/1` as the durability barrier and moved that wait out of per-package indexing:
+
+| Run | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_store_code_facts` | `code_facts_bulk_insert_references` | reference worker service / flush |
+|-----|--------:|--------:|-------:|--------------:|----------:|----------------------------:|------------------------------------:|--------------------------------:|
+| fixed top500 non-blocking enqueue | 379 | 121 | 0 | 89.6s | 99.1s | 28.9s | 0.4s | 17.8s / 18.5s |
+| fixed top2000 non-blocking enqueue | 1635 | 365 | 0 | 466.1s | 490s | 147.5s | 1.8s | 101.6s / 101.3s |
+
+Fact row flush counts matched the prior per-source worker top2000 run (`references` 2,889,685; `definitions` 748,332; `comments` 113,887), so this change did not drop buffered facts in the fixed workload. The remaining wall time is now dominated by fragment append/upsert and the actual serialized DuckDB fact flushes rather than caller backpressure.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
