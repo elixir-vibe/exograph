@@ -73,6 +73,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - Fragment append sub-stage instrumentation now splits temp-stage creation/clearing, temp-stage append, MERGE query, transaction, attempts, input rows, and returned rows. Fixed top500 showed temp-table DDL/cleanup is negligible (~1.4s) while staging append (~32.5s) and MERGE query (~27.6s) dominate inside the ~92s transaction. Raising temp-stage append chunking from 2k to 10k helped; 20k regressed on fixed top500, so keep 10k unless a larger repeated run says otherwise.
    - A temporary cardinality probe showed the temp stage was already unique per call and had very few already-existing target hashes (`308` in the fixed top500 probe), so do not revive the earlier prelookup/minimal-key path without new evidence.
    - Replacing MERGE with `INSERT INTO ... SELECT ... WHERE NOT EXISTS ... RETURNING` over the same temp stage regressed fixed top500, so keep MERGE for now.
+   - QuackDB append telemetry is now included in Hex timing snapshots when `--timings-path` is used. Fixed top500 showed the fragment temp-stage append sends ~734 MB for ~672k rows, with ~10.6s encode time and ~14.3s total append duration inside a ~30.2s `fragment_append_stage_rows` call; adapter/queue/transaction overhead around native append is therefore also material.
    - The current per-package flow runs many small staging/upsert/lookup cycles.
    - Explore N-package or shard-level fragment/code-fact buffers.
    - Preserve file/package context so quality does not regress.

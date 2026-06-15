@@ -320,7 +320,19 @@ A local QuackDB prototype optimized ordinary signed 64-bit vector encoding, incl
 | fixed top500, QuackDB `0.5.12` | 379 | 121 | 0 | 90.4s | 101.1s | 82.0s | 29.1s | 25.4s |
 | fixed top2000, QuackDB `0.5.12` | 1635 | 365 | 0 | 465.1s | 489.4s | 522.6s | 92.5s | 213.7s |
 
-A follow-up attempt to replace MERGE with `INSERT INTO ... SELECT ... WHERE NOT EXISTS ... RETURNING` using the same temp stage regressed fixed top500 (`114.2s` elapsed, `98.6s` append, `36.4s` stage append, `29.7s` insert query), so the MERGE shape remains better. The experiment was reverted. The next fragment-append work should target staging append + MERGE query execution, row payload size, or adapter/transaction overhead rather than further cleanup, prelookup, or anti-join insert-select tweaks.
+A follow-up attempt to replace MERGE with `INSERT INTO ... SELECT ... WHERE NOT EXISTS ... RETURNING` using the same temp stage regressed fixed top500 (`114.2s` elapsed, `98.6s` append, `36.4s` stage append, `29.7s` insert query), so the MERGE shape remains better. The experiment was reverted.
+
+QuackDB append telemetry is now captured in Hex timing snapshots when DuckDB indexing writes `--timings-path`. A fixed top500 telemetry run (`bench-results/quackdb-append-telemetry-20260615/top500-telemetry-timings.json`) showed the fragment temp-stage append payload is very wide:
+
+| QuackDB append metric | Fragment temp stage |
+|-----------------------|--------------------:|
+| rows / batches | 671,837 / 3 |
+| request bytes | 734.1 MB |
+| encode duration | 10.6s |
+| transport/server append duration | 3.5s transport / 14.3s append |
+| surrounding `fragment_append_stage_rows` | 30.2s |
+
+The gap between QuackDB append duration and `fragment_append_stage_rows` suggests Ecto adapter row normalization/DBConnection queue/transaction overhead is also material, not just protocol encoding. The next fragment-append work should target wide-row staging payload and adapter overhead before more SQL cleanup, prelookup, or anti-join insert-select tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 

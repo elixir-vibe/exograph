@@ -50,6 +50,12 @@ defmodule Exograph.Hex.Corpus do
       if cli?, do: cli_header(total, mode, MapSet.size(existing))
     end
 
+    telemetry =
+      Exograph.Hex.QuackDBTelemetry.attach(
+        backend == :duckdb and Keyword.get(opts, :timings_path) != nil and
+          Keyword.get(opts, :quackdb_telemetry?, true)
+      )
+
     started = System.monotonic_time(:millisecond)
     {opts, insert_buffer} = maybe_start_insert_buffer(backend, repo, opts)
 
@@ -69,6 +75,7 @@ defmodule Exograph.Hex.Corpus do
     end)
 
     Exograph.DuckDB.InsertBuffer.stop(insert_buffer)
+    Exograph.Hex.QuackDBTelemetry.detach(telemetry)
 
     write_report(results, elapsed, opts)
     write_timings(Exograph.Hex.StageTimings.snapshot(), Keyword.get(opts, :timings_path))
