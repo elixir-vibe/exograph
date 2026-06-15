@@ -20,14 +20,18 @@ defmodule ExographShardedSemanticsTest do
     alpha_path =
       fixture("alpha.ex", """
       defmodule Demo.Alpha do
-        def only_alpha(value), do: {:alpha, value}
+        def only_alpha(value) do
+          {:alpha, value}
+        end
       end
       """)
 
     beta_path =
       fixture("beta.ex", """
       defmodule Demo.Beta do
-        def only_beta(value), do: {:beta, value}
+        def only_beta(value) do
+          {:beta, value}
+        end
       end
       """)
 
@@ -59,9 +63,12 @@ defmodule ExographShardedSemanticsTest do
         %{index: beta_index, packages: [%{name: "beta", version: "1.0.0"}]}
       ])
 
+    alpha_filter = %{name: "alpha", version: "1.0.0"}
+    beta_filter = %{name: "beta", version: "1.0.0"}
+
     assert {:ok, [_alpha_hit | _]} =
              Exograph.search_text(sharded, "alpha",
-               package_version: %{name: "alpha", version: "1.0.0"},
+               package_version: alpha_filter,
                limit: 10
              )
 
@@ -73,7 +80,7 @@ defmodule ExographShardedSemanticsTest do
 
     assert {:ok, []} =
              Exograph.search_text(sharded, "alpha",
-               package_version: %{name: "beta", version: "1.0.0"},
+               package_version: beta_filter,
                limit: 10
              )
   end
