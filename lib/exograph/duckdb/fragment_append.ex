@@ -146,7 +146,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
             Exograph.Hex.StageTimings.measure(:fragment_append_stage_rows, fn ->
               repo.insert_all(temp_table, rows,
                 insert_method: :append,
-                chunk_every: 2_000,
+                chunk_every: 10_000,
                 columns: @append_types,
                 timeout: :infinity
               )

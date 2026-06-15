@@ -309,7 +309,7 @@ The remaining wall time is now dominated by fragment append/upsert and the actua
 | temp table create + clear | 1.4s |
 | input / returned rows | 671,837 / 683,055 |
 
-The temp-table DDL/cleanup is not the bottleneck. The next fragment-append work should target the staging append + MERGE query shape, row payload size, or transaction/adapter overhead rather than further cleanup tweaks.
+The temp-table DDL/cleanup is not the bottleneck. Increasing the fragment temp-stage append chunk size from 2k to 10k reduced fixed top500 `fragment_append_rows` from 92.3s to 80.5s and fixed top2000 elapsed to 460.4s (`1635 indexed / 365 skipped / 0 failed`). A 20k chunk was worse on fixed top500 (100.3s elapsed, 88.4s append), so 10k is the current local best. The next fragment-append work should target the staging append + MERGE query shape, row payload size, or transaction/adapter overhead rather than further cleanup tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
