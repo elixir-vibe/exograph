@@ -297,7 +297,19 @@ A follow-up split showed the remaining `code_facts_bulk_insert_references` time 
 | fixed top500 non-blocking enqueue | 379 | 121 | 0 | 89.6s | 99.1s | 28.9s | 0.4s | 17.8s / 18.5s |
 | fixed top2000 non-blocking enqueue | 1635 | 365 | 0 | 466.1s | 490s | 147.5s | 1.8s | 101.6s / 101.3s |
 
-Fact row flush counts matched the prior per-source worker top2000 run (`references` 2,889,685; `definitions` 748,332; `comments` 113,887), so this change did not drop buffered facts in the fixed workload. The remaining wall time is now dominated by fragment append/upsert and the actual serialized DuckDB fact flushes rather than caller backpressure.
+Fact row flush counts matched the prior per-source worker top2000 run (`references` 2,889,685; `definitions` 748,332; `comments` 113,887), so this change did not drop buffered facts in the fixed workload. A fresh fixed top2000 quality run also preserved indexed/skipped/failed totals and the same package/search/fact counts as the previous non-blocking summary, with only a 4-row `fragment_terms` difference out of ~99.4M rows; keep watching this tiny nondeterminism when changing fragment append concurrency.
+
+The remaining wall time is now dominated by fragment append/upsert and the actual serialized DuckDB fact flushes rather than caller backpressure. A fixed top500 MERGE split (`bench-results/fragment-append-split-20260615/top500-split2-timings.json`) showed:
+
+| MERGE append sub-stage | Total |
+|------------------------|------:|
+| `fragment_append_rows` / transaction | 92.3s / 92.2s |
+| staging append into temp table | 32.5s |
+| MERGE query | 27.6s |
+| temp table create + clear | 1.4s |
+| input / returned rows | 671,837 / 683,055 |
+
+The temp-table DDL/cleanup is not the bottleneck. The next fragment-append work should target the staging append + MERGE query shape, row payload size, or transaction/adapter overhead rather than further cleanup tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 

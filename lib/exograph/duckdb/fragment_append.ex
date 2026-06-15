@@ -76,6 +76,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
     if rows == [] do
       %{}
     else
+      Exograph.Hex.StageTimings.count(:fragment_append_input_rows, length(rows))
       insert_rows_by_hash(repo, source, target, rows, opts, Keyword.get(opts, :retries, 3))
     end
   end
@@ -112,15 +113,18 @@ defmodule Exograph.DuckDB.FragmentAppend do
 
   defp ecto_insert_by_hash(repo, target, rows) do
     {_count, returning} =
-      repo.insert_all(target, rows,
-        insert_method: :append,
-        chunk_every: 2_000,
-        conflict_target: [:content_hash],
-        on_conflict: :nothing,
-        returning: [:id, :content_hash],
-        timeout: :infinity
-      )
+      Exograph.Hex.StageTimings.measure(:fragment_append_ecto_insert, fn ->
+        repo.insert_all(target, rows,
+          insert_method: :append,
+          chunk_every: 2_000,
+          conflict_target: [:content_hash],
+          on_conflict: :nothing,
+          returning: [:id, :content_hash],
+          timeout: :infinity
+        )
+      end)
 
+    Exograph.Hex.StageTimings.count(:fragment_append_returned_rows, length(returning))
     Map.new(returning, fn row -> {row.content_hash, row.id} end)
   end
 
@@ -128,24 +132,42 @@ defmodule Exograph.DuckDB.FragmentAppend do
     temp_table = temp_table_name(source)
 
     {:ok, inserted_by_hash} =
-      repo.transaction(
-        fn ->
-          repo.query!(create_temp_table_sql(temp_table), [], timeout: :infinity)
-          repo.query!(clear_temp_table_sql(temp_table), [], timeout: :infinity)
+      Exograph.Hex.StageTimings.measure(:fragment_append_transaction, fn ->
+        repo.transaction(
+          fn ->
+            Exograph.Hex.StageTimings.measure(:fragment_append_create_stage, fn ->
+              repo.query!(create_temp_table_sql(temp_table), [], timeout: :infinity)
+            end)
 
-          repo.insert_all(temp_table, rows,
-            insert_method: :append,
-            chunk_every: 2_000,
-            columns: @append_types,
-            timeout: :infinity
-          )
+            Exograph.Hex.StageTimings.measure(:fragment_append_clear_stage_before, fn ->
+              repo.query!(clear_temp_table_sql(temp_table), [], timeout: :infinity)
+            end)
 
-          %{rows: returning} = repo.query!(merge_sql(source, temp_table), [], timeout: :infinity)
-          repo.query!(clear_temp_table_sql(temp_table), [], timeout: :infinity)
-          Map.new(returning, fn [content_hash, id] -> {content_hash, id} end)
-        end,
-        timeout: :infinity
-      )
+            Exograph.Hex.StageTimings.measure(:fragment_append_stage_rows, fn ->
+              repo.insert_all(temp_table, rows,
+                insert_method: :append,
+                chunk_every: 2_000,
+                columns: @append_types,
+                timeout: :infinity
+              )
+            end)
+
+            %{rows: returning} =
+              Exograph.Hex.StageTimings.measure(:fragment_append_merge_query, fn ->
+                repo.query!(merge_sql(source, temp_table), [], timeout: :infinity)
+              end)
+
+            Exograph.Hex.StageTimings.count(:fragment_append_returned_rows, length(returning))
+
+            Exograph.Hex.StageTimings.measure(:fragment_append_clear_stage_after, fn ->
+              repo.query!(clear_temp_table_sql(temp_table), [], timeout: :infinity)
+            end)
+
+            Map.new(returning, fn [content_hash, id] -> {content_hash, id} end)
+          end,
+          timeout: :infinity
+        )
+      end)
 
     inserted_by_hash
   end
