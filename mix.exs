@@ -48,7 +48,7 @@ defmodule Exograph.MixProject do
       {:json_codec, "~> 0.1.1"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, "~> 0.22"},
-      {:quackdb, "~> 0.5.12"},
+      {:quackdb, "~> 0.5.13"},
       {:ex_doc, "~> 0.38", only: :dev, runtime: false},
       {:phoenix, "~> 1.8", optional: true},
       {:phoenix_html, "~> 4.1", optional: true},
