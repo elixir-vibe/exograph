@@ -404,7 +404,11 @@ defmodule Exograph do
   defp fanout(%ShardedIndex{shards: shards}, function, args, opts) do
     limit = Keyword.get(opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
-    shard_opts = Keyword.put(opts, :limit, limit + skip)
+
+    shard_opts =
+      opts
+      |> Keyword.put(:limit, limit + skip)
+      |> drop_non_integer_package_version_filter()
 
     shards
     |> candidate_shards(opts)
@@ -429,6 +433,14 @@ defmodule Exograph do
     case package_version_filter(opts) do
       nil -> shards
       package_version -> Enum.filter(shards, &shard_has_package_version?(&1, package_version))
+    end
+  end
+
+  defp drop_non_integer_package_version_filter(opts) do
+    case Keyword.get(opts, :package_version) do
+      value when is_integer(value) -> opts
+      nil -> opts
+      _package_key -> Keyword.delete(opts, :package_version)
     end
   end
 
