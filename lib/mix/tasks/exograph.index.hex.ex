@@ -68,6 +68,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-database` - managed DuckDB database path when `--quackdb-uri` is omitted
     * `--repo` - Ecto repo module (uses built-in if omitted)
     * `--timeout` - per-package timeout in seconds (default: `300`)
+    * `--duckdb-fragment-payload-metrics` - record approximate per-column fragment append payload metrics
     * `--web` - start web UI with live progress dashboard
     * `--port` - web UI port (default: `4200`, requires `--web`)
   """
@@ -100,6 +101,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           duckdb_recovery_mode: :string,
           duckdb_build_mode: :string,
           duckdb_fragment_append: :string,
+          duckdb_fragment_payload_metrics: :boolean,
           duckdb_insert_buffer_size: :integer,
           manifest_path: :string,
           report_path: :string,
@@ -172,6 +174,8 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       recovery_mode: recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)),
       duckdb_build_mode: duckdb_build_mode(Keyword.get(opts, :duckdb_build_mode)),
       duckdb_fragment_append: duckdb_fragment_append(Keyword.get(opts, :duckdb_fragment_append)),
+      duckdb_fragment_payload_metrics?:
+        Keyword.get(opts, :duckdb_fragment_payload_metrics, false),
       duckdb_insert_buffer_size: Keyword.get(opts, :duckdb_insert_buffer_size, 50_000),
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),

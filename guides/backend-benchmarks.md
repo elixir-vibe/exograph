@@ -340,7 +340,20 @@ The gap between QuackDB append duration and `fragment_append_stage_rows` suggest
 | direct append on the active transaction connection via Ecto's process dictionary | worked, but regressed fixed top500 (`105.4s` elapsed, `88.6s` append); stage append wrapper fell to `19.7s`, but native append and MERGE time increased |
 | unique persistent staging table plus direct append outside the transaction | worked, but regressed fixed top500 (`105.6s` elapsed, `117.9s` append); regular table create/drop and cross-connection append cost dominated |
 
-This means a QuackDB/Ecto active-transaction append helper is technically possible, but it is not yet justified by the measured workload. The next fragment-append work should target wide-row staging payload, native append request size, or DuckDB MERGE profiling before more SQL cleanup, prelookup, anti-join insert-select, or non-temp staging tweaks.
+This means a QuackDB/Ecto active-transaction append helper is technically possible, but it is not yet justified by the measured workload.
+
+A fragment payload attribution run (`bench-results/fragment-payload-20260615/top500-payload-summary.json`) confirmed the wide payload is dominated by AST and token-list columns:
+
+| Column | Approx payload |
+|--------|---------------:|
+| `ast` | 452.6 MB |
+| `terms` | 234.1 MB |
+| `sub_hashes` | 56.4 MB |
+| `exact_hash` | 43.0 MB |
+| `content_hash` | 21.5 MB |
+| `module` | 13.4 MB |
+
+These approximate column bytes explain nearly all of the ~734 MB QuackDB request. The `ast` blob is the largest single cost, followed by `BIGINT[]` term vectors. This makes a narrower MERGE staging shape attractive: stage only keys/identity needed for conflict detection and return IDs, then append full rows for only missing hashes, or otherwise avoid repeatedly sending full AST/list payloads through the merge temp table. The next fragment-append work should prototype a two-phase narrow-key staging path before more SQL cleanup, prelookup, anti-join insert-select, active-transaction append, or non-temp staging tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 

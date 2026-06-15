@@ -50,6 +50,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             duckdb_insert_buffer: nil,
             duckdb_build_mode: :online,
             duckdb_fragment_append: :merge,
+            duckdb_fragment_payload_metrics?: false,
             static_atoms: :existing
 
   @type t :: %__MODULE__{
@@ -63,6 +64,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           duckdb_insert_buffer: pid() | nil,
           duckdb_build_mode: :online | :offline,
           duckdb_fragment_append: :ecto | :merge,
+          duckdb_fragment_payload_metrics?: boolean(),
           static_atoms: atom()
         }
 
@@ -587,7 +589,8 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   defp insert_fragments_by_hash(%{repo: repo} = store, entries) do
     if Exograph.Backend.duckdb_repo?(repo) do
       Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries,
-        mode: store.duckdb_fragment_append
+        mode: store.duckdb_fragment_append,
+        payload_metrics?: store.duckdb_fragment_payload_metrics?
       )
     else
       entries

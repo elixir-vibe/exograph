@@ -87,7 +87,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
 
     Exograph.Hex.StageTimings.measure(:fragment_append_rows, fn ->
       if merge_append?(opts) do
-        merge_insert_by_hash(repo, source, rows)
+        merge_insert_by_hash(repo, source, rows, opts)
       else
         ecto_insert_by_hash(repo, target, rows)
       end
@@ -131,7 +131,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
     Map.new(returning, fn row -> {row.content_hash, row.id} end)
   end
 
-  defp merge_insert_by_hash(repo, source, rows) do
+  defp merge_insert_by_hash(repo, source, rows, opts) do
     temp_table = temp_table_name(source)
 
     {:ok, inserted_by_hash} =
@@ -145,6 +145,12 @@ defmodule Exograph.DuckDB.FragmentAppend do
             Exograph.Hex.StageTimings.measure(:fragment_append_clear_stage_before, fn ->
               repo.query!(clear_temp_table_sql(temp_table), [], timeout: :infinity)
             end)
+
+            if Keyword.get(opts, :payload_metrics?, false) do
+              Exograph.Hex.StageTimings.measure(:fragment_append_payload_attribution, fn ->
+                record_payload_attribution(rows)
+              end)
+            end
 
             Exograph.Hex.StageTimings.measure(:fragment_append_stage_rows, fn ->
               repo.insert_all(temp_table, rows,
@@ -174,6 +180,49 @@ defmodule Exograph.DuckDB.FragmentAppend do
 
     inserted_by_hash
   end
+
+  defp record_payload_attribution(rows) do
+    Enum.each(@append_types, fn {column, type} ->
+      {bytes, nulls, elements, max_bytes} =
+        Enum.reduce(rows, {0, 0, 0, 0}, fn row, {bytes, nulls, elements, max_bytes} ->
+          value = Map.get(row, column)
+          value_bytes = approximate_payload_bytes(value, type)
+
+          {
+            bytes + value_bytes,
+            nulls + if(is_nil(value), do: 1, else: 0),
+            elements + payload_elements(value, type),
+            max(max_bytes, value_bytes)
+          }
+        end)
+
+      count(payload_metric(:bytes, column), bytes)
+      count(payload_metric(:nulls, column), nulls)
+      count(payload_metric(:elements, column), elements)
+      count(payload_metric(:max_bytes, column), max_bytes)
+    end)
+  end
+
+  defp approximate_payload_bytes(nil, _type), do: 0
+  defp approximate_payload_bytes(value, :blob) when is_binary(value), do: byte_size(value)
+  defp approximate_payload_bytes(value, :varchar) when is_binary(value), do: byte_size(value)
+  defp approximate_payload_bytes(_value, :integer), do: 8
+  defp approximate_payload_bytes(_value, :timestamp), do: 8
+
+  defp approximate_payload_bytes(values, {:list, :integer}) when is_list(values) do
+    length(values) * 8
+  end
+
+  defp approximate_payload_bytes(_value, _type), do: 0
+
+  defp payload_elements(values, {:list, :integer}) when is_list(values), do: length(values)
+  defp payload_elements(_value, _type), do: 1
+
+  defp payload_metric(kind, column),
+    do: String.to_atom("fragment_append_payload_#{kind}_#{column}")
+
+  defp count(_metric, 0), do: :ok
+  defp count(metric, amount), do: Exograph.Hex.StageTimings.count(metric, amount)
 
   defp temp_table_name(source) do
     hash = :erlang.phash2(source, 4_294_967_296) |> Integer.to_string(36)

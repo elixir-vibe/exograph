@@ -883,6 +883,8 @@ defmodule Exograph.Hex.Corpus do
         duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
         duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
         duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :merge),
+        duckdb_fragment_payload_metrics?:
+          Keyword.get(opts, :duckdb_fragment_payload_metrics?, false),
         package_version: [
           ecosystem: :hex,
           name: entry.name,
