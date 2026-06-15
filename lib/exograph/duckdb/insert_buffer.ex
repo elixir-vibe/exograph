@@ -3,6 +3,8 @@ defmodule Exograph.DuckDB.InsertBuffer do
 
   use GenServer
 
+  alias Exograph.DuckDB.InsertBuffer.Worker
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
@@ -13,7 +15,10 @@ defmodule Exograph.DuckDB.InsertBuffer do
   def insert(buffer, source, entries) when is_pid(buffer) do
     entries = List.wrap(entries)
     Exograph.Hex.StageTimings.count(metric(source, :enqueue_rows), length(entries))
-    GenServer.call(buffer, {:insert, source, entries}, :infinity)
+
+    buffer
+    |> worker_for(source)
+    |> Worker.insert(entries)
   end
 
   def flush(nil), do: :ok
@@ -35,77 +40,29 @@ defmodule Exograph.DuckDB.InsertBuffer do
        repo: Keyword.fetch!(opts, :repo),
        dynamic_repo: Keyword.get(opts, :dynamic_repo),
        chunk_size: Keyword.get(opts, :chunk_size, 50_000),
-       buffers: %{},
-       counts: %{}
+       workers: %{}
      }}
   end
 
   @impl true
-  def handle_call({:insert, source, entries}, _from, state) do
-    entries = List.wrap(entries)
-    batches = Map.get(state.buffers, source, [])
-    count = Map.get(state.counts, source, 0) + length(entries)
-
-    state = %{
-      state
-      | buffers: Map.put(state.buffers, source, [entries | batches]),
-        counts: Map.put(state.counts, source, count)
-    }
-
-    state = if count >= state.chunk_size, do: flush_source(state, source), else: state
-    {:reply, :ok, state}
+  def handle_call({:worker_for, source}, _from, state) do
+    {worker, state} = get_or_start_worker(state, source)
+    {:reply, worker, state}
   end
 
-  @impl true
   def handle_call(:flush, _from, state) do
-    {:reply, :ok, flush_all(state)}
+    flush_all(state)
+    {:reply, :ok, state}
   end
 
   @impl true
   def terminate(_reason, state) do
     flush_all(state)
+    stop_workers(state)
     :ok
   end
 
-  defp flush_all(state) do
-    state.buffers
-    |> Map.keys()
-    |> Enum.reduce(state, &flush_source(&2, &1))
-  end
-
-  defp flush_source(state, source) do
-    entries =
-      state.buffers
-      |> Map.get(source, [])
-      |> Enum.reverse()
-      |> Enum.flat_map(& &1)
-
-    if entries != [] do
-      flush_entries(state, source, entries)
-    end
-
-    %{
-      state
-      | buffers: Map.delete(state.buffers, source),
-        counts: Map.delete(state.counts, source)
-    }
-  end
-
-  defp flush_entries(state, source, entries) do
-    Exograph.Hex.StageTimings.count(metric(source, :flush_rows), length(entries))
-
-    Exograph.Hex.StageTimings.measure(metric(source, :flush), fn ->
-      with_dynamic_repo(state, fn ->
-        state.repo.insert_all(source, entries,
-          insert_method: :append,
-          chunk_every: 10_000,
-          timeout: :infinity
-        )
-      end)
-    end)
-  end
-
-  defp metric(source, kind) do
+  def metric(source, kind) do
     case source_suffix(source) do
       "comments" -> metric_atom(kind, :comments)
       "definitions" -> metric_atom(kind, :definitions)
@@ -114,6 +71,44 @@ defmodule Exograph.DuckDB.InsertBuffer do
       "call_edges" -> metric_atom(kind, :call_edges)
       _other -> metric_atom(kind, :other)
     end
+  end
+
+  defp worker_for(buffer, source) do
+    GenServer.call(buffer, {:worker_for, source}, :infinity)
+  end
+
+  defp get_or_start_worker(state, source) do
+    case Map.fetch(state.workers, source) do
+      {:ok, worker} when is_pid(worker) ->
+        {worker, state}
+
+      :error ->
+        {:ok, worker} =
+          Worker.start_link(
+            repo: state.repo,
+            dynamic_repo: state.dynamic_repo,
+            chunk_size: state.chunk_size,
+            source: source
+          )
+
+        {worker, %{state | workers: Map.put(state.workers, source, worker)}}
+    end
+  end
+
+  defp flush_all(state) do
+    state.workers
+    |> Map.values()
+    |> Enum.each(&Worker.flush/1)
+  end
+
+  defp stop_workers(state) do
+    state.workers
+    |> Map.values()
+    |> Enum.each(fn worker ->
+      if Process.alive?(worker) do
+        GenServer.stop(worker, :normal, :infinity)
+      end
+    end)
   end
 
   defp metric_atom(:enqueue_rows, suffix), do: :"duckdb_insert_buffer_enqueue_#{suffix}_rows"
@@ -132,6 +127,86 @@ defmodule Exograph.DuckDB.InsertBuffer do
       [suffix | _] -> suffix
       [] -> source
     end
+  end
+end
+
+defmodule Exograph.DuckDB.InsertBuffer.Worker do
+  @moduledoc false
+
+  use GenServer
+
+  alias Exograph.DuckDB.InsertBuffer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts)
+  end
+
+  def insert(worker, entries) do
+    GenServer.call(worker, {:insert, entries}, :infinity)
+  end
+
+  def flush(worker) do
+    GenServer.call(worker, :flush, :infinity)
+  end
+
+  @impl true
+  def init(opts) do
+    {:ok,
+     %{
+       repo: Keyword.fetch!(opts, :repo),
+       dynamic_repo: Keyword.get(opts, :dynamic_repo),
+       chunk_size: Keyword.fetch!(opts, :chunk_size),
+       source: Keyword.fetch!(opts, :source),
+       buffers: [],
+       count: 0
+     }}
+  end
+
+  @impl true
+  def handle_call({:insert, entries}, _from, state) do
+    entries = List.wrap(entries)
+    count = state.count + length(entries)
+    state = %{state | buffers: [entries | state.buffers], count: count}
+    state = if count >= state.chunk_size, do: flush_source(state), else: state
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:flush, _from, state) do
+    {:reply, :ok, flush_source(state)}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    flush_source(state)
+    :ok
+  end
+
+  defp flush_source(state) do
+    entries =
+      state.buffers
+      |> Enum.reverse()
+      |> Enum.flat_map(& &1)
+
+    if entries != [] do
+      flush_entries(state, entries)
+    end
+
+    %{state | buffers: [], count: 0}
+  end
+
+  defp flush_entries(state, entries) do
+    InsertBuffer.metric(state.source, :flush_rows)
+    |> Exograph.Hex.StageTimings.count(length(entries))
+
+    Exograph.Hex.StageTimings.measure(InsertBuffer.metric(state.source, :flush), fn ->
+      with_dynamic_repo(state, fn ->
+        state.repo.insert_all(state.source, entries,
+          insert_method: :append,
+          chunk_every: 10_000,
+          timeout: :infinity
+        )
+      end)
+    end)
   end
 
   defp with_dynamic_repo(%{dynamic_repo: nil}, fun), do: fun.()

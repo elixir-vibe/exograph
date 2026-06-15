@@ -278,7 +278,16 @@ Two immediate InsertBuffer variants did not justify a behavior change:
 | `--duckdb-insert-buffer-size 200000` | completed top500 but regressed wall time to 146s; fewer, larger flushes made final/large flushes expensive (`duckdb_insert_buffer_flush` 13.7s; definition flush 8.4s) and did not reduce comment enqueue backpressure enough |
 | async flush prototype | not kept; naive `Task.async` from inside the GenServer let task replies hit `handle_info` before `Task.await`, causing final flush/reporting to hang |
 
-If revisiting this area, use a proper supervised per-source worker design or an explicit flush-task protocol, not ad hoc async tasks inside the buffer GenServer.
+A proper per-source worker version of the InsertBuffer did help. The public buffer API stayed the same, but each source table now has an independent worker, so comment enqueue calls no longer wait behind reference/definition flushes.
+
+| Run | Indexed | Skipped | Failed | Index elapsed | Wall time | `fragment_store_code_facts` | `code_facts_bulk_insert_comments` | `fragment_append_rows` |
+|-----|--------:|--------:|-------:|--------------:|----------:|----------------------------:|----------------------------------:|-----------------------:|
+| fixed top500 baseline | 379 | 121 | 0 | 116.9s | ~124s | 109.7s | 41.3s | 105.4s |
+| fixed top500 per-source workers | 379 | 121 | 0 | 97.6s | 106.7s | 72.8s | 0.05s | n/a in adjacent baseline |
+| fixed top2000 default MERGE | 1635 | 365 | 0 | 553.3s | 579s | 537.1s | 233.8s | 580.4s |
+| fixed top2000 per-source workers | 1635 | 365 | 0 | 470.9s | 495s | 459.6s | 7.9s | 435.7s |
+
+The top2000 run used `bench-results/fixed-top2000-20260614/entries.ndjson`, completed with `1635 indexed / 365 skipped / 0 failed`, and still reported the default `duckdb_fragment_append: merge`. This is a real win, but it changes fact flushing from globally serialized to per-source serialized. Keep watching larger fixed-entry runs for DuckDB append contention and retry counts.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
