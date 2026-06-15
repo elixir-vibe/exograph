@@ -5,6 +5,7 @@ defmodule Exograph.Web.QueryLive do
 
   import Exograph.Web.ResultFormatter, only: [display_name: 1, badge_class: 1]
 
+  alias Exograph.Web.IndexStats
   alias Exograph.Web.QueryExecutor
   alias Exograph.Web.ResultFormatter
 
@@ -40,7 +41,7 @@ defmodule Exograph.Web.QueryLive do
   def mount(_params, _session, socket) do
     index = Application.get_env(:exograph, :web_index)
     prefix = Application.get_env(:exograph, :web_prefix)
-    package_count = count_packages(index)
+    package_count = IndexStats.package_count(index)
 
     {:ok,
      assign(socket,
@@ -481,15 +482,6 @@ defmodule Exograph.Web.QueryLive do
       </div>
     </div>
     """
-  end
-
-  defp count_packages(index) do
-    prefix = index.inverted.prefix
-    repo = index.inverted.repo
-
-    repo.aggregate({"#{prefix}_packages", Exograph.Storage.Ecto.PackageRecord}, :count)
-  rescue
-    _ -> 0
   end
 
   attr(:page, :any, required: true)

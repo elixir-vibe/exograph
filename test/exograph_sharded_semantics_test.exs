@@ -3,6 +3,7 @@ defmodule ExographShardedSemanticsTest do
 
   alias Exograph.DuckDBSupport
   alias Exograph.ShardedIndex
+  alias Exograph.Web.IndexStats
 
   setup do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
@@ -94,6 +95,8 @@ defmodule ExographShardedSemanticsTest do
                package_version: %{name: "missing", version: "9.9.9"},
                limit: 10
              )
+
+    assert IndexStats.package_count(sharded) == 2
   end
 
   test "package-scoped sharded text search matches a single logical DuckDB index" do
