@@ -33,6 +33,30 @@ The build-mode flag now selects an initial offline staging path for files, terms
 
 MERGE measurements show lower cumulative `fragment_append_rows` time, exact `top --limit 500 --concurrency 1` parity, repeated exact post-dedupe `top --limit 500 --concurrency 4` parity, and exact fixed-snapshot `top2000 --concurrency 4` parity against explicit Ecto. The default path was then validated on `top --limit 500`, `top --limit 100 --reach`, and fixed top2000 entries; all reported `duckdb_fragment_append: merge` without requiring the explicit flag. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate unique-key race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation and records `fragment_append_retries` in timing snapshots. The later fact-count nondeterminism was traced to duplicate source paths inside Hex tarballs; Exograph now deduplicates source tuples by `{path, package_version}` before extraction.
 
+## Ingestion decision checkpoint
+
+The current default remains **single-DuckDB online MERGE**. It is the only path with repeated exact quality parity at fixed top500/top2000 scale, it uses released QuackDB dependencies, and it remains operationally simple. On the current fixed top500 benchmark, released QuackDB `0.5.13` is around `91.7s` elapsed with `87.2s` aggregate fragment append, `27.9s` temp-stage append, and `25.9s` MERGE query. On fixed top2000, released QuackDB `0.5.12` completed at `465.1s` elapsed / `489.4s` wall with `1635 indexed / 365 skipped / 0 failed`.
+
+Sharded DuckDB is **not a drop-in replacement** for the default. It is the fastest large-corpus ingestion shape observed so far (`70.2s` fixed top500 with four shards, global concurrency `8`, per-shard concurrency/pool size `2`, and `duckdb_threads 2`), and it strongly suggests single-file write/MERGE contention matters. However, shard-local fragment/content/term identity changes global semantics: fragment/term counts increase, broad structural queries can over-count, and a simple fanout dedup by fragment hash did not restore parity. Treat sharding as an opt-in/product-level read architecture candidate with explicit shard-local/global semantics, not as an invisible performance flag.
+
+The future winning architecture should be chosen by product semantics rather than another per-package micro-benchmark:
+
+- **Sharded read architecture**: keep independent DuckDB shard files, accept shard-local IDs/dedup where appropriate, add tests for package-scoped parity, and redesign global search/ranking/aggregation semantics explicitly.
+- **Global finalization pipeline**: extract/index packages into fast staging units or shards, then perform global fragment/term/fact finalization into one logical index. This preserves single-index semantics but requires a correct duplicate-fragment fact attribution model; previous offline/deferred-term shortcuts were not sufficient.
+
+Stop-list of investigated dead ends or exhausted knobs:
+
+- anti-join `INSERT INTO ... SELECT ... WHERE NOT EXISTS ... RETURNING` instead of MERGE;
+- direct QuackDB append bypass from Exograph, including active-transaction internals;
+- persistent non-temp staging tables;
+- two-phase narrow-key/direct-insert staging;
+- DuckDB built-in structured `Quack` logs for this workload;
+- serial `--concurrency 1` ingestion;
+- coarse transaction-level fragment append semaphores;
+- offline deferred term staging;
+- simple fragment-stage chunk tuning above `10k`;
+- simple sharded fanout dedup by fragment hash.
+
 ## QuackDB DSL requirement
 
 Do not grow more hand-rolled MERGE SQL in Exograph. QuackDB now has a DML helper for this shape:

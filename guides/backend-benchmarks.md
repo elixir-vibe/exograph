@@ -59,6 +59,17 @@ For `limit 100`, the systems are close and tuned Postgres wins indexing. For `li
 
 Search/query paths usually favor DuckDB materially, especially on the larger workload.
 
+## DuckDB ingestion decision checkpoint, June 2026
+
+The benchmark evidence now supports keeping single-DuckDB online MERGE as the default ingestion path. It is correct, stable, uses released QuackDB dependencies, and has repeated fixed top500/top2000 parity. Sharding is faster for indexing (`70.2s` fixed top500 with four shards and global concurrency `8`), but it changes global content/term de-duplication and broad structural search semantics, so it should remain an opt-in/product architecture candidate rather than a transparent speed flag.
+
+Future work should choose between two explicit designs:
+
+- sharded read architecture with documented shard-local/global semantics and package-scoped parity tests;
+- global finalization pipeline that rebuilds one logical index after extraction/staging.
+
+Do not spend more time on the exhausted micro-optimizations without new evidence: anti-join insert-select, direct append bypass, persistent staging, narrow staging, Quack structured logs, serial ingestion, transaction semaphores, deferred-term offline staging, larger fragment-stage chunks, or simple fanout result dedup.
+
 ## DuckDB Hex corpus notes, June 2026
 
 A focused DuckDB Hex-corpus tuning pass used the local Hex tarball mirror and 16 DuckDB shards:
