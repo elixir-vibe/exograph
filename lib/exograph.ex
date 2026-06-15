@@ -36,7 +36,11 @@ defmodule Exograph do
   alias Exograph.Extractor.ExAST, as: ExASTExtractor
   alias Exograph.Storage.Ecto.FragmentStore, as: EctoFragmentStore
   alias Exograph.Storage.Ecto.InvertedIndex, as: EctoInvertedIndex
+  alias Exograph.Storage.Ecto.PackageRecord
+  alias Exograph.Storage.Ecto.PackageVersionRecord
   alias Exograph.Storage.Ecto.TreeStore, as: EctoTreeStore
+
+  import Ecto.Query, only: [from: 2]
 
   @spec index(String.t() | [String.t()], keyword()) :: {:ok, Index.t()} | {:error, term()}
   def index(paths, opts \\ []) do
@@ -405,16 +409,12 @@ defmodule Exograph do
     limit = Keyword.get(opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
 
-    shard_opts =
-      opts
-      |> Keyword.put(:limit, limit + skip)
-      |> drop_non_integer_package_version_filter()
-
     shards
     |> candidate_shards(opts)
     |> Task.async_stream(
       fn shard ->
         Exograph.DuckDBShards.with_repo(shard, fn ->
+          shard_opts = shard_opts(shard, opts, limit + skip)
           apply(__MODULE__, function, [shard_index(shard) | args] ++ [shard_opts])
         end)
       end,
@@ -436,12 +436,62 @@ defmodule Exograph do
     end
   end
 
-  defp drop_non_integer_package_version_filter(opts) do
+  defp shard_opts(shard, opts, limit) do
+    opts
+    |> Keyword.put(:limit, limit)
+    |> put_shard_package_version_filter(shard)
+  end
+
+  defp put_shard_package_version_filter(opts, shard) do
     case Keyword.get(opts, :package_version) do
-      value when is_integer(value) -> opts
-      nil -> opts
-      _package_key -> Keyword.delete(opts, :package_version)
+      value when is_integer(value) ->
+        opts
+
+      nil ->
+        opts
+
+      package_key ->
+        case shard_package_version_id(shard, package_key) do
+          nil -> Keyword.delete(opts, :package_version)
+          id -> Keyword.put(opts, :package_version, id)
+        end
     end
+  end
+
+  defp shard_package_version_id(shard, package_key) do
+    index = shard_index(shard)
+    store = index.fragment_store
+    repo = store.repo
+    prefix = store.prefix
+
+    package_id = shard_package_id(repo, prefix, package_name(package_key))
+
+    if package_id do
+      package_versions_source = {"#{prefix}_package_versions", PackageVersionRecord}
+
+      query =
+        from(pv in package_versions_source,
+          where: pv.package_id == ^package_id,
+          where: pv.version == ^package_version(package_key),
+          select: pv.id,
+          limit: 1
+        )
+
+      repo.one(query)
+    end
+  end
+
+  defp shard_package_id(repo, prefix, name) do
+    packages_source = {"#{prefix}_packages", PackageRecord}
+
+    query =
+      from(p in packages_source,
+        where: p.name == ^name,
+        select: p.id,
+        limit: 1
+      )
+
+    repo.one(query)
   end
 
   defp package_version_filter(opts) do
