@@ -332,7 +332,15 @@ QuackDB append telemetry is now captured in Hex timing snapshots when DuckDB ind
 | transport/server append duration | 3.5s transport / 14.3s append |
 | surrounding `fragment_append_stage_rows` | 30.2s |
 
-The gap between QuackDB append duration and `fragment_append_stage_rows` suggests Ecto adapter row normalization/DBConnection queue/transaction overhead is also material, not just protocol encoding. A direct `QuackDB.insert_columns/4` prototype from Exograph was not viable as-is: using the repo pool from inside `repo.transaction/2` checked out a different QuackDB connection, so the connection-local temp table was invisible (`Table .exograph_fragment_merge_* does not exist`) and all indexed packages failed. This confirms that any direct native-append bypass needs QuackDB/Ecto adapter support that appends on the active transaction connection, or a redesigned non-temp staging table strategy. The next fragment-append work should target wide-row staging payload and adapter-level append support before more SQL cleanup, prelookup, or anti-join insert-select tweaks.
+The gap between QuackDB append duration and `fragment_append_stage_rows` suggests Ecto adapter row normalization/DBConnection queue/transaction overhead is also material, not just protocol encoding. Two direct-append variants were investigated and reverted:
+
+| Variant | Result |
+|---------|--------|
+| direct `QuackDB.insert_columns/4` through repo pool | failed: checked out a different QuackDB connection than `repo.transaction/2`, so the connection-local temp table was invisible (`Table .exograph_fragment_merge_* does not exist`) |
+| direct append on the active transaction connection via Ecto's process dictionary | worked, but regressed fixed top500 (`105.4s` elapsed, `88.6s` append); stage append wrapper fell to `19.7s`, but native append and MERGE time increased |
+| unique persistent staging table plus direct append outside the transaction | worked, but regressed fixed top500 (`105.6s` elapsed, `117.9s` append); regular table create/drop and cross-connection append cost dominated |
+
+This means a QuackDB/Ecto active-transaction append helper is technically possible, but it is not yet justified by the measured workload. The next fragment-append work should target wide-row staging payload, native append request size, or DuckDB MERGE profiling before more SQL cleanup, prelookup, anti-join insert-select, or non-temp staging tweaks.
 
 A serial `top --limit 500 --concurrency 1` run remains the earlier clean correctness comparison. Counts and representative checks matched exactly for files, fragments, terms, fragment_terms, definitions, references, comments, packages, package_versions, `defmodule`, `Map.get(_, _)`, `Enum.map(_, _)`, `_ |> _`, and package fragment counts for `jason`, `ecto`, and `phoenix`:
 
