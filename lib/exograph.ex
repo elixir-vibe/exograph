@@ -514,7 +514,9 @@ defmodule Exograph do
       package_version(package) == package_version(package_version)
   end
 
-  defp package_name(value) when is_map(value), do: Map.get(value, :name)
+  defp package_name(value) when is_map(value),
+    do: Map.get(value, :name) || Map.get(value, :package_name)
+
   defp package_name(value) when is_list(value), do: Keyword.get(value, :name)
   defp package_name(_value), do: nil
 

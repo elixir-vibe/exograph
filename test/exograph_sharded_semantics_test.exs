@@ -65,6 +65,12 @@ defmodule ExographShardedSemanticsTest do
                limit: 10
              )
 
+    assert {:ok, [_alpha_hit | _]} =
+             Exograph.search_text(sharded, "alpha",
+               package_version: %Exograph.PackageVersion{package_name: "alpha", version: "1.0.0"},
+               limit: 10
+             )
+
     assert {:ok, []} =
              Exograph.search_text(sharded, "alpha",
                package_version: %{name: "beta", version: "1.0.0"},

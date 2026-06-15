@@ -6,7 +6,7 @@ Sharding is currently an opt-in architecture, not the default DuckDB backend.
 
 ## What is intended to match single-DB behavior
 
-Package/version-scoped queries should route to the shard that owns the package version and should match the corresponding single-package results. Use package/version filters with the same identity stored in the manifest:
+Package/version-scoped queries should route to the shard that owns the package version and should match the corresponding single-package results. Use package/version filters with the same identity stored in the manifest. Filters may be maps/keywords with `:name` and `:version`, or `Exograph.PackageVersion` structs with `:package_name` and `:version`:
 
 ```elixir
 Exograph.search(index, "def handle_call(_, _, _) do ... end",
