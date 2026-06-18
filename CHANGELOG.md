@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.1 - 2026-06-18
+
+### Added
+
+- Added sharded DuckDB semantics documentation and included it in published docs.
+- Added safe DuckDB shard lifecycle helpers and manifest-open coverage.
+- Added package-scoped sharded routing support for map, keyword, and `Exograph.PackageVersion` filters.
+- Added sharded DuckDB web/CLI manifest usage documentation, including configurable shard port base for `mix exograph.web`.
+
+### Fixed
+
+- Fixed sharded DuckDB package-scoped text search filtering for DuckDB text-search paths.
+- Fixed sharded web UI package counts by summing packages across shard indexes.
+- Prevented manifest-owned but skipped packages from dropping package-version filters during sharded search.
+
 ## 0.8.0
 
 ### Added

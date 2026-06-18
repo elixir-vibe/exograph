@@ -1,7 +1,7 @@
 defmodule Exograph.MixProject do
   use Mix.Project
 
-  @version "0.8.0"
+  @version "0.8.1"
   @source_url "https://github.com/elixir-vibe/exograph"
 
   def project do
@@ -100,6 +100,7 @@ defmodule Exograph.MixProject do
         "guides/postgres-copy-staging.md",
         "guides/package-indexing.md",
         "guides/backend-benchmarks.md",
+        "guides/sharded-duckdb.md",
         "guides/mix-tasks.md",
         "guides/web-ui.md",
         "guides/api.md",

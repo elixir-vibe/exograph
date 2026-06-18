@@ -330,21 +330,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   defp upsert_files(_store, [], _now), do: []
 
   defp upsert_files(store, fragments, now) do
-    package_id = store.package && store.package.id
-    package_version_id = store.package_version && store.package_version.id
-
-    raw_files =
-      fragments
-      |> Enum.reject(&is_nil(&1.file))
-      |> Enum.uniq_by(& &1.file)
-      |> Enum.map(fn fragment ->
-        source = fragment.source || ""
-
-        File.new(fragment.file, source, %{
-          package_id: package_id || fragment.package_id,
-          package_version_id: package_version_id || fragment.package_version_id
-        })
-      end)
+    raw_files = raw_files_for_fragments(store, fragments)
 
     Exograph.Hex.StageTimings.count(:fragment_store_file_rows, length(raw_files))
 
@@ -399,21 +385,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   end
 
   defp stage_and_finalize_files(store, fragments, now) do
-    package_id = store.package && store.package.id
-    package_version_id = store.package_version && store.package_version.id
-
-    raw_files =
-      fragments
-      |> Enum.reject(&is_nil(&1.file))
-      |> Enum.uniq_by(& &1.file)
-      |> Enum.map(fn fragment ->
-        source = fragment.source || ""
-
-        File.new(fragment.file, source, %{
-          package_id: package_id || fragment.package_id,
-          package_version_id: package_version_id || fragment.package_version_id
-        })
-      end)
+    raw_files = raw_files_for_fragments(store, fragments)
 
     if raw_files == [] do
       []
@@ -433,6 +405,23 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         %{file | id: id}
       end)
     end
+  end
+
+  defp raw_files_for_fragments(store, fragments) do
+    package_id = store.package && store.package.id
+    package_version_id = store.package_version && store.package_version.id
+
+    fragments
+    |> Enum.reject(&is_nil(&1.file))
+    |> Enum.uniq_by(& &1.file)
+    |> Enum.map(fn fragment ->
+      source = fragment.source || ""
+
+      File.new(fragment.file, source, %{
+        package_id: package_id || fragment.package_id,
+        package_version_id: package_version_id || fragment.package_version_id
+      })
+    end)
   end
 
   defp upsert_fragments(store, fragments, now) do
@@ -636,24 +625,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
       term_to_id = Exograph.DuckDB.OfflineBuild.finalize_terms!(store.repo, store.prefix)
 
-      Enum.map(fragments, fn fragment ->
-        if Enum.all?(MapSet.to_list(fragment.terms), &is_integer/1) do
-          fragment
-        else
-          term_ids =
-            fragment.terms
-            |> MapSet.to_list()
-            |> Enum.flat_map(fn term ->
-              case Map.fetch(term_to_id, term) do
-                {:ok, id} -> [id]
-                :error -> []
-              end
-            end)
-            |> MapSet.new()
-
-          %{fragment | terms: term_ids}
-        end
-      end)
+      replace_fragment_terms(fragments, term_to_id)
     end
   end
 
@@ -678,25 +650,29 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           load_term_ids(store, all_terms)
         end)
 
-      Enum.map(fragments, fn fragment ->
-        if Enum.all?(MapSet.to_list(fragment.terms), &is_integer/1) do
-          fragment
-        else
-          term_ids =
-            fragment.terms
-            |> MapSet.to_list()
-            |> Enum.flat_map(fn term ->
-              case Map.fetch(term_to_id, term) do
-                {:ok, id} -> [id]
-                :error -> []
-              end
-            end)
-            |> MapSet.new()
-
-          %{fragment | terms: term_ids}
-        end
-      end)
+      replace_fragment_terms(fragments, term_to_id)
     end
+  end
+
+  defp replace_fragment_terms(fragments, term_to_id) do
+    Enum.map(fragments, fn fragment ->
+      if Enum.all?(MapSet.to_list(fragment.terms), &is_integer/1) do
+        fragment
+      else
+        term_ids =
+          fragment.terms
+          |> MapSet.to_list()
+          |> Enum.flat_map(fn term ->
+            case Map.fetch(term_to_id, term) do
+              {:ok, id} -> [id]
+              :error -> []
+            end
+          end)
+          |> MapSet.new()
+
+        %{fragment | terms: term_ids}
+      end
+    end)
   end
 
   defp upsert_fragment_terms(store, fragments, inserted_fragment_ids) do

@@ -431,10 +431,7 @@ defmodule Exograph.Hex.Corpus do
 
       if sources == [], do: :skipped, else: {:ok, sources}
     rescue
-      error ->
-        reason = Exception.message(error)
-        Logger.warning("Hex package #{entry.name}@#{entry.version} fetch failed: #{reason}")
-        {:error, reason}
+      error -> {:error, error}
     end
   end
 
@@ -749,20 +746,7 @@ defmodule Exograph.Hex.Corpus do
     %Exograph.Hex.IndexReport.Failure{name: name, version: version, reason: reason}
   end
 
-  defp inferred_backend(opts) do
-    case Keyword.get(opts, :repo) do
-      nil -> :duckdb
-      repo when is_atom(repo) -> inferred_repo_backend(repo)
-    end
-  end
-
-  defp inferred_repo_backend(repo) do
-    cond do
-      Exograph.Backend.duckdb_repo?(repo) -> :duckdb
-      Exograph.Backend.postgres_repo?(repo) -> :postgres
-      true -> :duckdb
-    end
-  end
+  defp inferred_backend(opts), do: Exograph.Backend.inferred(opts)
 
   defp configure_backend!(:duckdb, repo, opts) do
     set_dynamic_repo(opts)
@@ -907,10 +891,7 @@ defmodule Exograph.Hex.Corpus do
           {:error, reason}
       end
     rescue
-      error ->
-        reason = Exception.message(error)
-        Logger.warning("Hex package #{entry.name}@#{entry.version} indexing failed: #{reason}")
-        {:error, reason}
+      error -> {:error, error}
     catch
       :no_elixir -> :skipped
     end

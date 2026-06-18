@@ -361,20 +361,7 @@ defmodule Exograph do
     end
   end
 
-  defp inferred_backend(opts) do
-    case Keyword.get(opts, :repo) do
-      nil -> :duckdb
-      repo when is_atom(repo) -> inferred_repo_backend(repo)
-    end
-  end
-
-  defp inferred_repo_backend(repo) do
-    cond do
-      Exograph.Backend.duckdb_repo?(repo) -> :duckdb
-      Exograph.Backend.postgres_repo?(repo) -> :postgres
-      true -> :duckdb
-    end
-  end
+  defp inferred_backend(opts), do: Exograph.Backend.inferred(opts)
 
   defp extractor_opts(opts) do
     Keyword.drop(opts, [

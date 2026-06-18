@@ -3,45 +3,10 @@ defmodule Exograph.DuckDB.OfflineBuild do
 
   import QuackDB.SQL.Fragment
 
-  @columns [
-    :package_id,
-    :package_version_id,
-    :file_id,
-    :content_hash,
-    :ast,
-    :kind,
-    :module,
-    :name,
-    :arity,
-    :line,
-    :end_line,
-    :mass,
-    :exact_hash,
-    :terms,
-    :sub_hashes,
-    :inserted_at,
-    :updated_at
-  ]
+  alias Exograph.DuckDB.FragmentSchema
 
-  @append_types [
-    package_id: :integer,
-    package_version_id: :integer,
-    file_id: :integer,
-    content_hash: :blob,
-    ast: :blob,
-    kind: :varchar,
-    module: :varchar,
-    name: :varchar,
-    arity: :integer,
-    line: :integer,
-    end_line: :integer,
-    mass: :integer,
-    exact_hash: :blob,
-    terms: {:list, :integer},
-    sub_hashes: {:list, :integer},
-    inserted_at: :timestamp,
-    updated_at: :timestamp
-  ]
+  @columns FragmentSchema.columns()
+  @append_types FragmentSchema.append_types()
 
   def stage_table(prefix), do: "#{prefix}_fragment_stage"
   def file_stage_table(prefix), do: "#{prefix}_file_stage"
