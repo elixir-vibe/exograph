@@ -23,7 +23,11 @@ defmodule Mix.Tasks.Exograph.ReleaseArtifact do
 
     if invalid != [], do: Mix.raise("Invalid options: #{inspect(invalid)}")
 
-    out_dir = Keyword.get(opts, :out_dir, Path.join(Mix.Project.build_path(), "artifacts"))
+    out_dir =
+      opts
+      |> Keyword.get(:out_dir, Path.join(Mix.Project.build_path(), "artifacts"))
+      |> Path.expand()
+
     version = Keyword.get(opts, :version, artifact_version())
     port = Keyword.get(opts, :port, 4_200)
     health_path = Keyword.get(opts, :health_path, "/")
