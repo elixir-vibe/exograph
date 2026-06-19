@@ -1,7 +1,7 @@
 defmodule Exograph.Web do
   @moduledoc false
 
-  @static_paths ~w(assets)
+  @static_paths ~w(assets social)
 
   def static_paths, do: @static_paths
 

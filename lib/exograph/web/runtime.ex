@@ -21,6 +21,8 @@ defmodule Exograph.Web.Runtime do
     Application.put_env(:exograph, :web_index, index)
     Application.put_env(:exograph, :web_repo, Keyword.fetch!(index_opts, :repo))
     Application.put_env(:exograph, :web_prefix, prefix)
+    put_optional_env(:web_public_url, Keyword.get(opts, :public_url))
+    put_optional_env(:web_site_name, Keyword.get(opts, :site_name))
 
     Exograph.Web.Server.put_endpoint_config(port)
 
@@ -46,7 +48,9 @@ defmodule Exograph.Web.Runtime do
       duckdb_threads: env_integer("EXOGRAPH_DUCKDB_THREADS", nil),
       duckdb_memory_limit: System.get_env("EXOGRAPH_DUCKDB_MEMORY_LIMIT"),
       shard_pool_size: env_integer("EXOGRAPH_SHARD_POOL_SIZE", 1),
-      shard_port_base: env_integer("EXOGRAPH_SHARD_PORT_BASE", 9_700)
+      shard_port_base: env_integer("EXOGRAPH_SHARD_PORT_BASE", 9_700),
+      public_url: System.get_env("EXOGRAPH_PUBLIC_URL"),
+      site_name: System.get_env("EXOGRAPH_SITE_NAME")
     ]
   end
 
@@ -110,6 +114,10 @@ defmodule Exograph.Web.Runtime do
     ]
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
   end
+
+  defp put_optional_env(_key, nil), do: :ok
+  defp put_optional_env(_key, ""), do: :ok
+  defp put_optional_env(key, value), do: Application.put_env(:exograph, key, value)
 
   defp rate_limiter_children do
     if Code.ensure_loaded?(Hammer), do: [Exograph.Web.RateLimiter], else: []

@@ -1,10 +1,24 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-zinc-950 text-zinc-100">
   <head>
+    <% meta = Metadata.page() %>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="csrf-token" content={get_csrf_token()} />
-    <title>Exograph</title>
+    <title>{meta.title}</title>
+    <meta name="description" content={meta.description} />
+    <link :if={meta.canonical_url} rel="canonical" href={meta.canonical_url} />
+    <meta property="og:site_name" content={meta.site_name} />
+    <meta property="og:type" content="website" />
+    <meta :if={meta.canonical_url} property="og:url" content={meta.canonical_url} />
+    <meta property="og:title" content={meta.title} />
+    <meta property="og:description" content={meta.description} />
+    <meta :if={meta.image_url} property="og:image" content={meta.image_url} />
+    <meta :if={meta.image_url} property="og:image:type" content="image/svg+xml" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={meta.title} />
+    <meta name="twitter:description" content={meta.description} />
+    <meta :if={meta.image_url} name="twitter:image" content={meta.image_url} />
     <link rel="stylesheet" href={Volt.static_path(Exograph.Web.Endpoint, "/assets/css/app.css")} />
     <link rel="stylesheet" href={Volt.static_path(Exograph.Web.Endpoint, "/assets/js/client.css")} />
     <script defer type="module" src={Volt.static_path(Exograph.Web.Endpoint, "/assets/js/client.js")}></script>
