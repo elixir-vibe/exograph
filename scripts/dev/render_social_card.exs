@@ -2,7 +2,8 @@ Mix.install([{:skia, "~> 0.1.1"}])
 
 alias Skia.Shader
 
-output = Path.expand("../../priv/static/social/exograph-card.png", __DIR__)
+project_root = File.cwd!()
+output = Path.join(project_root, "priv/static/social/exograph-card.png")
 
 card =
   Skia.canvas(1200, 630)
