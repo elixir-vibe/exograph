@@ -14,7 +14,7 @@
     <meta property="og:title" content={meta.title} />
     <meta property="og:description" content={meta.description} />
     <meta :if={meta.image_url} property="og:image" content={meta.image_url} />
-    <meta :if={meta.image_url} property="og:image:type" content="image/svg+xml" />
+    <meta :if={meta.image_url} property="og:image:type" content={meta.image_type} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={meta.title} />
     <meta name="twitter:description" content={meta.description} />

@@ -3,7 +3,8 @@ defmodule Exograph.Web.Metadata do
 
   @title "Exograph — Elixir code search"
   @description "Search Hex package source code with structural Elixir queries, text search, call graph facts, and package-aware results."
-  @image_path "/social/exograph-card.svg"
+  @image_path "/social/exograph-card.png"
+  @image_type "image/png"
 
   def page do
     public_url = public_url()
@@ -13,7 +14,8 @@ defmodule Exograph.Web.Metadata do
       description: @description,
       site_name: Application.get_env(:exograph, :web_site_name, "Exograph"),
       canonical_url: public_url,
-      image_url: absolute_url(public_url, @image_path)
+      image_url: absolute_url(public_url, @image_path),
+      image_type: @image_type
     }
   end
 
