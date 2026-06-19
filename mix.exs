@@ -54,7 +54,7 @@ defmodule Exograph.MixProject do
       {:phoenix, "~> 1.8", optional: true},
       {:phoenix_html, "~> 4.1", optional: true},
       {:phoenix_live_view, "~> 1.1", optional: true},
-      {:volt, "~> 0.11.1", optional: true},
+      {:volt, "~> 0.14.2", optional: true},
       {:bandit, "~> 1.5", optional: true},
       {:hex_core, "~> 0.15", optional: true},
       {:req, "~> 0.5", optional: true},
