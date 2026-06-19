@@ -52,7 +52,6 @@ defmodule Mix.Tasks.Exograph.ReleaseArtifact do
   defp build_assets! do
     Application.ensure_all_started(:req)
     File.cd!("assets", fn -> NPM.install(production: true, frozen: true) end)
-    Exograph.Web.Monaco.ensure_bundled!()
     Mix.Task.run("volt.build")
   end
 

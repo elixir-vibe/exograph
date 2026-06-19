@@ -1,3 +1,4 @@
+import * as monaco from "monaco-editor/esm/vs/editor/edcore.main.js";
 import {
   conf as elixirConf,
   language as elixirLanguage,
@@ -69,11 +70,7 @@ interface MonacoModule {
 
 let completionProvider: { dispose(): void } | null = null;
 
-const MONACO_URL = ["/assets", "vendor", "monaco.js"].join("/");
-
-async function loadMonaco(): Promise<MonacoModule> {
-  return (await import(MONACO_URL)) as MonacoModule;
-}
+const loadMonaco = (): Promise<MonacoModule> => Promise.resolve(monaco as MonacoModule);
 
 const ELIXIR_LANGUAGE = "elixir";
 

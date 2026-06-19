@@ -11,7 +11,6 @@ defmodule Exograph.FeatureCase do
 
   setup_all _context do
     Exograph.Test.WebSetup.ensure_started!()
-    Exograph.Web.Monaco.ensure_bundled!()
     Mix.Task.rerun("volt.build")
     Application.put_env(:phoenix_test, :base_url, Exograph.Test.WebSetup.base_url())
     :ok

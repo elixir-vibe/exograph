@@ -77,7 +77,6 @@ defmodule Mix.Tasks.Exograph.Web do
   end
 
   defp build_assets! do
-    Exograph.Web.Monaco.ensure_bundled!()
     Mix.Task.rerun("volt.build")
   end
 
@@ -91,8 +90,9 @@ defmodule Mix.Tasks.Exograph.Web do
         outdir: Path.join(@app_root, "priv/static/assets"),
         target: :es2020,
         hash: false,
+        asset_url_prefix: "/assets/js",
         resolve_dirs: [Path.join(assets_root, "node_modules"), Path.join(@app_root, "deps")],
-        module_types: %{".css" => :empty, ".ttf" => :empty},
+        module_types: %{".css" => :empty, ".ttf" => :asset},
         tailwind: [
           css: Path.join(@app_root, "assets/web/app.css"),
           sources: [

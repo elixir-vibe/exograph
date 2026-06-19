@@ -387,7 +387,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
 
     Exograph.Web.Server.put_endpoint_config(port)
 
-    Exograph.Web.Monaco.ensure_bundled!()
     Mix.Task.rerun("volt.build")
 
     if Code.ensure_loaded?(Hammer), do: Exograph.Web.RateLimiter.start_link([])
