@@ -13,7 +13,33 @@ defmodule Exograph.Test.WebSetup do
 
   def base_url, do: "http://localhost:#{@port}"
 
+  def assert_assets_built! do
+    required = [
+      "priv/static/assets/css/app.css",
+      "priv/static/assets/css/manifest.json",
+      "priv/static/assets/js/client.css",
+      "priv/static/assets/js/client.js",
+      "priv/static/assets/js/manifest.json"
+    ]
+
+    missing = Enum.reject(required, &File.regular?/1)
+    codicons = Path.wildcard("priv/static/assets/js/codicon-*.ttf")
+
+    cond do
+      missing != [] ->
+        raise "Feature tests require built frontend assets. Run `mix volt.build` first. Missing: #{Enum.join(missing, ", ")}"
+
+      codicons == [] ->
+        raise "Feature tests require built Monaco font assets. Run `mix volt.build` first. Missing: priv/static/assets/js/codicon-*.ttf"
+
+      true ->
+        :ok
+    end
+  end
+
   defp start! do
+    assert_assets_built!()
+
     prefix = System.get_env("EXOGRAPH_PREFIX", "hex2k")
 
     database_url =

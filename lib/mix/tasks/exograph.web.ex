@@ -77,7 +77,6 @@ defmodule Mix.Tasks.Exograph.Web do
   end
 
   defp build_assets! do
-    File.rm_rf!(Volt.Config.build().outdir)
     Mix.Task.rerun("volt.build")
   end
 
