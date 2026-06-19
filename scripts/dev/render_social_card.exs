@@ -5,6 +5,14 @@ alias Skia.Shader
 project_root = File.cwd!()
 output = Path.join(project_root, "priv/static/social/exograph-card.png")
 
+defmodule SocialCard do
+  def text(document, value, opts) do
+    {fill, opts} = Keyword.pop(opts, :fill, :black)
+    {:ok, blob} = Skia.TextBlob.new(value, opts)
+    Skia.text_blob(document, blob, Keyword.put(opts, :fill, fill))
+  end
+end
+
 card =
   Skia.canvas(1200, 630)
   |> Skia.rect(
@@ -23,10 +31,10 @@ card =
     stroke: "#8b5cf6",
     stroke_width: 3
   )
-  |> Skia.text("Exograph", x: 96, y: 154, size: 34, weight: 700, fill: "#c4b5fd")
-  |> Skia.text("Elixir package", x: 96, y: 286, size: 76, weight: 800, fill: "#fafafa")
-  |> Skia.text("code search", x: 96, y: 374, size: 76, weight: 800, fill: "#fafafa")
-  |> Skia.text("structural queries · text search · call graph facts",
+  |> SocialCard.text("Exograph", x: 96, y: 154, size: 34, fill: "#c4b5fd")
+  |> SocialCard.text("Elixir package", x: 96, y: 286, size: 76, fill: "#fafafa")
+  |> SocialCard.text("code search", x: 96, y: 374, size: 76, fill: "#fafafa")
+  |> SocialCard.text("structural queries · text search · call graph facts",
     x: 96,
     y: 482,
     size: 30,
