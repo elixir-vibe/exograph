@@ -11,6 +11,7 @@ defmodule Exograph.FeatureCase do
 
   setup_all _context do
     Exograph.Test.WebSetup.ensure_started!()
+    File.rm_rf!(Volt.Config.build().outdir)
     Mix.Task.rerun("volt.build")
     Application.put_env(:phoenix_test, :base_url, Exograph.Test.WebSetup.base_url())
     :ok
