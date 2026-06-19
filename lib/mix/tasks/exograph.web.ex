@@ -85,7 +85,7 @@ defmodule Mix.Tasks.Exograph.Web do
 
     Application.put_all_env(
       volt: [
-        entry: Path.join(@app_root, "assets/web/app.ts"),
+        entry: Path.join(@app_root, "assets/web/client.ts"),
         root: assets_root,
         outdir: Path.join(@app_root, "priv/static/assets"),
         target: :es2020,

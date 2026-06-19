@@ -1,7 +1,7 @@
 import Config
 
 config :volt,
-  entry: "assets/web/app.ts",
+  entry: "assets/web/client.ts",
   root: "assets",
   outdir: "priv/static/assets",
   target: :es2020,
