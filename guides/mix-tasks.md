@@ -116,3 +116,23 @@ Start a standalone web interface for exploring an index.
 
 Requires optional dependencies: `phoenix`, `phoenix_live_view`, `volt`, `bandit`.
 See [Web UI](web-ui.md) for editor features, search modes, and API details.
+
+## mix exograph.release_artifact
+
+Build an Exograph OTP release tarball and ETF manifest for deployment tools such as HostKit.
+
+    MIX_ENV=prod mix exograph.release_artifact --out-dir _build/prod/artifacts
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--out-dir` | `_build/prod/artifacts` | Directory for the release tarball and manifest |
+| `--version` | `YYYYMMDD-gitsha` | Artifact version used in the tarball name |
+| `--port` | `4200` | HTTP port recorded in the manifest and runtime env |
+| `--health-path` | `/` | HTTP health path recorded in the manifest |
+
+The task keeps Exograph-specific frontend prebuild work in Exograph: it installs locked npm packages, builds Volt assets, and then delegates the generic OTP release tarball and manifest creation to [ReleaseKit](https://hex.pm/packages/release_kit).
+
+The output is compatible with `HostKit.Recipes.OTPRelease`:
+
+    _build/prod/artifacts/exograph-20260620-abcdef0.tar.gz
+    _build/prod/artifacts/exograph.etf
