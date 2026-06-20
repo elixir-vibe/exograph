@@ -116,22 +116,15 @@ Start a standalone web interface for exploring an index.
 Requires optional dependencies: `phoenix`, `phoenix_live_view`, `volt`, `bandit`.
 See [Web UI](web-ui.md) for editor features, search modes, and API details.
 
-## mix exograph.release_artifact
+## Release artifacts
 
-Build an Exograph OTP release tarball and ETF manifest for deployment tools such as HostKit.
+Build frontend assets first, then use [ReleaseKit](https://hex.pm/packages/release_kit) directly to produce the OTP release tarball and ETF manifest:
 
-    MIX_ENV=prod mix exograph.release_artifact --out-dir _build/prod/artifacts
+    MIX_ENV=prod mix run --no-start -e 'Application.ensure_all_started(:req); File.cd!("assets", fn -> NPM.install(production: true, frozen: true) end); File.rm_rf!(Volt.Config.build().outdir)'
+    MIX_ENV=prod mix volt.build
+    MIX_ENV=prod mix release_kit.artifact --out-dir _build/prod/artifacts --port 4200 --health-path /
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--out-dir` | `_build/prod/artifacts` | Directory for the release tarball and manifest |
-| `--version` | `YYYYMMDD-gitsha` | Artifact version used in the tarball name |
-| `--port` | `4200` | HTTP port recorded in the manifest and runtime env |
-| `--health-path` | `/` | HTTP health path recorded in the manifest |
-
-The task keeps Exograph-specific frontend prebuild work in Exograph: it installs locked npm packages, builds Volt assets, and then delegates the generic OTP release tarball and manifest creation to [ReleaseKit](https://hex.pm/packages/release_kit).
-
-The output is compatible with `HostKit.Recipes.OTPRelease`:
+ReleaseKit owns the generic OTP artifact format. Exograph does not wrap ReleaseKit; deployment tools such as `HostKit.Recipes.OTPRelease` consume the generated manifest directly:
 
     _build/prod/artifacts/exograph-20260620-abcdef0.tar.gz
     _build/prod/artifacts/exograph.etf
