@@ -5,10 +5,35 @@ defmodule Exograph.Web.APIController do
   import Ecto.Query
 
   alias Exograph.ShardedIndex
-  alias Exograph.Web.{QueryExecutor, SearchResult}
-  alias Exograph.Storage.Ecto.Options
 
-  @stats_tables ~w(packages package_versions files fragments fragment_terms definitions references comments call_edges terms)
+  alias Exograph.Storage.Ecto.{
+    CallEdgeRecord,
+    CommentRecord,
+    DefinitionRecord,
+    FileRecord,
+    FragmentRecord,
+    FragmentTermRecord,
+    Options,
+    PackageRecord,
+    PackageVersionRecord,
+    ReferenceRecord,
+    TermRecord
+  }
+
+  alias Exograph.Web.{QueryExecutor, SearchResult}
+
+  @stats_sources [
+    {"packages", PackageRecord},
+    {"package_versions", PackageVersionRecord},
+    {"files", FileRecord},
+    {"fragments", FragmentRecord},
+    {"fragment_terms", FragmentTermRecord},
+    {"definitions", DefinitionRecord},
+    {"references", ReferenceRecord},
+    {"comments", CommentRecord},
+    {"call_edges", CallEdgeRecord},
+    {"terms", TermRecord}
+  ]
   @search_timeout_ms 20_000
 
   def search(conn, params) do
@@ -134,7 +159,7 @@ defmodule Exograph.Web.APIController do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    from(p in {"#{prefix}_packages", Exograph.Storage.Ecto.PackageRecord},
+    from(p in {"#{prefix}_packages", PackageRecord},
       left_join: f in ^Options.fragments_source(prefix),
       on: true,
       where: fragment("? = ?", f.package_id, p.id),
@@ -160,18 +185,16 @@ defmodule Exograph.Web.APIController do
   defp stats_payload(index), do: Map.put(table_counts(index), "prefix", index.inverted.prefix)
 
   defp zero_counts do
-    Map.new(@stats_tables, &{&1, 0})
+    Map.new(@stats_sources, fn {name, _schema} -> {name, 0} end)
   end
 
   defp table_counts(index) do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    Map.new(@stats_tables, fn table ->
-      {:ok, %{rows: [[count]]}} =
-        repo.query("SELECT count(*) FROM #{prefix}_#{table}", [], timeout: 30_000)
-
-      {table, count}
+    Map.new(@stats_sources, fn {name, schema} ->
+      source = "#{prefix}_#{name}"
+      {name, repo.aggregate({source, schema}, :count, timeout: 30_000)}
     end)
   end
 
