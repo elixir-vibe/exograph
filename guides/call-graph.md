@@ -2,7 +2,7 @@
 
 Exograph can persist Reach-derived call graph facts during indexing. Reach is an
 optional library dependency and is used as an analysis engine; Exograph owns the
-stable IDs, package/file scope, and backend persistence.
+stable IDs, package/file scope, and DuckDB persistence.
 
 ## Enabling or disabling Reach
 

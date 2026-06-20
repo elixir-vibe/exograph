@@ -138,7 +138,7 @@ Future Exograph MERGE code should use this or a similarly named higher-level hel
    - This should remove much of the online `fragment_store_resolve_fragment_ids` pressure.
 
 5. **Split online and offline DuckDB strategies**
-   - Postgres and small DuckDB indexes can keep online Ecto-style insertion.
+   - Small DuckDB indexes can keep online Ecto-style insertion.
    - Large DuckDB corpora can use an offline analytical build pipeline if the public query API remains the same.
 
 6. **Move proven patterns into QuackDB**

@@ -2,7 +2,7 @@
 
 ## mix exograph.index
 
-Index Elixir source files into DuckDB or Postgres.
+Index Elixir source files into DuckDB through QuackDB.
 
     mix exograph.index --migrate lib
     mix exograph.index --migrate lib test
@@ -10,14 +10,15 @@ Index Elixir source files into DuckDB or Postgres.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--repo` | — | Ecto repo module |
+| `--repo` | — | QuackDB-backed Ecto repo module |
 | `--prefix` | `exograph` | Table prefix |
-| `--migrate` | false | Run migrations before indexing |
-| `--no-bm25` | false | Skip ParadeDB BM25 index creation |
+| `--migrate` | false | Run DuckDB migrations before indexing |
+| `--no-bm25` | false | Skip DuckDB BM25/FTS index creation |
 | `--min-mass` | `8` | Minimum AST fragment mass |
 | `--stats` | false | Print fragment statistics after indexing |
 | `--json` | false | Print summary as JSON |
-| `--backend` | `duckdb` | `duckdb` or `postgres` |
+| `--quackdb-uri` | `QUACKDB_URI` | QuackDB URI when no repo is provided |
+| `--quackdb-token` | `QUACKDB_TOKEN` | QuackDB token |
 | `--duckdb-database` | `exograph.duckdb` | Managed DuckDB database path when no QuackDB URI is provided |
 
 ## mix exograph.search
@@ -30,10 +31,10 @@ Structural, text, or regex search from the CLI.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--repo` | — | Ecto repo module |
+| `--repo` | — | QuackDB-backed Ecto repo module |
 | `--prefix` | `exograph` | Table prefix |
-| `--migrate` | false | Run migrations before searching |
-| `--no-bm25` | false | Skip ParadeDB BM25 index creation |
+| `--migrate` | false | Run DuckDB migrations before searching |
+| `--no-bm25` | false | Skip DuckDB BM25/FTS index creation |
 | `--min-mass` | `8` | Minimum AST fragment mass |
 | `--limit` / `-n` | `20` | Maximum results |
 | `--contains` | — | Require descendant pattern (repeatable) |
@@ -42,7 +43,8 @@ Structural, text, or regex search from the CLI.
 | `--text` | false | Literal text search |
 | `--regex` | false | Regex text search |
 | `--json` | false | Print results as JSON |
-| `--backend` | `duckdb` | `duckdb` or `postgres` |
+| `--quackdb-uri` | `QUACKDB_URI` | QuackDB URI when no repo is provided |
+| `--quackdb-token` | `QUACKDB_TOKEN` | QuackDB token |
 | `--duckdb-database` | `exograph.duckdb` | Managed DuckDB database path when no QuackDB URI is provided |
 
 Structural search with predicates:
@@ -54,7 +56,7 @@ Structural search with predicates:
 
 ## mix exograph.index.hex
 
-Download and index Hex.pm packages in a streaming pipeline.
+Download and index Hex.pm packages in a streaming DuckDB pipeline.
 
     mix exograph.index.hex
     mix exograph.index.hex --mode top --limit 5000
@@ -67,7 +69,6 @@ Download and index Hex.pm packages in a streaming pipeline.
 | `--limit` | — | Max packages to index |
 | `--prefix` | `hex` | Table prefix |
 | `--concurrency` | `4` | Parallel download+index workers |
-| `--backend` | `duckdb` | `duckdb` or `postgres` |
 | `--duckdb-shards` | `1` | DuckDB shard count for corpus indexing |
 | `--duckdb-threads` | — | DuckDB execution threads per server/shard |
 | `--duckdb-recovery-mode` | — | Managed DuckDB recovery mode; use `no_wal_writes` for rebuildable indexes |
@@ -76,16 +77,15 @@ Download and index Hex.pm packages in a streaming pipeline.
 | `--min-mass` | `8` | Minimum AST fragment mass |
 | `--reach` | false | Include Reach call graph extraction |
 | `--force` | false | Re-index already-indexed packages |
-| `--no-bm25` | false | Skip ParadeDB BM25 index creation |
+| `--no-bm25` | false | Skip DuckDB BM25/FTS index creation |
 | `--mirror` | `https://repo.hex.pm` | Tarball mirror URL (repeatable, round-robin) |
 | `--registry-url` | first `--mirror` value | Hex registry URL for `versions`, `latest`, and `all` modes |
 | `--api-url` | `https://hex.pm/api/packages` | Hex package API URL for `top` mode |
 | `--cache-tarballs` | — | Directory to cache downloaded tarballs |
-| `--database-url` | `EXOGRAPH_DATABASE_URL` | Postgres connection URL |
-| `--quackdb-uri` | `QUACKDB_URI` | QuackDB URI for single DuckDB backend |
-| `--quackdb-token` | `QUACKDB_TOKEN` | QuackDB token for single DuckDB backend |
+| `--quackdb-uri` | `QUACKDB_URI` | QuackDB URI for single DuckDB indexing |
+| `--quackdb-token` | `QUACKDB_TOKEN` | QuackDB token |
 | `--duckdb-database` | `hex.duckdb` | Managed DuckDB database path when no QuackDB URI is provided |
-| `--repo` | — | Ecto repo module (uses built-in if omitted) |
+| `--repo` | — | QuackDB-backed Ecto repo module |
 | `--timeout` | `300` | Per-package timeout in seconds |
 | `--web` | false | Start web UI with live progress dashboard |
 | `--port` | `4200` | Web UI port (requires `--web`) |
@@ -101,18 +101,17 @@ Peak disk usage is proportional to `--concurrency`, not total package count.
 Start a standalone web interface for exploring an index.
 
     mix exograph.web --prefix exograph --port 4200
-    mix exograph.web --backend postgres --database-url postgres://localhost/mydb --prefix hex
+    mix exograph.web --manifest-path priv/exograph/hex.etf --port 4200
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--backend` | `duckdb` | `duckdb` or `postgres` |
-| `--repo` | — | Ecto repo module (uses built-in if omitted) |
+| `--repo` | — | QuackDB-backed Ecto repo module |
 | `--prefix` | `exograph` | Table prefix |
 | `--port` | `4200` | HTTP port |
-| `--database-url` | `EXOGRAPH_DATABASE_URL` | Postgres connection URL |
 | `--quackdb-uri` | `QUACKDB_URI` | QuackDB URI |
 | `--quackdb-token` | `QUACKDB_TOKEN` | QuackDB token |
-| `--duckdb-database` | `exograph.duckdb` | Managed DuckDB database path when no QuackDB URI is provided |
+| `--duckdb-database` | `exograph.duckdb` | Managed DuckDB database path |
+| `--manifest-path` | — | Sharded DuckDB manifest path |
 
 Requires optional dependencies: `phoenix`, `phoenix_live_view`, `volt`, `bandit`.
 See [Web UI](web-ui.md) for editor features, search modes, and API details.

@@ -324,11 +324,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp base_filtered_fragment_query(index, cursor, include_source?) do
-    if duckdb?(index) do
-      base_fragment_candidate_query(index, cursor, include_source?)
-    else
-      base_fragment_query(index, cursor)
-    end
+    base_fragment_candidate_query(index, cursor, include_source?)
   end
 
   defp base_fragment_candidate_query(index, cursor, include_source?) do
@@ -369,15 +365,9 @@ defmodule Exograph.DSL.Executor do
     where(
       query,
       [fragment, file],
-      fragment(
-        "(?, ?, ?) > (?, ?, ?)",
-        file.path,
-        fragment.line,
-        fragment.id,
-        ^path,
-        ^line,
-        ^id
-      )
+      file.path > ^path or
+        (file.path == ^path and fragment.line > ^line) or
+        (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
     )
   end
 
@@ -530,15 +520,9 @@ defmodule Exograph.DSL.Executor do
           where(
             query,
             [_joined, frag, file],
-            fragment(
-              "(?, ?, ?) > (?, ?, ?)",
-              file.path,
-              frag.line,
-              frag.id,
-              ^path,
-              ^line,
-              ^id
-            )
+            file.path > ^path or
+              (file.path == ^path and frag.line > ^line) or
+              (file.path == ^path and frag.line == ^line and frag.id > ^id)
           )
       end
 
@@ -587,15 +571,9 @@ defmodule Exograph.DSL.Executor do
           where(
             query,
             [fragment, _joined, file],
-            fragment(
-              "(?, ?, ?) > (?, ?, ?)",
-              file.path,
-              fragment.line,
-              fragment.id,
-              ^path,
-              ^line,
-              ^id
-            )
+            file.path > ^path or
+              (file.path == ^path and fragment.line > ^line) or
+              (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
           )
       end
 
@@ -959,9 +937,9 @@ defmodule Exograph.DSL.Executor do
 
   defp structural_plan?(%Plan{structural_predicates: predicates}), do: predicates != []
 
-  defp light_join_projection?(index, %Plan{binding: binding, select: select} = plan)
+  defp light_join_projection?(_index, %Plan{binding: binding, select: select} = plan)
        when select in [nil, binding] do
-    duckdb?(index) and not structural_plan?(plan)
+    not structural_plan?(plan)
   end
 
   defp light_join_projection?(_index, _plan), do: false
@@ -972,8 +950,6 @@ defmodule Exograph.DSL.Executor do
     |> StructuralQuery.selector()
     |> StructuralQuery.requires_source?()
   end
-
-  defp duckdb?(index), do: Exograph.Backend.duckdb_repo?(index.inverted.repo)
 
   defp hydrate_hit_sources(hits, index) do
     missing_source_ids =
@@ -1032,11 +1008,8 @@ defmodule Exograph.DSL.Executor do
     else
       requested = Keyword.get(opts, :limit, 50) + Keyword.get(opts, :skip, 0)
 
-      if duckdb?(index) do
-        min(max(requested * 3, requested), @stream_batch_size)
-      else
-        requested
-      end
+      _index = index
+      min(max(requested * 3, requested), @stream_batch_size)
     end
   end
 

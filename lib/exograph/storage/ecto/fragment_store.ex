@@ -45,7 +45,6 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
             package: nil,
             package_version: nil,
             extractors: [:ex_ast, :reach],
-            postgres_copy?: false,
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
             duckdb_build_mode: :online,
@@ -59,7 +58,6 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
           package: Package.t() | nil,
           package_version: PackageVersion.t() | nil,
           extractors: keyword() | [atom()],
-          postgres_copy?: boolean(),
           defer_fragment_terms?: boolean(),
           duckdb_insert_buffer: pid() | nil,
           duckdb_build_mode: :online | :offline,
@@ -576,28 +574,10 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   end
 
   defp insert_fragments_by_hash(%{repo: repo} = store, entries) do
-    if Exograph.Backend.duckdb_repo?(repo) do
-      Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries,
-        mode: store.duckdb_fragment_append,
-        payload_metrics?: store.duckdb_fragment_payload_metrics?
-      )
-    else
-      entries
-      |> Enum.chunk_every(2_000)
-      |> Enum.reduce(%{}, fn chunk, acc ->
-        {_count, returning} =
-          repo.insert_all(
-            {source(store), FragmentRecord},
-            chunk,
-            conflict_target: [:content_hash],
-            on_conflict: :nothing,
-            returning: [:id, :content_hash],
-            timeout: :infinity
-          )
-
-        Map.merge(acc, Map.new(returning, fn r -> {r.content_hash, r.id} end))
-      end)
-    end
+    Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries,
+      mode: store.duckdb_fragment_append,
+      payload_metrics?: store.duckdb_fragment_payload_metrics?
+    )
   end
 
   defp fragment_ids_by_hash(repo, target_table, hashes) do
@@ -701,39 +681,20 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     end
   end
 
-  defp bulk_insert_fragment_terms(%{repo: repo, postgres_copy?: true}, source, entries) do
-    if Exograph.Backend.postgres_repo?(repo) do
-      SQL.copy_integer_rows(repo, source, [:term_id, :fragment_id], entries)
-    else
-      bulk_insert_duckdb_or_postgres(repo, source, entries, chunk_size: 10_000)
-    end
-  end
-
   defp bulk_insert_fragment_terms(%{repo: repo}, source, entries) do
-    bulk_insert_duckdb_or_postgres(repo, source, entries, chunk_size: 10_000)
+    bulk_insert_duckdb(repo, source, entries, chunk_size: 10_000)
   end
 
   defp bulk_insert_facts(repo, source, entries, opts) do
-    bulk_insert_duckdb_or_postgres(repo, source, entries, opts)
+    bulk_insert_duckdb(repo, source, entries, opts)
   end
 
-  defp bulk_insert_duckdb_or_postgres(repo, source, entries, opts) do
-    if Exograph.Backend.duckdb_repo?(repo) do
-      repo.insert_all(source, entries,
-        insert_method: :append,
-        chunk_every: Keyword.fetch!(opts, :chunk_size),
-        timeout: :infinity
-      )
-    else
-      SQL.bulk_insert_all(
-        repo,
-        source,
-        entries,
-        chunk_size: Keyword.fetch!(opts, :chunk_size),
-        on_conflict: :nothing,
-        timeout: :infinity
-      )
-    end
+  defp bulk_insert_duckdb(repo, source, entries, opts) do
+    repo.insert_all(source, entries,
+      insert_method: :append,
+      chunk_every: Keyword.fetch!(opts, :chunk_size),
+      timeout: :infinity
+    )
   end
 
   defp upsert_terms(store, terms) do
@@ -741,16 +702,12 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     source = terms_source(store)
     {table_name, _schema} = source
 
-    if Exograph.Backend.duckdb_repo?(store.repo) do
-      :global.trans(
-        {{__MODULE__, store.repo, table_name}, self()},
-        fn -> insert_term_chunks(store.repo, source, table_name, entries) end,
-        [node()],
-        1_000_000
-      )
-    else
-      insert_term_chunks(store.repo, source, table_name, entries)
-    end
+    :global.trans(
+      {{__MODULE__, store.repo, table_name}, self()},
+      fn -> insert_term_chunks(store.repo, source, table_name, entries) end,
+      [node()],
+      1_000_000
+    )
   end
 
   defp insert_term_chunks(repo, source, table_name, entries) do
@@ -758,7 +715,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     |> Enum.chunk_every(1_000)
     |> Enum.each(fn chunk ->
       repo.transaction(fn ->
-        lock_terms_table(repo, table_name)
+        _table_name = table_name
 
         repo.insert_all(
           source,
@@ -769,12 +726,6 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
         )
       end)
     end)
-  end
-
-  defp lock_terms_table(repo, table_name) do
-    if Exograph.Backend.postgres_repo?(repo) do
-      repo.query!("SELECT pg_advisory_xact_lock(hashtext($1))", [table_name])
-    end
   end
 
   defp load_term_ids(store, terms) do
@@ -1127,7 +1078,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     Exograph.Hex.StageTimings.count(code_fact_row_count_stage(mapper), length(entries))
 
     Exograph.Hex.StageTimings.measure(bulk_stage, fn ->
-      if store.duckdb_insert_buffer && Exograph.Backend.duckdb_repo?(store.repo) do
+      if store.duckdb_insert_buffer do
         Exograph.DuckDB.InsertBuffer.insert(store.duckdb_insert_buffer, source, entries)
       else
         bulk_insert_facts(store.repo, source, entries,
@@ -1137,9 +1088,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
     end)
   end
 
-  defp code_fact_chunk_size(repo) do
-    if Exograph.Backend.duckdb_repo?(repo), do: 10_000, else: 3_000
-  end
+  defp code_fact_chunk_size(_repo), do: 10_000
 
   defp code_fact_row_count_stage(:from_comment), do: :code_facts_comment_rows
   defp code_fact_row_count_stage(:from_definition), do: :code_facts_definition_rows
@@ -1158,9 +1107,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
 
-  defp offline_duckdb?(%{repo: repo, duckdb_build_mode: :offline}) do
-    Exograph.Backend.duckdb_repo?(repo)
-  end
+  defp offline_duckdb?(%{duckdb_build_mode: :offline}), do: true
 
   defp offline_duckdb?(_store), do: false
 

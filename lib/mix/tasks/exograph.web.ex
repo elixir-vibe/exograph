@@ -7,11 +7,9 @@ defmodule Mix.Tasks.Exograph.Web do
 
   Options:
 
-    * `--backend` — `duckdb` (default) or `postgres`
     * `--repo` — Ecto repo module (optional, uses built-in repo if omitted)
     * `--prefix` — table prefix (default: `exograph`)
     * `--port` — HTTP port (default: `4200`)
-    * `--database-url` — Postgres URL (or set `EXOGRAPH_DATABASE_URL`)
     * `--quackdb-uri` — QuackDB URI (or starts managed DuckDB when omitted)
     * `--quackdb-token` — QuackDB token
     * `--duckdb-database` — managed DuckDB database path
@@ -34,11 +32,9 @@ defmodule Mix.Tasks.Exograph.Web do
     {opts, _, _} =
       OptionParser.parse(args,
         strict: [
-          backend: :string,
           repo: :string,
           prefix: :string,
           port: :integer,
-          database_url: :string,
           quackdb_uri: :string,
           quackdb_token: :string,
           duckdb_database: :string,
@@ -50,7 +46,6 @@ defmodule Mix.Tasks.Exograph.Web do
         ]
       )
 
-    backend = opts[:backend] || Mix.Exograph.BackendOptions.default_backend()
     prefix = opts[:prefix] || "exograph"
     port = opts[:port] || 4200
 
@@ -60,7 +55,6 @@ defmodule Mix.Tasks.Exograph.Web do
 
     runtime_opts =
       opts
-      |> Keyword.put(:backend, backend)
       |> Keyword.put(:prefix, prefix)
       |> Keyword.put(:port, port)
 

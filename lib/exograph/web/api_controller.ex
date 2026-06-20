@@ -59,7 +59,7 @@ defmodule Exograph.Web.APIController do
             end
 
           _ ->
-            Exograph.search(index, pattern, opts)
+            search_structural(index, pattern, opts)
         end
       end)
 
@@ -75,7 +75,7 @@ defmodule Exograph.Web.APIController do
         })
 
       {:error, reason} ->
-        conn |> put_status(400) |> json(%{error: to_string(reason)})
+        conn |> put_status(400) |> json(%{error: error_payload(reason)})
     end
   end
 
@@ -110,6 +110,27 @@ defmodule Exograph.Web.APIController do
   end
 
   defp index, do: Application.get_env(:exograph, :web_index)
+
+  defp search_structural(index, pattern, opts) do
+    if dsl_query?(pattern) do
+      case QueryExecutor.execute(index, pattern, Keyword.put(opts, :mode, "structural")) do
+        {:ok, hits, _elapsed_ms, _effective_limit, _total} -> {:ok, hits}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      Exograph.search(index, pattern, opts)
+    end
+  end
+
+  defp dsl_query?(pattern) when is_binary(pattern) do
+    trimmed = String.trim(pattern)
+    String.starts_with?(trimmed, "from(") or String.starts_with?(trimmed, "from ")
+  end
+
+  defp dsl_query?(_pattern), do: false
+
+  defp error_payload(%{} = reason), do: reason
+  defp error_payload(reason), do: to_string(reason)
 
   defp search_mode(nil, pattern), do: inferred_mode(pattern)
   defp search_mode("", pattern), do: inferred_mode(pattern)
@@ -161,8 +182,7 @@ defmodule Exograph.Web.APIController do
 
     from(p in {"#{prefix}_packages", PackageRecord},
       left_join: f in ^Options.fragments_source(prefix),
-      on: true,
-      where: fragment("? = ?", f.package_id, p.id),
+      on: f.package_id == p.id,
       group_by: [p.id, p.name],
       order_by: [desc: count(f.id)],
       select: %{id: p.id, name: p.name, fragments: count(f.id)}

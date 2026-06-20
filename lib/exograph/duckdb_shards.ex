@@ -5,7 +5,6 @@ defmodule Exograph.DuckDBShards do
     @moduledoc false
 
     defstruct version: 1,
-              backend: :duckdb,
               shard_count: 0,
               prefix: nil,
               shards: []
@@ -154,7 +153,6 @@ defmodule Exograph.DuckDBShards do
       {:ok, index} =
         with_repo(shard, fn ->
           Exograph.index([],
-            backend: :duckdb,
             repo: shard.repo,
             prefix: shard.prefix,
             migrate?: false,

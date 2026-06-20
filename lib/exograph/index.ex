@@ -2,7 +2,7 @@ defmodule Exograph.Index do
   @moduledoc """
   Runtime handle for an Exograph index.
 
-  The handle keeps backend candidate retrieval, fragment storage, and tree
+  The handle keeps candidate retrieval, fragment storage, and tree
   access state together for query execution.
   """
 

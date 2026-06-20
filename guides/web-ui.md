@@ -11,7 +11,6 @@ Exograph includes an embedded web interface powered by Phoenix LiveView and Mona
 | `--repo` | — | Ecto repo module (uses built-in if omitted) |
 | `--prefix` | `exograph` | Table prefix |
 | `--port` | `4200` | HTTP port |
-| `--database-url` | `EXOGRAPH_DATABASE_URL` | Postgres connection URL |
 
 ## Progress Dashboard
 

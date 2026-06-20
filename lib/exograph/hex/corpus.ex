@@ -13,9 +13,7 @@ defmodule Exograph.Hex.Corpus do
   require Logger
 
   def index(opts \\ []) do
-    opts = Keyword.put_new(opts, :backend, inferred_backend(opts))
-
-    if Keyword.get(opts, :backend) == :duckdb and Keyword.get(opts, :shards, 1) > 1 do
+    if Keyword.get(opts, :shards, 1) > 1 do
       index_sharded(opts)
     else
       index_single(opts)
@@ -34,11 +32,9 @@ defmodule Exograph.Hex.Corpus do
     preflight_missing_tarballs(entries, opts)
     total = length(entries)
 
-    backend = Keyword.fetch!(opts, :backend)
-
-    configure_backend!(backend, repo, opts)
-    if Keyword.get(opts, :migrate?, true), do: migrate!(backend, repo, prefix, opts)
-    prepare_backend!(backend, repo, prefix, opts)
+    configure_backend!(repo, opts)
+    if Keyword.get(opts, :migrate?, true), do: migrate!(repo, prefix)
+    prepare_backend!(repo, prefix, opts)
     existing = if resume?, do: existing_versions(repo, prefix), else: MapSet.new()
 
     progress_lifecycle? = Keyword.get(opts, :progress_lifecycle?, true)
@@ -52,12 +48,11 @@ defmodule Exograph.Hex.Corpus do
 
     telemetry =
       Exograph.Hex.QuackDBTelemetry.attach(
-        backend == :duckdb and Keyword.get(opts, :timings_path) != nil and
-          Keyword.get(opts, :quackdb_telemetry?, true)
+        Keyword.get(opts, :timings_path) != nil and Keyword.get(opts, :quackdb_telemetry?, true)
       )
 
     started = System.monotonic_time(:millisecond)
-    {opts, insert_buffer} = maybe_start_insert_buffer(backend, repo, opts)
+    {opts, insert_buffer} = maybe_start_insert_buffer(repo, opts)
 
     {results, elapsed} =
       if Keyword.get(opts, :pipeline) == :broadway do
@@ -70,8 +65,8 @@ defmodule Exograph.Hex.Corpus do
       Exograph.DuckDB.InsertBuffer.flush(insert_buffer)
     end)
 
-    Exograph.Hex.StageTimings.measure(:finalize_backend, fn ->
-      finalize_backend!(backend, repo, prefix, opts)
+    Exograph.Hex.StageTimings.measure(:finalize_duckdb, fn ->
+      finalize_backend!(repo, prefix, opts)
     end)
 
     Exograph.DuckDB.InsertBuffer.stop(insert_buffer)
@@ -84,7 +79,7 @@ defmodule Exograph.Hex.Corpus do
     results
   end
 
-  defp maybe_start_insert_buffer(:duckdb, repo, opts) do
+  defp maybe_start_insert_buffer(repo, opts) do
     {:ok, buffer} =
       Exograph.DuckDB.InsertBuffer.start_link(
         repo: repo,
@@ -94,8 +89,6 @@ defmodule Exograph.Hex.Corpus do
 
     {Keyword.put(opts, :duckdb_insert_buffer, buffer), buffer}
   end
-
-  defp maybe_start_insert_buffer(_backend, _repo, opts), do: {opts, nil}
 
   defp index_sharded(opts) do
     shard_count = Keyword.fetch!(opts, :shards)
@@ -140,7 +133,7 @@ defmodule Exograph.Hex.Corpus do
     Enum.each(shards, fn shard ->
       Exograph.DuckDBShards.with_repo(shard, fn ->
         Exograph.DuckDB.migrate!(repo: shard.repo, prefix: shard.prefix)
-        prepare_backend!(:duckdb, shard.repo, shard.prefix, opts)
+        prepare_backend!(shard.repo, shard.prefix, opts)
       end)
     end)
 
@@ -538,7 +531,6 @@ defmodule Exograph.Hex.Corpus do
     extractors = Keyword.get(opts, :extractors, [:ex_ast])
 
     index_opts = [
-      backend: Keyword.fetch!(opts, :backend),
       repo: repo,
       dynamic_repo: Keyword.get(opts, :dynamic_repo),
       prefix: prefix,
@@ -551,8 +543,7 @@ defmodule Exograph.Hex.Corpus do
       index_batch_size: hex_index_batch_size(opts),
       migrate?: false,
       extractors: extractors,
-      postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
-      defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
+      defer_fragment_terms?: true,
       duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
       duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online)
     ]
@@ -746,41 +737,20 @@ defmodule Exograph.Hex.Corpus do
     %Exograph.Hex.IndexReport.Failure{name: name, version: version, reason: reason}
   end
 
-  defp inferred_backend(opts), do: Exograph.Backend.inferred(opts)
-
-  defp configure_backend!(:duckdb, repo, opts) do
+  defp configure_backend!(repo, opts) do
     set_dynamic_repo(opts)
     Exograph.DuckDB.configure_threads!(repo, Keyword.get(opts, :duckdb_threads))
   end
 
-  defp configure_backend!(_backend, _repo, _opts), do: :ok
+  defp migrate!(repo, prefix), do: Exograph.DuckDB.migrate!(repo: repo, prefix: prefix)
 
-  defp migrate!(:duckdb, repo, prefix, _opts) do
-    Exograph.DuckDB.migrate!(repo: repo, prefix: prefix)
-  end
-
-  defp migrate!(_backend, repo, prefix, opts) do
-    Exograph.Postgres.migrate!(
-      repo: repo,
-      prefix: prefix,
-      bm25?: Keyword.get(opts, :bm25?, true),
-      postgres_maintenance_work_mem: Keyword.get(opts, :postgres_maintenance_work_mem),
-      postgres_max_parallel_maintenance_workers:
-        Keyword.get(opts, :postgres_max_parallel_maintenance_workers),
-      postgres_unlogged?: Keyword.get(opts, :postgres_unlogged?, false),
-      postgres_defer_indexes?: Keyword.get(opts, :postgres_defer_indexes?, false)
-    )
-  end
-
-  defp prepare_backend!(:duckdb, repo, prefix, opts) do
+  defp prepare_backend!(repo, prefix, opts) do
     if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
       Exograph.DuckDB.OfflineBuild.create_stages!(repo, prefix)
     end
   end
 
-  defp prepare_backend!(_backend, _repo, _prefix, _opts), do: :ok
-
-  defp finalize_backend!(:duckdb, repo, prefix, opts) do
+  defp finalize_backend!(repo, prefix, opts) do
     if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
       Exograph.DuckDB.OfflineBuild.finalize!(repo, prefix)
     end
@@ -790,17 +760,6 @@ defmodule Exograph.Hex.Corpus do
     else
       Exograph.DuckDB.optimize_structural_indexes!(repo: repo, prefix: prefix)
     end
-  end
-
-  defp finalize_backend!(_backend, repo, prefix, opts) do
-    Exograph.Postgres.finalize!(
-      repo: repo,
-      prefix: prefix,
-      bm25?: Keyword.get(opts, :bm25?, true),
-      postgres_maintenance_work_mem: Keyword.get(opts, :postgres_maintenance_work_mem),
-      postgres_max_parallel_maintenance_workers:
-        Keyword.get(opts, :postgres_max_parallel_maintenance_workers)
-    )
   end
 
   defp existing_versions(repo, prefix) do
@@ -849,7 +808,6 @@ defmodule Exograph.Hex.Corpus do
       if sources == [], do: throw(:no_elixir)
 
       index_opts = [
-        backend: Keyword.fetch!(opts, :backend),
         repo: repo,
         dynamic_repo: Keyword.get(opts, :dynamic_repo),
         prefix: prefix,
@@ -862,8 +820,7 @@ defmodule Exograph.Hex.Corpus do
         index_batch_size: hex_index_batch_size(opts),
         migrate?: false,
         extractors: extractors,
-        postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
-        defer_fragment_terms?: Keyword.get(opts, :backend) == :duckdb,
+        defer_fragment_terms?: true,
         duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
         duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
         duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :merge),
@@ -899,7 +856,7 @@ defmodule Exograph.Hex.Corpus do
 
   defp hex_index_batch_size(opts) do
     Keyword.get(opts, :index_batch_size) ||
-      if Keyword.get(opts, :backend) == :duckdb, do: 10_000, else: 2_000
+      10_000
   end
 
   defp elixir_source?(path, source) do

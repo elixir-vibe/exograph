@@ -11,12 +11,10 @@ defmodule Exograph.Web.Runtime do
   def init(opts) do
     port = Keyword.fetch!(opts, :port)
     prefix = Keyword.fetch!(opts, :prefix)
-    backend = Keyword.fetch!(opts, :backend)
-
     Application.ensure_all_started(:phoenix)
     Application.ensure_all_started(:phoenix_live_view)
 
-    {index, index_opts} = open_index!(backend, opts)
+    {index, index_opts} = open_index!(opts)
 
     Application.put_env(:exograph, :web_index, index)
     Application.put_env(:exograph, :web_repo, Keyword.fetch!(index_opts, :repo))
@@ -37,10 +35,8 @@ defmodule Exograph.Web.Runtime do
 
   def env_options do
     [
-      backend: env("EXOGRAPH_BACKEND", "duckdb"),
       prefix: env("EXOGRAPH_PREFIX", "hex"),
       port: env_integer("EXOGRAPH_PORT", 4_200),
-      database_url: System.get_env("EXOGRAPH_DATABASE_URL"),
       quackdb_uri: System.get_env("QUACKDB_URI") || System.get_env("QUACKDB_TEST_URI"),
       quackdb_token: System.get_env("QUACKDB_TOKEN") || System.get_env("QUACKDB_TEST_TOKEN"),
       duckdb_database: System.get_env("EXOGRAPH_DUCKDB_DATABASE"),
@@ -54,7 +50,7 @@ defmodule Exograph.Web.Runtime do
     ]
   end
 
-  def open_index!("duckdb", opts) do
+  def open_index!(opts) do
     case Keyword.get(opts, :manifest_path) do
       path when is_binary(path) and path != "" ->
         {:ok, shards} =
@@ -76,30 +72,11 @@ defmodule Exograph.Web.Runtime do
         {:ok, index} =
           Exograph.index(
             [],
-            Keyword.merge([backend: :duckdb, migrate?: false, bm25?: true], index_opts)
+            Keyword.merge([migrate?: false, bm25?: true], index_opts)
           )
 
         {index, index_opts}
     end
-  end
-
-  def open_index!("postgres", opts) do
-    repo_opts = [url: opts[:database_url], pool_size: 5, ssl: false, log: false, timeout: 120_000]
-    repo_opts = Enum.reject(repo_opts, fn {_key, value} -> is_nil(value) end)
-    {:ok, _pid} = Exograph.Web.Repo.start_link(repo_opts)
-    index_opts = [repo: Exograph.Web.Repo, prefix: opts[:prefix], bm25?: true]
-
-    {:ok, index} =
-      Exograph.index(
-        [],
-        Keyword.merge([backend: :postgres, migrate?: false, bm25?: true], index_opts)
-      )
-
-    {index, index_opts}
-  end
-
-  def open_index!(other, _opts) do
-    raise ArgumentError, "unknown Exograph backend #{inspect(other)}"
   end
 
   defp duckdb_backend_opts(opts) do

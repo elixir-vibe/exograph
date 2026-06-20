@@ -6,7 +6,7 @@ defmodule ExographShardedSemanticsTest do
   alias Exograph.Web.IndexStats
 
   setup do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     database = DuckDBSupport.start_managed_repo!(endpoint: endpoint)
 
     on_exit(fn ->
@@ -38,7 +38,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, alpha_index} =
       Exograph.index(alpha_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "sharded_alpha",
         migrate?: true,
@@ -49,7 +48,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, beta_index} =
       Exograph.index(beta_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "sharded_beta",
         migrate?: true,
@@ -120,7 +118,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, single_alpha_index} =
       Exograph.index(alpha_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "single_package_parity",
         migrate?: true,
@@ -131,7 +128,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, _single_beta_index} =
       Exograph.index(beta_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "single_package_parity",
         migrate?: false,
@@ -142,7 +138,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, single_index} =
       Exograph.index([],
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "single_package_parity",
         migrate?: false
@@ -150,7 +145,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, sharded_alpha_index} =
       Exograph.index(alpha_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "sharded_parity_alpha",
         migrate?: true,
@@ -161,7 +155,6 @@ defmodule ExographShardedSemanticsTest do
 
     {:ok, sharded_beta_index} =
       Exograph.index(beta_path,
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: "sharded_parity_beta",
         migrate?: true,
@@ -233,7 +226,6 @@ defmodule ExographShardedSemanticsTest do
     Exograph.DuckDBShards.with_repo(alpha_shard, fn ->
       {:ok, _index} =
         Exograph.index(alpha_path,
-          backend: :duckdb,
           repo: alpha_shard.repo,
           prefix: alpha_shard.prefix,
           migrate?: true,
@@ -246,7 +238,6 @@ defmodule ExographShardedSemanticsTest do
     Exograph.DuckDBShards.with_repo(beta_shard, fn ->
       {:ok, _index} =
         Exograph.index(beta_path,
-          backend: :duckdb,
           repo: beta_shard.repo,
           prefix: beta_shard.prefix,
           migrate?: true,

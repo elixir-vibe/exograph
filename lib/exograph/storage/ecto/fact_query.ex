@@ -10,36 +10,9 @@ defmodule Exograph.Storage.Ecto.FactQuery do
     limit = Keyword.get(opts, :limit, 50)
     files_source = Options.files_source(index.prefix)
 
-    results =
-      if index.bm25? do
-        bm25_search(index, table_source, literal, opts, limit, files_source)
-      else
-        ilike_search(index, table_source, literal, opts, limit, files_source)
-      end
+    results = ilike_search(index, table_source, literal, opts, limit, files_source)
 
     {:ok, Enum.map(results, &hit(&1, table_source))}
-  end
-
-  defp bm25_search(index, table_source, literal, opts, limit, files_source) do
-    try do
-      query =
-        from(fragment in {Options.fragments_source(index.prefix), FragmentRecord},
-          join: fact in ^table_source,
-          on: fact.fragment_id == fragment.id,
-          left_join: file in ^files_source,
-          on: file.id == fragment.file_id,
-          where: ^fact_filter(literal),
-          order_by: [desc: fragment("pdb.score(?)", fact.id)],
-          limit: ^limit,
-          select: {fragment, nil, file.path, fact}
-        )
-        |> where_scope(opts)
-
-      index.repo.all(query)
-    rescue
-      _ in [Postgrex.Error, QuackDB.Error, Ecto.QueryError] ->
-        ilike_search(index, table_source, literal, opts, limit, files_source)
-    end
   end
 
   defp ilike_search(index, table_source, literal, opts, limit, files_source) do
@@ -92,22 +65,6 @@ defmodule Exograph.Storage.Ecto.FactQuery do
       reference: Exograph.Storage.Ecto.ReferenceRecord.to_reference(fact),
       fragment: Options.hydrate_fragment(record, source, path),
       score: 1.0
-    )
-  end
-
-  defp fact_filter(literal) do
-    dynamic(
-      [_fragment, fact],
-      fragment(
-        "?::pdb.ngram(2, 96, 'prefix_only=true') ||| ?",
-        fact.qualified_name,
-        ^literal
-      ) or
-        fragment(
-          "?::pdb.ngram(2, 32, 'prefix_only=true') ||| ?",
-          fact.name,
-          ^literal
-        )
     )
   end
 

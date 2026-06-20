@@ -12,7 +12,7 @@ def deps do
 end
 ```
 
-DuckDB through QuackDB is the default local backend. Postgres is also supported; ParadeDB's `pg_search` extension is optional for BM25-ranked Postgres search.
+DuckDB through QuackDB is Exograph's storage engine.
 
 The Mix tasks start a managed QuackDB server automatically when `--quackdb-uri` is omitted. Use `--duckdb-database` to choose the DuckDB file path. For large Hex.pm corpora, prefer the sharded DuckDB mode shown below, which starts managed shard servers for you.
 
@@ -65,16 +65,11 @@ Structural search with predicates:
 
     mix exograph.web --prefix exograph --port 4200
 
-Open `http://localhost:4200`. The editor supports structural, text, and regex
-modes. Pass `--database-url` or set `EXOGRAPH_DATABASE_URL` when not using an
-application repo:
-
-    EXOGRAPH_DATABASE_URL=postgres://localhost/mydb \
-      mix exograph.web --prefix exograph --port 4200
+Open `http://localhost:4200`. The editor supports structural, text, and regex modes.
 
 ## Index Hex.pm packages
 
-Download and index packages straight from Hex.pm with the recommended DuckDB sharded backend:
+Download and index packages straight from Hex.pm with sharded DuckDB:
 
     mix exograph.index.hex \
       --mode top --limit 1000 \
@@ -103,6 +98,4 @@ See [Package Indexing](package-indexing.md) for scale numbers and full options.
 - [Querying](querying.md) — structural patterns, text/regex search, planning
 - [DSL](dsl.md) — join code facts with structural predicates
 - [Mix Tasks](mix-tasks.md) — all CLI options
-- [DuckDB and QuackDB](duckdb.md) — recommended backend, sharding, manifests, tuning
-- [Postgres and ParadeDB](postgres-paradedb.md) — Postgres backend tuning
-- [Backend benchmarks](backend-benchmarks.md) — current DuckDB/Postgres benchmark methodology and results
+- [DuckDB and QuackDB](duckdb.md) — storage, sharding, manifests, tuning

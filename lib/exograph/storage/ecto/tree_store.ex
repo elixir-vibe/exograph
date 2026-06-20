@@ -3,7 +3,7 @@ defmodule Exograph.Storage.Ecto.TreeStore do
   Durable AST tree node store backed by Ecto repositories.
   """
 
-  alias Exograph.Postgres
+  alias Exograph.DuckDB
   alias Exograph.Storage.Ecto.{FragmentRecord, Options}
   alias Exograph.Tree
 
@@ -12,10 +12,13 @@ defmodule Exograph.Storage.Ecto.TreeStore do
   @type t :: %__MODULE__{repo: module(), prefix: String.t()}
 
   def new(opts \\ []) do
-    if Keyword.get(opts, :migrate?, false), do: Postgres.migrate!(opts)
+    if Keyword.get(opts, :migrate?, false), do: DuckDB.migrate!(opts)
 
     {:ok,
-     %__MODULE__{repo: Postgres.fetch_repo!(opts), prefix: Keyword.get(opts, :prefix, "exograph")}}
+     %__MODULE__{
+       repo: Keyword.fetch!(opts, :repo),
+       prefix: Keyword.get(opts, :prefix, "exograph")
+     }}
   end
 
   def put_fragments(%__MODULE__{} = store, fragments) when is_list(fragments), do: {:ok, store}

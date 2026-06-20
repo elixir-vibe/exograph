@@ -22,7 +22,6 @@ On a full Hex.pm run with `--mode latest`:
 | Fragments | 13.8M |
 | References | 35M |
 | Database size | ~34 GB |
-| Time (Postgres, 8 workers) | ~28 minutes |
 
 ### Modes
 
@@ -49,7 +48,6 @@ Programmatic usage:
 
 ```elixir
 result = Exograph.Hex.Corpus.index(
-  backend: :duckdb,
   repo: Exograph.DuckDBRepo,
   prefix: "hex",
   shards: 4,
@@ -147,5 +145,4 @@ a package selector to scope the search without code changes.
 
 - [Mix Tasks](mix-tasks.md) — full `mix exograph.index.hex` option reference
 - [Web UI](web-ui.md) — progress dashboard
-- [DuckDB and QuackDB](duckdb.md) — recommended backend, sharding, manifests, tuning
-- [Postgres and ParadeDB](postgres-paradedb.md) — Postgres backend tuning
+- [DuckDB and QuackDB](duckdb.md) — storage, sharding, manifests, tuning

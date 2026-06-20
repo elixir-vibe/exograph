@@ -1,9 +1,9 @@
 defmodule Exograph.Storage.Ecto.Options do
   @moduledoc false
 
-  alias Exograph.{Package, PackageVersion, Postgres}
+  alias Exograph.{DuckDB, Package, PackageVersion}
 
-  def repo(opts), do: Postgres.fetch_repo!(opts)
+  def repo(opts), do: Keyword.fetch!(opts, :repo)
 
   def prefix(opts), do: Keyword.get(opts, :prefix, "exograph")
 
@@ -35,7 +35,6 @@ defmodule Exograph.Storage.Ecto.Options do
       package_version: package_version(opts),
       extractors: extractors(opts),
       bm25?: Keyword.get(opts, :bm25?, true),
-      postgres_copy?: Keyword.get(opts, :postgres_copy?, false),
       defer_fragment_terms?: Keyword.get(opts, :defer_fragment_terms?, false),
       duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
       duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
@@ -82,6 +81,6 @@ defmodule Exograph.Storage.Ecto.Options do
     do: {"#{prefix}_fragment_terms", Exograph.Storage.Ecto.FragmentTermRecord}
 
   def migrate(opts) do
-    if Keyword.get(opts, :migrate?, false), do: Postgres.migrate!(opts)
+    if Keyword.get(opts, :migrate?, false), do: DuckDB.migrate!(opts)
   end
 end

@@ -47,6 +47,20 @@ defmodule Exograph.Features.APITest do
       assert page1_lines != page2_lines
     end
 
+    test "executes DSL query patterns" do
+      resp =
+        api_post("/api/search", %{
+          pattern:
+            ~s|from(f in Fragment, where: matches(f, "def handle_call(_, _, _) do ... end"), limit: 20)|,
+          limit: 20
+        })
+
+      assert resp.status == 200
+      body = json_body(resp)
+      assert body["count"] > 0
+      assert length(body["results"]) <= 20
+    end
+
     test "limits results to requested limit" do
       resp = api_post("/api/search", %{pattern: "def _ do ... end", limit: 1})
 

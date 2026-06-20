@@ -1,6 +1,6 @@
 defmodule Exograph do
   @moduledoc """
-  Local CodeQL-style code search for Elixir, backed by DuckDB/QuackDB or Postgres and ExAST.
+  Local CodeQL-style code search for Elixir, backed by DuckDB/QuackDB and ExAST.
 
   ## Quick start
 
@@ -44,14 +44,11 @@ defmodule Exograph do
 
   @spec index(String.t() | [String.t()], keyword()) :: {:ok, Index.t()} | {:error, term()}
   def index(paths, opts \\ []) do
-    opts = normalize_backend(opts)
     do_index(ExASTExtractor.stream_paths(paths, extractor_opts(opts)), opts)
   end
 
   @doc false
   def index_sources(sources, opts \\ []) do
-    opts = normalize_backend(opts)
-
     sources
     |> dedupe_sources(opts)
     |> ExASTExtractor.stream_sources(extractor_opts(opts))
@@ -84,18 +81,13 @@ defmodule Exograph do
   defp do_index(fragments, opts) do
     store_opts = store_opts(opts)
 
-    store_opts =
-      if opts[:backend] == :duckdb do
-        Exograph.DuckDB.configure_threads!(
-          Keyword.fetch!(opts, :repo),
-          Keyword.get(opts, :duckdb_threads)
-        )
+    Exograph.DuckDB.configure_threads!(
+      Keyword.fetch!(opts, :repo),
+      Keyword.get(opts, :duckdb_threads)
+    )
 
-        if Keyword.get(opts, :migrate?, false), do: Exograph.DuckDB.migrate!(opts)
-        Keyword.put(store_opts, :migrate?, false)
-      else
-        store_opts
-      end
+    if Keyword.get(opts, :migrate?, false), do: Exograph.DuckDB.migrate!(opts)
+    store_opts = Keyword.put(store_opts, :migrate?, false)
 
     store_opts_without_migration = Keyword.put(store_opts, :migrate?, false)
     batch_size = Keyword.get(opts, :index_batch_size, 2_000)
@@ -336,36 +328,8 @@ defmodule Exograph do
     )
   end
 
-  defp normalize_backend(opts) do
-    case Keyword.fetch(opts, :backend) do
-      :error ->
-        Keyword.put(opts, :backend, inferred_backend(opts))
-
-      {:ok, nil} ->
-        Keyword.put(opts, :backend, inferred_backend(opts))
-
-      {:ok, :postgres} ->
-        opts
-
-      {:ok, "postgres"} ->
-        Keyword.put(opts, :backend, :postgres)
-
-      {:ok, :duckdb} ->
-        opts
-
-      {:ok, "duckdb"} ->
-        Keyword.put(opts, :backend, :duckdb)
-
-      {:ok, other} ->
-        raise ArgumentError, "unsupported backend #{inspect(other)}; use :postgres or :duckdb"
-    end
-  end
-
-  defp inferred_backend(opts), do: Exograph.Backend.inferred(opts)
-
   defp extractor_opts(opts) do
     Keyword.drop(opts, [
-      :backend,
       :repo,
       :prefix,
       :migrate?,

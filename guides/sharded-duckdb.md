@@ -2,7 +2,7 @@
 
 Sharded DuckDB indexes split a corpus across multiple independent DuckDB databases and query them through `Exograph.ShardedIndex`. This is useful for large local corpora because it reduces single-file write/MERGE contention during ingestion.
 
-Sharding is currently an opt-in architecture, not the default DuckDB backend.
+Sharding is currently an opt-in architecture, not the default single-file DuckDB mode.
 
 ## CLI usage
 
@@ -10,7 +10,6 @@ Build a sharded Hex corpus by choosing a shard count, shard directory, and manif
 
 ```bash
 mix exograph.index.hex \
-  --backend duckdb \
   --entries-file bench-results/fixed-top2000-20260614/entries.ndjson \
   --tarball-dir /tmp/exograph-top2000-tarballs \
   --concurrency 8 \

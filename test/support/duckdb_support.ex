@@ -28,12 +28,23 @@ defmodule Exograph.DuckDBSupport do
       end)
 
     token = Keyword.get(opts, :token, "test")
+    File.rm_rf(database)
+
+    endpoint =
+      Keyword.get_lazy(opts, :endpoint, fn ->
+        "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+      end)
 
     server_opts =
-      [duckdb: :managed, database: database, token: token]
-      |> put_optional(:endpoint, Keyword.get(opts, :endpoint))
+      [
+        duckdb: :managed,
+        database: database,
+        endpoint: endpoint,
+        token: token,
+        settings: [threads: Keyword.get(opts, :duckdb_threads, 1)]
+      ]
 
-    {:ok, server} = QuackDB.Server.start_link(server_opts)
+    server = ExUnit.Callbacks.start_supervised!({QuackDB.Server, server_opts})
 
     Application.put_env(:exograph, Exograph.DuckDBRepo,
       uri: QuackDB.Server.uri(server),
@@ -47,12 +58,9 @@ defmodule Exograph.DuckDBSupport do
     database
   end
 
-  defp put_optional(opts, _key, nil), do: opts
-  defp put_optional(opts, key, value), do: Keyword.put(opts, key, value)
-
   def opts(prefix, opts \\ []) do
     Keyword.merge(
-      [backend: :duckdb, repo: Exograph.DuckDBRepo, prefix: prefix, migrate?: true],
+      [repo: Exograph.DuckDBRepo, prefix: prefix, migrate?: true],
       opts
     )
   end

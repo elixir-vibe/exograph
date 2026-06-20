@@ -3,7 +3,7 @@ defmodule Exograph.Fragment do
   Searchable code unit.
 
   Fragments are the bridge between source parsing, structural terms, near-duplicate
-  fingerprints, and the inverted index backend.
+  fingerprints, and the inverted index.
   """
 
   @type id :: integer()

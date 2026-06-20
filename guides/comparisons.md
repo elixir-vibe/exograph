@@ -1,9 +1,6 @@
 # Comparisons
 
-Exograph overlaps with text search, structural search, dependence analysis, and
-semantic code analysis tools. The key difference is that Exograph is an
-Elixir-specific code fact index backed by DuckDB/QuackDB or Postgres that uses
-ExAST as its final structural verifier.
+Exograph overlaps with text search, structural search, dependence analysis, and semantic code analysis tools. The key difference is that Exograph is an Elixir-specific DuckDB/QuackDB code fact index that uses ExAST as its final structural verifier.
 
 ## Overview
 
@@ -14,14 +11,14 @@ ExAST as its final structural verifier.
 | Reach | dependence analysis | in-memory graph/reports | APIs / Mix tasks | yes | call/data/control-flow analysis |
 | CodeQL | semantic code analysis | CodeQL database | QL language | not first-class Elixir | security analysis at scale |
 | Sourcegraph | cross-repo search | external index | text/structural depending setup | not Elixir-specific | organization-wide search |
-| Exograph | Elixir code fact index | DuckDB/QuackDB or Postgres/ParadeDB | ExAST + Ecto-shaped DSL | yes | local/self-hosted Elixir code intelligence; large Hex package indexing |
+| Exograph | Elixir code fact index | DuckDB/QuackDB | ExAST + Ecto-shaped DSL | yes | local/self-hosted Elixir code intelligence; large Hex package indexing |
 
 ## Exograph vs ExAST
 
 | Question | ExAST | Exograph |
 |----------|-------|----------|
 | What is indexed? | Nothing by default; exposes advisory terms | Files, fragments, comments, symbols, references, calls |
-| Storage | Source/in-memory | DuckDB/QuackDB or Postgres |
+| Storage | Source/in-memory | DuckDB/QuackDB |
 | Matching authority | ExAST | ExAST |
 | Best for | exact AST search, replace, patching, selector semantics | persisted/cross-package code intelligence |
 | Scale | scan source or caller-managed index terms | query persisted candidates, then verify with ExAST |
@@ -34,12 +31,11 @@ Exograph depends on ExAST. It does not replace it.
 |----------|-------|----------|
 | Primary model | dependence graph | normalized code fact index |
 | Output | maps, checks, reports, graph queries | persisted rows and query hits |
-| Storage | analysis-time graph | DuckDB/QuackDB or Postgres |
+| Storage | analysis-time graph | DuckDB/QuackDB |
 | Role | semantic extractor/analyzer | storage/query layer |
 | Relationship | provides call graph facts | persists and queries Reach facts |
 
-Exograph started as infrastructure to run Reach and ExAST against larger
-codebases and package sets.
+Exograph started as infrastructure to run Reach and ExAST against larger codebases and package sets.
 
 ## Exograph vs CodeQL
 
@@ -47,35 +43,17 @@ codebases and package sets.
 |----------|--------|----------|
 | Languages | many | Elixir-focused |
 | Query language | QL | Elixir API / Ecto-shaped DSL / ExAST selectors |
-| Database | CodeQL database | DuckDB/QuackDB or Postgres |
+| Database | CodeQL database | DuckDB/QuackDB |
 | Semantic model | CodeQL libraries | ExAST + Reach + normalized facts |
 | Deployment | CodeQL CLI / GitHub Advanced Security | local/self-hosted Elixir library |
-| Scale | organization-wide | indexed 21k Hex packages, 13.8M fragments, 28 min |
+| Scale | organization-wide | public Hex package corpus |
 
-Exograph is CodeQL-style in the sense that it indexes code facts and lets you ask
-semantic questions over them. It is not a CodeQL-compatible database or QL runtime.
+Exograph is CodeQL-style in the sense that it indexes code facts and lets you ask semantic questions over them. It is not a CodeQL-compatible database or QL runtime.
 
 ## Exograph vs Sourcegraph
 
-Sourcegraph is an organization-wide code search product. Exograph is a library
-and schema for Elixir-specific code intelligence. Exograph is useful when you
-want local/self-hosted indexed facts and AST-verified Elixir queries rather than
-a general cross-language search UI.
+Sourcegraph is an organization-wide code search product. Exograph is a library and schema for Elixir-specific code intelligence. Exograph is useful when you want local/self-hosted indexed facts and AST-verified Elixir queries rather than a general cross-language search UI.
 
-## Scale and backend benchmark references
+## Scale
 
-A previous full `mix exograph.index.hex --mode latest --concurrency 8` Postgres run:
-
-| Metric | Value |
-|--------|-------|
-| Packages | ~21k |
-| Fragments | 13.8M |
-| References | 35M |
-| Database size | ~34 GB |
-| Time | ~28 minutes |
-| Query time (structural, tuned Postgres) | ~78ms |
-
-Current repeated DuckDB/Postgres backend benchmark numbers are documented in
-[Backend benchmarks](backend-benchmarks.md). The short version: Exograph's tuned Postgres backend is
-slightly faster for `top --limit 100` indexing, while Exograph's DuckDB backend is faster for
-`top --limit 500` indexing and usually much faster on the measured query paths.
+Exograph has been dogfooded against the public Hex package corpus with millions of fragments, definitions, references, and call edges. The current production deployment uses sharded DuckDB files managed through QuackDB and queried through `%Exograph.ShardedIndex{}`.

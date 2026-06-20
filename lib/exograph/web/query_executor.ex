@@ -11,17 +11,18 @@ defmodule Exograph.Web.QueryExecutor do
     mode = Keyword.get(opts, :mode, "structural")
     limit = Keyword.get(opts, :limit, @default_limit)
     skip = Keyword.get(opts, :skip, 0)
+    query_opts = Keyword.merge(Keyword.drop(opts, [:mode]), limit: limit, skip: skip)
 
     {elapsed_us, result} =
       :timer.tc(fn ->
         case mode do
           "text" ->
-            {:ok, results} = Exograph.search_text(index, query_string, limit: limit, skip: skip)
+            {:ok, results} = Exograph.search_text(index, query_string, query_opts)
             {:ok, results, limit, nil}
 
           _ ->
             case SafeEval.eval(query_string) do
-              {:ok, parsed} -> run_parsed(index, parsed, limit, skip)
+              {:ok, parsed} -> run_parsed(index, parsed, query_opts)
               {:error, _} = error -> error
             end
         end
@@ -36,18 +37,22 @@ defmodule Exograph.Web.QueryExecutor do
     end
   end
 
-  defp run_parsed(index, %Exograph.DSL.Query{} = query, limit, skip) do
-    effective_limit = query.limit || limit
+  defp run_parsed(index, %Exograph.DSL.Query{} = query, opts) do
+    default_limit = Keyword.fetch!(opts, :limit)
+    effective_limit = query.limit || default_limit
     total = query.limit
+    query_opts = Keyword.put(opts, :limit, effective_limit)
 
-    case Exograph.all(index, query, limit: effective_limit, skip: skip) do
+    case Exograph.all(index, query, query_opts) do
       {:ok, results} -> {:ok, results, effective_limit, total}
       error -> error
     end
   end
 
-  defp run_parsed(index, pattern, limit, skip) when is_binary(pattern) do
-    case Exograph.search(index, pattern, limit: limit, skip: skip) do
+  defp run_parsed(index, pattern, opts) when is_binary(pattern) do
+    limit = Keyword.fetch!(opts, :limit)
+
+    case Exograph.search(index, pattern, opts) do
       {:ok, results} -> {:ok, results, limit, nil}
       error -> error
     end

@@ -4,30 +4,24 @@ defmodule Mix.Tasks.Exograph.Search do
   @shortdoc "Searches an Elixir codebase with Exograph"
 
   @moduledoc """
-  Searches Elixir source files with Exograph.
+  Searches Elixir source files with Exograph's DuckDB/QuackDB storage.
 
-      mix exograph.search 'Repo.get!(_, _)' --repo MyApp.Repo --migrate
-      mix exograph.search 'def _ do ... end' lib --repo MyApp.Repo --contains 'Repo.transaction(_)'
-      mix exograph.search 'def _ do ... end' lib --repo MyApp.Repo --contains 'Repo.transaction(_)' --not-contains 'IO.inspect(_)'
+      mix exograph.search 'Repo.get!(_, _)' --migrate
+      mix exograph.search 'def _ do ... end' lib --contains 'Repo.transaction(_)'
+      mix exograph.search 'def _ do ... end' lib --contains 'Repo.transaction(_)' --not-contains 'IO.inspect(_)'
       mix exograph.search '/users/:id' lib --text
       mix exograph.search 'Repo\\.get!\\(' lib --regex
 
   ## Options
 
-    * `--backend` - `duckdb` (default) or `postgres`
-    * `--repo` - Ecto repo module for the selected backend
+    * `--repo` - Ecto repo module for a QuackDB-backed DuckDB repo
     * `--prefix` - Exograph table prefix (default: `exograph`)
-    * `--migrate` - create/upgrade backend tables and text indexes
+    * `--migrate` - create/upgrade DuckDB tables and text indexes
     * `--no-bm25` - skip BM25/full-text index creation during migration/finalization
-    * `--quackdb-uri` - QuackDB URI for the DuckDB backend when `--repo` is omitted
-    * `--quackdb-token` - QuackDB token for the DuckDB backend
+    * `--quackdb-uri` - QuackDB URI when `--repo` is omitted
+    * `--quackdb-token` - QuackDB token
     * `--duckdb-database` - managed DuckDB database path when `--quackdb-uri` is omitted
     * `--duckdb-threads` - DuckDB execution threads for indexing/query setup
-    * `--postgres-maintenance-work-mem` - session-local maintenance_work_mem during Postgres index builds
-    * `--postgres-max-parallel-maintenance-workers` - session-local max_parallel_maintenance_workers during Postgres index builds
-    * `--postgres-unlogged` - use UNLOGGED Postgres tables for rebuildable local indexes
-    * `--postgres-defer-indexes` - build non-unique Postgres query indexes after indexing
-    * `--postgres-copy` - use Postgres COPY for supported high-volume append tables
     * `--min-mass` - minimum AST fragment mass (default: `8`)
     * `--limit` - maximum results (default: `20`)
     * `--contains` - require descendant pattern, can be repeated
@@ -45,7 +39,6 @@ defmodule Mix.Tasks.Exograph.Search do
     {opts, positional, invalid} =
       OptionParser.parse(args,
         strict: [
-          backend: :string,
           repo: :string,
           prefix: :string,
           migrate: :boolean,
@@ -54,11 +47,6 @@ defmodule Mix.Tasks.Exograph.Search do
           quackdb_token: :string,
           duckdb_database: :string,
           duckdb_threads: :integer,
-          postgres_maintenance_work_mem: :string,
-          postgres_max_parallel_maintenance_workers: :integer,
-          postgres_unlogged: :boolean,
-          postgres_defer_indexes: :boolean,
-          postgres_copy: :boolean,
           min_mass: :integer,
           limit: :integer,
           contains: :keep,
@@ -68,7 +56,7 @@ defmodule Mix.Tasks.Exograph.Search do
           text: :boolean,
           regex: :boolean
         ],
-        aliases: [b: :backend, n: :limit]
+        aliases: [n: :limit]
       )
 
     if invalid != [] do
@@ -85,19 +73,11 @@ defmodule Mix.Tasks.Exograph.Search do
   end
 
   defp run_search(query_text, paths, opts) do
-    backend_name = Keyword.get(opts, :backend, Mix.Exograph.BackendOptions.default_backend())
     min_mass = Keyword.get(opts, :min_mass, 8)
     limit = Keyword.get(opts, :limit, 20)
-    backend_opts = backend_opts(backend_name, opts)
+    index_opts = Mix.Exograph.DuckDBOptions.opts(opts)
 
-    {:ok, index} =
-      Exograph.index(
-        paths,
-        Keyword.merge(
-          [backend: String.to_existing_atom(backend_name), min_mass: min_mass],
-          backend_opts
-        )
-      )
+    {:ok, index} = Exograph.index(paths, Keyword.merge([min_mass: min_mass], index_opts))
 
     cond do
       Keyword.get(opts, :text, false) ->
@@ -144,8 +124,6 @@ defmodule Mix.Tasks.Exograph.Search do
       end)
     end
   end
-
-  defp backend_opts(backend, opts), do: Mix.Exograph.BackendOptions.backend_opts(backend, opts)
 
   defp print_results(results, opts) do
     if Keyword.get(opts, :json, false) do

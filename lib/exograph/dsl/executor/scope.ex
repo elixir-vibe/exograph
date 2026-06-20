@@ -99,30 +99,22 @@ defmodule Exograph.DSL.Executor.Scope do
   def where_fragment_term_ids(queryable, _index, []), do: queryable
 
   def where_fragment_term_ids(queryable, index, ids) do
-    if duckdb?(index) do
-      candidates = duckdb_term_candidates(index, ids)
+    candidates = duckdb_term_candidates(index, ids)
 
-      join(queryable, :inner, [fragment], candidate in subquery(candidates),
-        on: candidate.fragment_id == fragment.id
-      )
-    else
-      where(queryable, [fragment], fragment("? @> ?", fragment.terms, ^ids))
-    end
+    join(queryable, :inner, [fragment], candidate in subquery(candidates),
+      on: candidate.fragment_id == fragment.id
+    )
   end
 
   @doc false
   def where_second_fragment_term_ids(queryable, _index, []), do: queryable
 
   def where_second_fragment_term_ids(queryable, index, ids) do
-    if duckdb?(index) do
-      candidates = duckdb_term_candidates(index, ids)
+    candidates = duckdb_term_candidates(index, ids)
 
-      join(queryable, :inner, [_first, fragment], candidate in subquery(candidates),
-        on: candidate.fragment_id == fragment.id
-      )
-    else
-      where(queryable, [_first, fragment], fragment("? @> ?", fragment.terms, ^ids))
-    end
+    join(queryable, :inner, [_first, fragment], candidate in subquery(candidates),
+      on: candidate.fragment_id == fragment.id
+    )
   end
 
   defp duckdb_term_candidates(index, ids) do
@@ -135,8 +127,6 @@ defmodule Exograph.DSL.Executor.Scope do
       select: term.fragment_id
     )
   end
-
-  defp duckdb?(index), do: Exograph.Backend.duckdb_repo?(index.inverted.repo)
 
   defp resolve_structural_term_ids(index, plan) do
     required_terms = Compiler.required_terms(plan.query)

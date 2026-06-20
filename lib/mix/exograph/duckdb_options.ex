@@ -1,24 +1,7 @@
-defmodule Mix.Exograph.BackendOptions do
+defmodule Mix.Exograph.DuckDBOptions do
   @moduledoc false
 
-  def default_backend, do: "duckdb"
-
-  def backend_opts("postgres", opts) do
-    [
-      repo: repo!(opts),
-      prefix: Keyword.get(opts, :prefix, "exograph"),
-      migrate?: Keyword.get(opts, :migrate, false),
-      bm25?: !Keyword.get(opts, :no_bm25, false),
-      postgres_maintenance_work_mem: Keyword.get(opts, :postgres_maintenance_work_mem),
-      postgres_max_parallel_maintenance_workers:
-        Keyword.get(opts, :postgres_max_parallel_maintenance_workers),
-      postgres_unlogged?: Keyword.get(opts, :postgres_unlogged, false),
-      postgres_defer_indexes?: Keyword.get(opts, :postgres_defer_indexes, false),
-      postgres_copy?: Keyword.get(opts, :postgres_copy, false)
-    ]
-  end
-
-  def backend_opts("duckdb", opts) do
+  def opts(opts) do
     [
       repo: duckdb_repo!(opts),
       prefix: Keyword.get(opts, :prefix, "exograph"),
@@ -26,10 +9,6 @@ defmodule Mix.Exograph.BackendOptions do
       bm25?: !Keyword.get(opts, :no_bm25, false),
       duckdb_threads: Keyword.get(opts, :duckdb_threads)
     ]
-  end
-
-  def backend_opts(other, _opts) do
-    Mix.raise("Unknown backend #{inspect(other)}. Expected: postgres or duckdb")
   end
 
   defp duckdb_repo!(opts) do
@@ -85,9 +64,7 @@ defmodule Mix.Exograph.BackendOptions do
     end
   end
 
-  defp default_duckdb_database(opts) do
-    "#{Keyword.get(opts, :prefix, "exograph")}.duckdb"
-  end
+  defp default_duckdb_database(opts), do: "#{Keyword.get(opts, :prefix, "exograph")}.duckdb"
 
   @doc false
   def duckdb_token(opts) do
@@ -105,12 +82,6 @@ defmodule Mix.Exograph.BackendOptions do
     {:ok, port} = :inet.port(socket)
     :ok = :gen_tcp.close(socket)
     port
-  end
-
-  defp repo!(opts) do
-    opts
-    |> Keyword.fetch!(:repo)
-    |> module!()
   end
 
   defp module!(name) do

@@ -1,7 +1,6 @@
 # Querying
 
-Exograph supports structural search through ExAST selectors, backend text/regex
-search, and relational queries through the DSL.
+Exograph supports structural search through ExAST selectors, DuckDB text/regex search, and relational queries through the DSL.
 
 ## Structural patterns
 
@@ -10,8 +9,7 @@ search, and relational queries through the DSL.
 ```
 
 Patterns are plain ExAST patterns. `_` matches one node; `...` matches a sequence
-or variable arity where supported by ExAST. The configured backend retrieves candidates by term
-index; ExAST verifies the structural match.
+or variable arity where supported by ExAST. DuckDB retrieves candidates by term index; ExAST verifies the structural match.
 
 ## Relationship-aware selectors
 
@@ -53,7 +51,7 @@ Search source code by literal text:
 {:ok, hits} = Exograph.search_text(index, "deprecated", limit: 50)
 ```
 
-On DuckDB, text search uses the DuckDB/QuackDB text-search path. On Postgres with ParadeDB `pg_search` installed, text search uses BM25 ranking. Otherwise, Postgres falls back to `ILIKE` accelerated by `pg_trgm` GIN indexes on `files.source` and `files.comments_text`.
+Text search uses the DuckDB/QuackDB text-search path.
 
 ## Regex search
 
@@ -64,7 +62,7 @@ Pass a compiled regex to `Exograph.search_text/3`:
 {:ok, hits} = Exograph.search_text(index, ~r/Repo\.(get|insert|update)!/, limit: 100)
 ```
 
-Regex search uses the configured backend's regex predicate. On Postgres this is `~*` (case-insensitive), and `pg_trgm` may still accelerate the scan if the regex has extractable trigrams.
+Regex search uses QuackDB's DuckDB regular-expression helpers.
 
 ## Text and regex modes in the web UI and API
 

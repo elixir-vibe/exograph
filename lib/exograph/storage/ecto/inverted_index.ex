@@ -1,13 +1,13 @@
 defmodule Exograph.Storage.Ecto.InvertedIndex do
   @moduledoc """
-  Ecto candidate retrieval backend with backend-specific text-search paths.
+  Ecto candidate retrieval for DuckDB/QuackDB indexes.
 
-  Structural lookups use the `terms integer[]` GIN index on Postgres and a
-  normalized candidate table on DuckDB. Term strings are normalized to integer
-  IDs in the terms table before querying.
+  Structural lookups use a normalized candidate table on DuckDB. Term strings
+  are normalized to integer IDs in the terms table before querying.
   """
 
   import Ecto.Query
+  import QuackDB.Ecto.Regex, only: [regexp_matches: 2]
 
   alias Exograph.{Hit, Package, PackageVersion}
   alias Exograph.Storage.Ecto.{CallEdgeRecord, FactQuery, FragmentRecord, Options, Scope}
@@ -113,7 +113,7 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
       from(fragment in {source(index), FragmentRecord},
         join: file in ^files,
         on: file.id == fragment.file_id,
-        where: fragment("? ~* ?", file.source, ^pattern),
+        where: regexp_matches(file.source, ^pattern),
         order_by: [asc: file.path, asc: fragment.line],
         limit: ^limit,
         select: {fragment, file.source, file.path}
@@ -130,14 +130,8 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
   end
 
   defp search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
-    if duckdb?(index) do
-      Exograph.DuckDB.TextSearch.search_file_field(index, literal, field, opts)
-    else
-      Exograph.Postgres.TextSearch.search_file_field(index, literal, field, opts)
-    end
+    Exograph.DuckDB.TextSearch.search_file_field(index, literal, field, opts)
   end
-
-  defp duckdb?(index), do: Exograph.Backend.duckdb_repo?(index.repo)
 
   defp with_file(queryable, index, true) do
     from(fragment in queryable,
@@ -164,31 +158,19 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
   defp where_term_ids(queryable, _index, [], []), do: queryable
 
   defp where_term_ids(queryable, index, required_ids, []) when required_ids != [] do
-    if duckdb?(index) do
-      join_required_term_candidates(queryable, index, required_ids)
-    else
-      where(queryable, [fragment], fragment("? @> ?", fragment.terms, ^required_ids))
-    end
+    join_required_term_candidates(queryable, index, required_ids)
   end
 
   defp where_term_ids(queryable, index, [], optional_ids) when optional_ids != [] do
-    if duckdb?(index) do
-      candidates = any_term_candidates(index, optional_ids)
+    candidates = any_term_candidates(index, optional_ids)
 
-      join(queryable, :inner, [fragment], candidate in subquery(candidates),
-        on: candidate.fragment_id == fragment.id
-      )
-    else
-      where(queryable, [fragment], fragment("? && ?", fragment.terms, ^optional_ids))
-    end
+    join(queryable, :inner, [fragment], candidate in subquery(candidates),
+      on: candidate.fragment_id == fragment.id
+    )
   end
 
   defp where_term_ids(queryable, index, required_ids, _optional_ids) do
-    if duckdb?(index) do
-      join_required_term_candidates(queryable, index, required_ids)
-    else
-      where(queryable, [fragment], fragment("? @> ?", fragment.terms, ^required_ids))
-    end
+    join_required_term_candidates(queryable, index, required_ids)
   end
 
   defp join_required_term_candidates(queryable, index, required_ids) do

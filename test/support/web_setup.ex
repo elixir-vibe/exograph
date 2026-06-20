@@ -40,28 +40,28 @@ defmodule Exograph.Test.WebSetup do
   defp start! do
     assert_assets_built!()
 
-    prefix = System.get_env("EXOGRAPH_PREFIX", "hex2k")
+    prefix = System.get_env("EXOGRAPH_PREFIX", "feature")
 
-    database_url =
-      System.get_env("EXOGRAPH_DATABASE_URL", "postgres://dannote@localhost:5432/postgres")
+    repo_opts =
+      case System.get_env("EXOGRAPH_DUCKDB_DATABASE") do
+        nil -> []
+        database -> [database: database]
+      end
 
-    repo_opts = [url: database_url, pool_size: 5, log: false, timeout: 120_000]
-
-    case Exograph.Web.Repo.start_link(repo_opts) do
-      {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
-    end
+    Exograph.DuckDBSupport.start_managed_repo!(repo_opts)
 
     {:ok, index} =
-      Exograph.index([],
-        repo: Exograph.Web.Repo,
+      Exograph.index(feature_sources(),
+        repo: Exograph.DuckDBRepo,
         prefix: prefix,
-        migrate?: false,
-        bm25?: false
+        migrate?: true,
+        bm25?: false,
+        min_mass: 4,
+        package_version: [ecosystem: :hex, name: "feature_fixture", version: "1.0.0"]
       )
 
     Application.put_env(:exograph, :web_index, index)
-    Application.put_env(:exograph, :web_repo, Exograph.Web.Repo)
+    Application.put_env(:exograph, :web_repo, Exograph.DuckDBRepo)
     Application.put_env(:exograph, :web_prefix, prefix)
 
     endpoint_config = [
@@ -97,5 +97,33 @@ defmodule Exograph.Test.WebSetup do
 
     {:ok, _} = Exograph.Web.Endpoint.start_link()
     :started
+  end
+
+  defp feature_sources do
+    dir = Path.join(System.tmp_dir!(), "exograph-feature-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "server.ex")
+
+    File.write!(path, """
+    defmodule FeatureFixture.Server do
+      def handle_call(:get, _from, state) do
+        {:reply, state, state}
+      end
+
+      def list(items) do
+        Enum.map(items, &to_string/1)
+      end
+
+      def get_user(repo, id) do
+        repo.get!(User, id)
+      end
+
+      def bang!(value) do
+        value
+      end
+    end
+    """)
+
+    [path]
   end
 end

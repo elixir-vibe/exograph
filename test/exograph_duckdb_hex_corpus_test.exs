@@ -6,7 +6,7 @@ defmodule ExographDuckDBHexCorpusTest do
   @moduletag :integration
 
   test "duckdb offline build mode matches online counts for a top package" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
 
     online_prefix = "exograph_duckdb_hex_online_#{System.unique_integer([:positive])}"
@@ -21,7 +21,7 @@ defmodule ExographDuckDBHexCorpusTest do
   end
 
   test "duckdb offline build mode matches online Reach counts for a top package" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
 
     online_prefix = "exograph_duckdb_reach_online_#{System.unique_integer([:positive])}"
@@ -42,7 +42,7 @@ defmodule ExographDuckDBHexCorpusTest do
   end
 
   test "duckdb fragment append mode is forwarded through the corpus pipeline" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     prefix = "exograph_duckdb_append_mode_#{System.unique_integer([:positive])}"
 
@@ -54,7 +54,7 @@ defmodule ExographDuckDBHexCorpusTest do
   end
 
   test "duckdb duplicate source paths are indexed once per package version" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     single_prefix = "exograph_duckdb_single_source_#{System.unique_integer([:positive])}"
     duplicate_prefix = "exograph_duckdb_duplicate_source_#{System.unique_integer([:positive])}"
@@ -101,7 +101,7 @@ defmodule ExographDuckDBHexCorpusTest do
   end
 
   test "duckdb file lookup stays scoped to package version for duplicate file hashes" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     prefix = "exograph_duckdb_file_scope_#{System.unique_integer([:positive])}"
     opts = DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
@@ -138,7 +138,7 @@ defmodule ExographDuckDBHexCorpusTest do
     assert reference_count > 0
   end
 
-  test "duckdb backend indexes Hex packages through the corpus pipeline" do
+  test "DuckDB indexes Hex packages through the corpus pipeline" do
     if System.get_env("QUACKDB_TEST_URI") do
       DuckDBSupport.start_repo!()
       prefix = "exograph_duckdb_hex_#{System.unique_integer([:positive])}"
@@ -284,7 +284,6 @@ defmodule ExographDuckDBHexCorpusTest do
   defp index!(prefix) do
     {:ok, index} =
       Exograph.index([],
-        backend: :duckdb,
         repo: Exograph.DuckDBRepo,
         prefix: prefix,
         migrate?: false

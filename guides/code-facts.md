@@ -20,7 +20,7 @@ projects or package releases.
 
 ## Text and code-fact search
 
-Literal source search uses the configured backend text-search path: DuckDB/QuackDB for the default backend, ParadeDB when available on Postgres, or Postgres fallback predicates plus source verification. Regex search is verified against fragment source.
+Literal source search uses the DuckDB/QuackDB text-search path. Regex search is verified against fragment source.
 
 ```elixir
 Exograph.search_text(index, "/users/:id")

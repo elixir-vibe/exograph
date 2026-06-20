@@ -6,7 +6,6 @@ defmodule Exograph.Storage.Ecto.Migrations.CreateSchema do
   def up do
     create_if_not_exists table(name("schema_migrations"), table_opts(primary_key: false)) do
       add(:version, :bigint, primary_key: true)
-      add(:inserted_at, :naive_datetime, null: false, default: fragment("now()"))
     end
 
     create_if_not_exists table(name("packages"), table_opts()) do
@@ -96,15 +95,6 @@ defmodule Exograph.Storage.Ecto.Migrations.CreateSchema do
       )
     )
 
-    if postgres?() do
-      create_index_if_not_deferred(
-        index(name("fragments"), [:terms],
-          using: :gin,
-          name: index_name("fragments", "terms_gin")
-        )
-      )
-    end
-
     create_index_if_not_deferred(
       index(name("fragments"), [:package_id, :package_version_id],
         name: index_name("fragments", "package")
@@ -130,15 +120,6 @@ defmodule Exograph.Storage.Ecto.Migrations.CreateSchema do
         name: index_name("fragments", "kind_name_arity")
       )
     )
-
-    if postgres?() do
-      create_index_if_not_deferred(
-        index(name("fragments"), [:file_id, :line, :end_line],
-          where: "kind IN ('def','defp','defmacro','defmacrop')",
-          name: index_name("fragments", "containment")
-        )
-      )
-    end
 
     create_if_not_exists table(name("comments"), table_opts()) do
       add(:package_id, references(name("packages"), on_delete: :delete_all))
@@ -314,22 +295,9 @@ defmodule Exograph.Storage.Ecto.Migrations.CreateSchema do
     drop_if_exists(table(name("schema_migrations")))
   end
 
-  defp create_index_if_not_deferred(index) do
-    unless deferred_indexes?(), do: create_if_not_exists(index)
-  end
+  defp create_index_if_not_deferred(index), do: create_if_not_exists(index)
 
-  defp deferred_indexes? do
-    Application.fetch_env!(:exograph, __MODULE__)[:postgres_defer_indexes?] == true and
-      postgres?()
-  end
-
-  defp table_opts(opts \\ []) do
-    if Application.fetch_env!(:exograph, __MODULE__)[:postgres_unlogged?] do
-      Keyword.put(opts, :modifiers, "UNLOGGED")
-    else
-      opts
-    end
-  end
+  defp table_opts(opts \\ []), do: opts
 
   defp name(suffix), do: "#{table_prefix()}_#{suffix}"
   defp index_name(table, suffix), do: "#{table_prefix()}_#{table}_#{suffix}_idx"
@@ -338,19 +306,13 @@ defmodule Exograph.Storage.Ecto.Migrations.CreateSchema do
     Application.fetch_env!(:exograph, __MODULE__)[:prefix]
   end
 
-  defp postgres? do
-    Application.fetch_env!(:exograph, __MODULE__)[:backend] != :duckdb
-  end
-
   defp backfill_duckdb_fragment_terms do
-    if Application.fetch_env!(:exograph, __MODULE__)[:backend] == :duckdb do
-      execute(~s|DELETE FROM "#{name("fragment_terms")}"|)
+    execute(~s|DELETE FROM "#{name("fragment_terms")}"|)
 
-      execute(~s|
-      INSERT INTO "#{name("fragment_terms")}" (term_id, fragment_id)
-      SELECT DISTINCT unnest(terms) AS term_id, id AS fragment_id
-      FROM "#{name("fragments")}"
-      |)
-    end
+    execute(~s|
+    INSERT INTO "#{name("fragment_terms")}" (term_id, fragment_id)
+    SELECT DISTINCT unnest(terms) AS term_id, id AS fragment_id
+    FROM "#{name("fragments")}"
+    |)
   end
 end

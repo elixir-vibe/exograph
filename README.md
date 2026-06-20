@@ -1,6 +1,6 @@
 # Exograph
 
-Local CodeQL-style code search for Elixir, backed by DuckDB/QuackDB or Postgres and ExAST.
+Local CodeQL-style code search for Elixir, backed by DuckDB/QuackDB and ExAST.
 
 Exograph indexes Elixir source code into normalized Ecto-backed tables: files,
 AST fragments, comments, definitions, references, package versions, and optional
@@ -11,7 +11,7 @@ patterns, text/regex search, symbol/reference filters, and Ecto-shaped joins.
 
 Exograph is:
 
-- a library for indexing Elixir source code into DuckDB or Postgres
+- a library for indexing Elixir source code into DuckDB through QuackDB
 - a set of Ecto schemas and migrations for normalized code facts
 - a structural search engine using ExAST for exact AST verification
 - an optional Reach-backed call graph index
@@ -45,8 +45,7 @@ def deps do
 end
 ```
 
-DuckDB through QuackDB is the default local backend. Postgres remains supported;
-ParadeDB's `pg_search` extension is optional and enables BM25-backed text/code-fact retrieval.
+DuckDB through QuackDB is the storage engine. Mix tasks can start a managed QuackDB server automatically, or you can pass an existing QuackDB-backed Ecto repo.
 
 ## Quickstart
 
@@ -62,7 +61,7 @@ Point Exograph at Elixir source. Mix tasks start a managed QuackDB server automa
 {:ok, hits} = Exograph.search(index, "Repo.get!(_, _)")
 ```
 
-The configured backend retrieves candidates by term index; ExAST verifies the structural match.
+DuckDB retrieves candidates by term index; ExAST verifies the structural match.
 
 ## Index Hex.pm
 
@@ -139,7 +138,7 @@ Exograph.search_callees(index, "MyApp.Accounts.update_user/2")
 | Reach | dependence analysis | in-memory graph/reports | APIs / Mix tasks | yes | call/data/control-flow analysis |
 | CodeQL | semantic code analysis | CodeQL database | QL language | not first-class Elixir | security analysis at scale |
 | Sourcegraph | cross-repo search | external index | text/structural depending setup | not Elixir-specific | organization-wide search |
-| Exograph | Elixir code fact index | DuckDB/QuackDB or Postgres/ParadeDB | ExAST + Ecto-shaped DSL | yes | local/self-hosted Elixir code intelligence, large Hex package indexing |
+| Exograph | Elixir code fact index | DuckDB/QuackDB | ExAST + Ecto-shaped DSL | yes | local/self-hosted Elixir code intelligence, large Hex package indexing |
 
 ## Features
 
@@ -147,7 +146,7 @@ Exograph.search_callees(index, "MyApp.Accounts.update_user/2")
 - normalized Ecto-backed storage for files, fragments, comments, definitions, references, packages, versions, and call edges
 - `mix exograph.index.hex` — streaming pipeline to index all of Hex.pm
 - package/version-scoped indexes for Hex or other source archives
-- text and regex search via DuckDB FTS/BM25 or Postgres/ParadeDB
+- text and regex search via DuckDB/QuackDB
 - optional Reach call graph extraction
 - ExDNA-powered structural similarity
 - web UI with Monaco editor, live progress dashboard, and JSON API
@@ -156,15 +155,12 @@ Exograph.search_callees(index, "MyApp.Accounts.update_user/2")
 
 | Guide | Content |
 |-------|---------|
-| [Getting Started](guides/getting-started.md) | Installation, backend setup, first index/search |
+| [Getting Started](guides/getting-started.md) | Installation, DuckDB setup, first index/search |
 | [Querying](guides/querying.md) | Structural, text, and regex search; planning/explain |
 | [DSL](guides/dsl.md) | `Exograph.DSL`, joins, selects, predicates |
 | [Code Facts](guides/code-facts.md) | Definitions, references, comments, typed hits |
 | [Call Graph](guides/call-graph.md) | Reach extraction, callers/callees, call edge DSL |
-| [DuckDB and QuackDB](guides/duckdb.md) | Recommended backend, sharding, manifests, tuning |
-| [Postgres and ParadeDB](guides/postgres-paradedb.md) | Postgres backend, migrations, BM25, performance tuning |
-| [Backend benchmarks](guides/backend-benchmarks.md) | Current DuckDB/Postgres benchmark methodology and results |
-| [Postgres COPY staging](guides/postgres-copy-staging.md) | Design notes for a future fair Postgres bulk-ingest path |
+| [DuckDB and QuackDB](guides/duckdb.md) | Storage, sharding, manifests, tuning |
 | [Package Indexing](guides/package-indexing.md) | Indexing Hex.pm and manual package archives |
 | [Mix Tasks](guides/mix-tasks.md) | CLI indexing, searching, web UI |
 | [Web UI](guides/web-ui.md) | Monaco editor, search modes, progress dashboard |

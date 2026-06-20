@@ -1,12 +1,10 @@
 # DuckDB and QuackDB
 
-DuckDB is the recommended backend for local Exograph indexes, especially for Hex.pm corpus work. It avoids running a separate Postgres service, has very low query latency for Exograph's structural lookups, and supports sharded corpus indexing through QuackDB.
-
-Postgres/ParadeDB remains supported and is useful when you already operate Postgres or need to integrate Exograph tables with other relational data.
+DuckDB is Exograph's storage engine. Exograph talks to DuckDB through [QuackDB](https://hex.pm/packages/quackdb), which gives Exograph an Ecto-compatible repo over the Quack protocol.
 
 ## Local DuckDB server
 
-Exograph uses [QuackDB](https://hex.pm/packages/quackdb) to talk to DuckDB through the Quack protocol. For a single DuckDB database, start a QuackDB server and point Exograph at it:
+For a single DuckDB database, start a QuackDB server and point Exograph at it:
 
 ```elixir
 {:ok, server} =
@@ -23,12 +21,11 @@ Application.put_env(:my_app, MyApp.ExographRepo,
 )
 ```
 
-Then index with `backend: :duckdb`:
+Then index with the QuackDB-backed repo:
 
 ```elixir
 {:ok, index} =
   Exograph.index("lib",
-    backend: :duckdb,
     repo: MyApp.ExographRepo,
     prefix: "exograph",
     migrate?: true,
@@ -45,7 +42,6 @@ For large Hex.pm indexes, prefer sharding:
 ```elixir
 result =
   Exograph.Hex.Corpus.index(
-    backend: :duckdb,
     repo: Exograph.DuckDBRepo,
     prefix: "hex",
     mode: :latest,
@@ -76,7 +72,6 @@ Do not run two QuackDB servers against the same DuckDB shard file at once; DuckD
 
 ```bash
 mix exograph.index.hex \
-  --backend duckdb \
   --mode latest \
   --duckdb-shards 4 \
   --duckdb-threads 1 \
@@ -108,4 +103,4 @@ Good starting points:
 --duckdb-shards 8 --duckdb-threads 1 --concurrency 4
 ```
 
-Then tune by watching CPU utilization and benchmark output. If CPU is underused, increase shards before increasing DuckDB threads. If run queue is high and latency gets worse, reduce DuckDB threads or package concurrency. In local `top --limit 100` sweeps, 8 shards indexed faster than 4, and 4 indexed faster than 2; single-shard DuckDB still had competitive indexing but slower broad analytical counts than sharded DuckDB.
+Then tune by watching CPU utilization and benchmark output. If CPU is underused, increase shards before increasing DuckDB threads. If run queue is high and latency gets worse, reduce DuckDB threads or package concurrency.

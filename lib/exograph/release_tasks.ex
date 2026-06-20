@@ -7,7 +7,6 @@ defmodule Exograph.ReleaseTasks do
     Application.ensure_all_started(:req)
 
     opts = [
-      backend: :duckdb,
       mode: :latest,
       prefix: env("EXOGRAPH_PREFIX", "hex"),
       concurrency: env_integer("EXOGRAPH_INDEX_CONCURRENCY", 8),

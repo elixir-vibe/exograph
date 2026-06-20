@@ -57,7 +57,7 @@ from(e in CallEdge,
 )
 ```
 
-These run directly against normalized backend facts and return typed hits.
+These run directly against normalized DuckDB facts and return typed hits.
 
 ## Joins
 

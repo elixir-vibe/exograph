@@ -7,7 +7,7 @@ defmodule ExographDuckDBOfflineBuildTest do
   @moduletag :integration
 
   test "stages duplicate fragments and finalizes unique IDs" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.BackendOptions.free_tcp_port!()}"
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     prefix = "exograph_duckdb_offline_#{System.unique_integer([:positive])}"
 
