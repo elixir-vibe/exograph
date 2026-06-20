@@ -4,18 +4,22 @@ defmodule Exograph.Web.APIController do
 
   import Ecto.Query
 
+  alias Exograph.ShardedIndex
   alias Exograph.Web.{QueryExecutor, SearchResult}
   alias Exograph.Storage.Ecto.Options
+
+  @stats_tables ~w(packages package_versions files fragments fragment_terms definitions references comments call_edges terms)
+  @search_timeout_ms 20_000
 
   def search(conn, params) do
     index = index()
     pattern = params["pattern"] || ""
-    mode = params["mode"] || "structural"
+    mode = search_mode(params["mode"], pattern)
     limit = parse_limit(params["limit"])
     skip = decode_cursor(params["cursor"])
     package_id = params["package_id"]
 
-    opts = [limit: limit, skip: skip] ++ scope_opts(package_id)
+    opts = [limit: limit, skip: skip, timeout: @search_timeout_ms] ++ scope_opts(package_id)
 
     {elapsed_us, result} =
       :timer.tc(fn ->
@@ -73,43 +77,108 @@ defmodule Exograph.Web.APIController do
   end
 
   def packages(conn, _params) do
-    prefix = Application.get_env(:exograph, :web_prefix)
-    repo = Application.get_env(:exograph, :web_repo)
-
-    packages =
-      from(p in {"#{prefix}_packages", Exograph.Storage.Ecto.PackageRecord},
-        left_join: f in ^Options.fragments_source(prefix),
-        on: true,
-        where: fragment("? = ?", f.package_id, p.id),
-        group_by: [p.id, p.name],
-        order_by: [desc: count(f.id)],
-        select: %{id: p.id, name: p.name, fragments: count(f.id)}
-      )
-      |> repo.all(timeout: 30_000)
-
-    json(conn, %{packages: packages, total: length(packages)})
+    json(conn, package_payload(index()))
   end
 
   def stats(conn, _params) do
-    prefix = Application.get_env(:exograph, :web_prefix)
-    repo = Application.get_env(:exograph, :web_repo)
-
-    counts =
-      for table <-
-            ~w(packages package_versions files fragments fragment_terms definitions references comments call_edges terms),
-          into: %{} do
-        {:ok, %{rows: [[count]]}} =
-          Ecto.Adapters.SQL.query(repo, "SELECT count(*) FROM #{prefix}_#{table}", [],
-            timeout: 30_000
-          )
-
-        {table, count}
-      end
-
-    json(conn, Map.put(counts, "prefix", prefix))
+    json(conn, stats_payload(index()))
   end
 
   defp index, do: Application.get_env(:exograph, :web_index)
+
+  defp search_mode(nil, pattern), do: inferred_mode(pattern)
+  defp search_mode("", pattern), do: inferred_mode(pattern)
+  defp search_mode("auto", pattern), do: inferred_mode(pattern)
+  defp search_mode(mode, _pattern), do: mode
+
+  defp inferred_mode(pattern) do
+    if structural_query?(pattern), do: "structural", else: "text"
+  end
+
+  defp structural_query?(pattern) when is_binary(pattern) do
+    trimmed = String.trim(pattern)
+
+    String.starts_with?(trimmed, "from(") or
+      String.starts_with?(trimmed, "from ") or
+      String.contains?(trimmed, "...") or
+      String.contains?(trimmed, "_") or
+      String.starts_with?(trimmed, "def ") or
+      String.starts_with?(trimmed, "defp ") or
+      String.starts_with?(trimmed, "fn ")
+  end
+
+  defp structural_query?(_pattern), do: false
+
+  defp package_payload(%ShardedIndex{shards: shards}) do
+    packages =
+      shards
+      |> Enum.flat_map(fn shard ->
+        Exograph.DuckDBShards.with_repo(shard, fn -> package_rows(shard_index(shard)) end)
+      end)
+      |> Enum.group_by(& &1.name)
+      |> Enum.map(fn {_name, rows} ->
+        first = hd(rows)
+        %{id: first.id, name: first.name, fragments: Enum.sum(Enum.map(rows, & &1.fragments))}
+      end)
+      |> Enum.sort_by(& &1.fragments, :desc)
+
+    %{packages: packages, total: length(packages)}
+  end
+
+  defp package_payload(index) do
+    packages = package_rows(index)
+    %{packages: packages, total: length(packages)}
+  end
+
+  defp package_rows(index) do
+    prefix = index.inverted.prefix
+    repo = index.inverted.repo
+
+    from(p in {"#{prefix}_packages", Exograph.Storage.Ecto.PackageRecord},
+      left_join: f in ^Options.fragments_source(prefix),
+      on: true,
+      where: fragment("? = ?", f.package_id, p.id),
+      group_by: [p.id, p.name],
+      order_by: [desc: count(f.id)],
+      select: %{id: p.id, name: p.name, fragments: count(f.id)}
+    )
+    |> repo.all(timeout: 30_000)
+  end
+
+  defp stats_payload(%ShardedIndex{shards: shards}) do
+    counts =
+      Enum.reduce(shards, zero_counts(), fn shard, acc ->
+        shard_counts =
+          Exograph.DuckDBShards.with_repo(shard, fn -> table_counts(shard_index(shard)) end)
+
+        Map.merge(acc, shard_counts, fn _key, left, right -> left + right end)
+      end)
+
+    Map.put(counts, "prefix", Application.get_env(:exograph, :web_prefix))
+  end
+
+  defp stats_payload(index), do: Map.put(table_counts(index), "prefix", index.inverted.prefix)
+
+  defp zero_counts do
+    Map.new(@stats_tables, &{&1, 0})
+  end
+
+  defp table_counts(index) do
+    prefix = index.inverted.prefix
+    repo = index.inverted.repo
+
+    Map.new(@stats_tables, fn table ->
+      {:ok, %{rows: [[count]]}} =
+        Ecto.Adapters.SQL.query(repo, "SELECT count(*) FROM #{prefix}_#{table}", [],
+          timeout: 30_000
+        )
+
+      {table, count}
+    end)
+  end
+
+  defp shard_index(%{index: index}), do: index
+  defp shard_index(index), do: index
 
   defp encode_cursor(offset) when is_integer(offset),
     do: Base.url_encode64("#{offset}", padding: false)
