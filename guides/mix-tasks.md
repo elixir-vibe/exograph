@@ -118,13 +118,11 @@ See [Web UI](web-ui.md) for editor features, search modes, and API details.
 
 ## Release artifacts
 
-Build frontend assets first, then use [ReleaseKit](https://hex.pm/packages/release_kit) directly to produce the OTP release tarball and ETF manifest:
+Use [ReleaseKit](https://hex.pm/packages/release_kit) directly to produce the OTP release tarball and ETF manifest:
 
-    MIX_ENV=prod mix run --no-start -e 'Application.ensure_all_started(:req); File.cd!("assets", fn -> NPM.install(production: true, frozen: true) end); File.rm_rf!(Volt.Config.build().outdir)'
-    MIX_ENV=prod mix volt.build
-    MIX_ENV=prod mix release_kit.artifact --out-dir _build/prod/artifacts --port 4200 --health-path /
+    MIX_ENV=prod mix release_kit.artifact --out-dir _build/prod/artifacts
 
-ReleaseKit owns the generic OTP artifact format. Exograph does not wrap ReleaseKit; deployment tools such as `HostKit.Recipes.OTPRelease` consume the generated manifest directly:
+Exograph configures `ReleaseKit.Step.Volt` as an artifact prebuild step, so the command installs locked frontend packages, builds Volt assets, assembles the OTP release, and writes the manifest. Exograph does not wrap ReleaseKit; deployment tools such as `HostKit.Recipes.OTPRelease` consume the generated manifest directly:
 
     _build/prod/artifacts/exograph-20260620-abcdef0.tar.gz
     _build/prod/artifacts/exograph.etf

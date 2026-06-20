@@ -21,6 +21,18 @@ config :volt, :server,
   prefix: "/assets",
   watch_dirs: ["lib/", "assets/"]
 
+config :release_kit, :artifact,
+  port: 4200,
+  health_path: "/",
+  prebuild: [
+    {ReleaseKit.Step.Volt, root: "assets", production: true, frozen: true}
+  ],
+  env_clear: %{
+    "EXOGRAPH_WEB" => "true",
+    "EXOGRAPH_PORT" => "4200",
+    "RELEASE_DISTRIBUTION" => "none"
+  }
+
 config :phoenix, :json_library, Jason
 
 config :exograph, Exograph.Web.Endpoint, code_reloader: false
