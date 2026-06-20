@@ -169,9 +169,7 @@ defmodule Exograph.Web.APIController do
 
     Map.new(@stats_tables, fn table ->
       {:ok, %{rows: [[count]]}} =
-        Ecto.Adapters.SQL.query(repo, "SELECT count(*) FROM #{prefix}_#{table}", [],
-          timeout: 30_000
-        )
+        repo.query("SELECT count(*) FROM #{prefix}_#{table}", [], timeout: 30_000)
 
       {table, count}
     end)
