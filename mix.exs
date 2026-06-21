@@ -64,12 +64,12 @@ defmodule Exograph.MixProject do
       {:dune, "~> 0.3", optional: true},
       {:phoenix_test, "~> 0.4", only: :test, runtime: false},
       {:phoenix_test_playwright, "~> 0.14", only: :test, runtime: false},
-      {:phoenix_iconify, "~> 0.1", optional: true}
+      {:phoenix_iconify, "~> 0.3.4", optional: true}
     ]
   end
 
   defp compilers do
-    if Code.ensure_loaded?(PhoenixIconify.MixCompiler) do
+    if Code.ensure_loaded?(Mix.Tasks.Compile.PhoenixIconify) do
       Mix.compilers() ++ [:phoenix_iconify]
     else
       Mix.compilers()
