@@ -45,7 +45,7 @@ defmodule Exograph.Web.QueryExecutor do
   defp run_parsed(index, %Exograph.DSL.Query{} = query, opts) do
     default_limit = Keyword.fetch!(opts, :limit)
     effective_limit = query.limit || default_limit
-    total = query.limit
+    total = nil
     query_opts = Keyword.put(opts, :limit, effective_limit)
 
     case Exograph.all(index, query, query_opts) do
