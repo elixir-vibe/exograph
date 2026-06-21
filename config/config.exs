@@ -33,6 +33,8 @@ config :release_kit, :artifact,
     "RELEASE_DISTRIBUTION" => "none"
   }
 
+config :phoenix_iconify, otp_app: :exograph
+
 config :phoenix, :json_library, Jason
 
 config :exograph, Exograph.Web.Endpoint, code_reloader: false
