@@ -499,8 +499,10 @@ defmodule Exograph do
 
     {
       -score,
+      hit_kind_rank(hit),
+      fragment_path_rank(fragment),
       fragment_sort_value(fragment, :path),
-      fragment_sort_value(fragment, :line),
+      hit_line(hit, fragment),
       hit_id(hit, fragment)
     }
   end
@@ -523,9 +525,65 @@ defmodule Exograph do
   defp hit_id({_first, _j1, _j2, joined}, fragment), do: hit_id(joined, fragment)
   defp hit_id(_hit, fragment), do: Map.get(fragment || %{}, :id) || 0
 
+  defp hit_kind_rank(%{match: %{node: {kind, _meta, _args}}}) do
+    case kind do
+      :def -> 0
+      :defp -> 1
+      :defmacro -> 2
+      :defmacrop -> 3
+      :defmodule -> 6
+      _ -> 8
+    end
+  end
+
+  defp hit_kind_rank(%{fragment: %{kind: kind}}) do
+    case kind do
+      :def -> 0
+      :defp -> 1
+      :defmacro -> 2
+      :defmacrop -> 3
+      :module -> 6
+      :expression -> 9
+      _ -> 8
+    end
+  end
+
+  defp hit_kind_rank({first, _joined}), do: hit_kind_rank(first)
+  defp hit_kind_rank({first, _j1, _j2}), do: hit_kind_rank(first)
+  defp hit_kind_rank({first, _j1, _j2, _j3}), do: hit_kind_rank(first)
+  defp hit_kind_rank(_hit), do: 8
+
+  defp hit_line(%{match: %{node: {_kind, meta, _args}}}, _fragment) when is_list(meta),
+    do: Keyword.get(meta, :line, 0)
+
+  defp hit_line(%{match: %{line: line}}, _fragment) when is_integer(line), do: line
+  defp hit_line({first, _joined}, fragment), do: hit_line(first, fragment)
+  defp hit_line({first, _j1, _j2}, fragment), do: hit_line(first, fragment)
+  defp hit_line({first, _j1, _j2, _j3}, fragment), do: hit_line(first, fragment)
+  defp hit_line(_hit, fragment), do: fragment_sort_value(fragment, :line)
+
+  defp fragment_path_rank(nil), do: 9
+
+  defp fragment_path_rank(fragment) do
+    path = Map.get(fragment, :file) || Map.get(fragment, :path) || ""
+
+    cond do
+      String.contains?(path, "/lib/") -> 0
+      String.contains?(path, "/src/") -> 1
+      String.ends_with?(path, ".ex") -> 2
+      String.contains?(path, "/test/") -> 5
+      String.contains?(path, "/bench") -> 6
+      String.ends_with?(path, ".exs") -> 7
+      true -> 4
+    end
+  end
+
   defp fragment_sort_value(nil, :path), do: ""
   defp fragment_sort_value(nil, :line), do: 0
-  defp fragment_sort_value(fragment, :path), do: Map.get(fragment, :path) || ""
+
+  defp fragment_sort_value(fragment, :path),
+    do: Map.get(fragment, :path) || Map.get(fragment, :file) || ""
+
   defp fragment_sort_value(fragment, :line), do: Map.get(fragment, :line) || 0
 
   defp typed_hits(hits, module) do
