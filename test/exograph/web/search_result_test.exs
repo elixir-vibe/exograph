@@ -31,6 +31,8 @@ defmodule Exograph.Web.SearchResultTest do
     assert result.arity == 1
     assert result.line == 10
     assert result.module == "Demo"
+    assert result.package == "demo"
+    assert result.package_version == "1.0.0"
   end
 
   test "internal unknown atom placeholders are hidden" do

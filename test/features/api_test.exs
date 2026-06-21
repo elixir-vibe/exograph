@@ -21,6 +21,7 @@ defmodule Exograph.Features.APITest do
       result = hd(body["results"])
       assert result["kind"]
       assert result["line"]
+      assert Map.has_key?(result, "package_version")
     end
 
     test "returns next_cursor when more results available" do

@@ -6,9 +6,9 @@ defmodule Exograph.Web.ResultFormatter do
   def format(results) when is_list(results) do
     results
     |> Enum.map(&SearchResult.from/1)
-    |> Enum.group_by(& &1.package)
-    |> Enum.sort_by(fn {pkg, _} -> pkg end)
-    |> Enum.map(fn {package, pkg_results} ->
+    |> Enum.group_by(&{&1.package, &1.package_version})
+    |> Enum.sort_by(fn {{pkg, ver}, _} -> {pkg, ver || ""} end)
+    |> Enum.map(fn {{package, package_version}, pkg_results} ->
       files =
         pkg_results
         |> Enum.group_by(& &1.file)
@@ -24,7 +24,14 @@ defmodule Exograph.Web.ResultFormatter do
           }
         end)
 
-      %{package: package, count: length(pkg_results), files: files}
+      %{
+        key: package_key(package, package_version),
+        package: package,
+        package_version: package_version,
+        package_url: hex_package_url(package, package_version),
+        count: length(pkg_results),
+        files: files
+      }
     end)
   end
 
@@ -45,11 +52,16 @@ defmodule Exograph.Web.ResultFormatter do
   def badge_class(:call), do: "bg-teal-900/40 text-teal-300"
   def badge_class(_), do: "bg-zinc-800 text-zinc-400"
 
-  defp hex_source_url([%{package: pkg, package_version: ver} | _]) when is_binary(ver) do
-    "https://hex.pm/packages/#{pkg}/#{ver}"
-  end
+  defp hex_source_url([%{package: pkg, package_version: ver} | _]) when is_binary(ver),
+    do: hex_package_url(pkg, ver)
 
   defp hex_source_url(_), do: nil
+
+  defp hex_package_url(pkg, ver) when is_binary(ver), do: "https://hex.pm/packages/#{pkg}/#{ver}"
+  defp hex_package_url(pkg, _ver), do: "https://hex.pm/packages/#{pkg}"
+
+  defp package_key(package, nil), do: package
+  defp package_key(package, version), do: "#{package}@#{version}"
 
   defp build_preview(nil, _, _), do: nil
   defp build_preview(_, _, nil), do: nil

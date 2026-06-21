@@ -156,13 +156,26 @@ defmodule Exograph.Web.QueryLive do
     go_to_page(socket, String.to_integer(page))
   end
 
-  def handle_event("view_source", %{"file" => file, "line" => line, "package" => package}, socket) do
+  def handle_event(
+        "view_source",
+        %{"file" => file, "line" => line, "package" => package} = params,
+        socket
+      ) do
     line = String.to_integer(line)
+    package_version = blank_to_nil(params["package-version"] || params["package_version"])
     source = fetch_file_source(socket.assigns, file)
 
     socket =
       socket
-      |> assign(viewing_source: %{file: file, source: source, line: line, package: package})
+      |> assign(
+        viewing_source: %{
+          file: file,
+          source: source,
+          line: line,
+          package: package,
+          package_version: package_version
+        }
+      )
       |> push_event("scroll_to_line", %{line: line})
 
     {:noreply, socket}
@@ -249,8 +262,8 @@ defmodule Exograph.Web.QueryLive do
             <span :if={@total_results}>{@total_results} results</span>
             <span :if={!@total_results}>{@result_count} results</span>
             across {length(@results || [])}
-            <span :if={length(@results || []) == 1}>package</span>
-            <span :if={length(@results || []) != 1}>packages</span>
+            <span :if={length(@results || []) == 1}>package version</span>
+            <span :if={length(@results || []) != 1}>package versions</span>
             in {@elapsed_ms}ms
           </span>
           <div class="flex items-center gap-1 bg-zinc-800 rounded-md p-0.5">
@@ -324,26 +337,32 @@ defmodule Exograph.Web.QueryLive do
             <div
               class="flex items-center gap-3 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 w-full cursor-pointer hover:bg-zinc-800/50 transition-colors"
               phx-click="toggle_package"
-              phx-value-package={group.package}
+              phx-value-package={group.key}
             >
               <.icon
                 name="heroicons:chevron-right"
-                class={"w-4 h-4 text-zinc-500 transition-transform" <> if(MapSet.member?(@collapsed_packages, group.package), do: "", else: " rotate-90")}
+                class={"w-4 h-4 text-zinc-500 transition-transform" <> if(MapSet.member?(@collapsed_packages, group.key), do: "", else: " rotate-90")}
               />
               <a
-                href={"https://hex.pm/packages/#{group.package}"}
+                href={group.package_url}
                 target="_blank"
                 class="text-sm font-semibold text-zinc-200 hover:text-blue-400"
                 onclick="event.stopPropagation()"
               >
                 {group.package}
               </a>
+              <span
+                :if={group.package_version}
+                class="text-xs text-emerald-300/90 bg-emerald-950/50 border border-emerald-900/60 rounded-full px-2 py-0.5 font-mono"
+              >
+                v{group.package_version}
+              </span>
               <span class="text-xs text-zinc-500 bg-zinc-800 rounded-full px-2 py-0.5 tabular-nums">
                 {group.count} results
               </span>
             </div>
 
-            <div :if={not MapSet.member?(@collapsed_packages, group.package)} class="divide-y divide-zinc-800">
+            <div :if={not MapSet.member?(@collapsed_packages, group.key)} class="divide-y divide-zinc-800">
               <div :for={file_group <- group.files}>
                 <div class="flex items-center gap-2 px-4 py-2 bg-zinc-900/40 border-b border-zinc-800/50">
                   <.icon name="heroicons:document-text" class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -378,6 +397,7 @@ defmodule Exograph.Web.QueryLive do
                         phx-value-file={result.file}
                         phx-value-line={to_string(result.line)}
                         phx-value-package={result.package}
+                        phx-value-package-version={result.package_version || ""}
                         class="text-zinc-600 hover:text-zinc-400 cursor-pointer ml-1"
                         title="View full source"
                       >
@@ -473,6 +493,12 @@ defmodule Exograph.Web.QueryLive do
               <.icon name="heroicons:document-text" class="w-4 h-4 text-zinc-500" />
               <span class="text-sm font-mono text-blue-400">{@viewing_source.file}</span>
               <span class="text-xs text-zinc-500">{@viewing_source.package}</span>
+              <span
+                :if={@viewing_source.package_version}
+                class="text-xs text-emerald-300/90 font-mono"
+              >
+                v{@viewing_source.package_version}
+              </span>
             </div>
             <button
               phx-click="close_source"
@@ -541,6 +567,9 @@ defmodule Exograph.Web.QueryLive do
   defp page_window(current, total) do
     [1, :ellipsis, current - 1, current, current + 1, :ellipsis, total]
   end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
 
   defp fetch_file_source(assigns, relative_path) do
     import Ecto.Query

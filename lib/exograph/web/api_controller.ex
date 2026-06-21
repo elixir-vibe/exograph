@@ -273,6 +273,7 @@ defmodule Exograph.Web.APIController do
       type: r.type,
       file: r.file,
       package: r.package,
+      package_version: r.package_version,
       module: r.module,
       kind: r.kind,
       name: r.name,
