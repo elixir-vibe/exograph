@@ -50,12 +50,21 @@ defmodule Exograph.Web.APIController do
       :timer.tc(fn ->
         case mode do
           "text" ->
-            Exograph.search_text(index, pattern, opts)
+            case Exograph.search_text(index, pattern, opts) do
+              {:ok, hits} -> {:ok, hits, nil}
+              {:error, reason} -> {:error, reason}
+            end
 
           "regex" ->
             case Regex.compile(pattern) do
-              {:ok, regex} -> Exograph.search_text(index, regex, opts)
-              {:error, reason} -> {:error, "Invalid regex: #{inspect(reason)}"}
+              {:ok, regex} ->
+                case Exograph.search_text(index, regex, opts) do
+                  {:ok, hits} -> {:ok, hits, nil}
+                  {:error, reason} -> {:error, reason}
+                end
+
+              {:error, reason} ->
+                {:error, "Invalid regex: #{inspect(reason)}"}
             end
 
           _ ->
@@ -64,15 +73,17 @@ defmodule Exograph.Web.APIController do
       end)
 
     case result do
-      {:ok, hits} ->
+      {:ok, hits, meta} ->
         next_cursor = if length(hits) == limit, do: encode_cursor(skip + limit), else: nil
 
-        json(conn, %{
+        payload = %{
           results: Enum.map(hits, &serialize_result/1),
           count: length(hits),
           elapsed_ms: Float.round(elapsed_us / 1000, 1),
           next_cursor: next_cursor
-        })
+        }
+
+        json(conn, maybe_put_meta(payload, meta))
 
       {:error, reason} ->
         conn |> put_status(400) |> json(%{error: error_payload(reason)})
@@ -85,7 +96,7 @@ defmodule Exograph.Web.APIController do
     skip = decode_cursor(params["cursor"])
 
     case QueryExecutor.execute(index, query_string, skip: skip) do
-      {:ok, hits, elapsed_ms, effective_limit, _total} ->
+      {:ok, hits, elapsed_ms, effective_limit, _total, meta} ->
         next_cursor =
           if length(hits) >= effective_limit, do: encode_cursor(skip + effective_limit), else: nil
 
@@ -93,7 +104,8 @@ defmodule Exograph.Web.APIController do
           results: Enum.map(hits, &serialize_result/1),
           count: length(hits),
           elapsed_ms: elapsed_ms,
-          next_cursor: next_cursor
+          next_cursor: next_cursor,
+          meta: meta
         })
 
       {:error, message} ->
@@ -114,11 +126,14 @@ defmodule Exograph.Web.APIController do
   defp search_structural(index, pattern, opts) do
     if dsl_query?(pattern) do
       case QueryExecutor.execute(index, pattern, Keyword.put(opts, :mode, "structural")) do
-        {:ok, hits, _elapsed_ms, _effective_limit, _total} -> {:ok, hits}
+        {:ok, hits, _elapsed_ms, _effective_limit, _total, meta} -> {:ok, hits, meta}
         {:error, reason} -> {:error, reason}
       end
     else
-      Exograph.search(index, pattern, opts)
+      case Exograph.search(index, pattern, opts) do
+        {:ok, hits} -> {:ok, hits, nil}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -131,6 +146,9 @@ defmodule Exograph.Web.APIController do
 
   defp error_payload(%{} = reason), do: reason
   defp error_payload(reason), do: to_string(reason)
+
+  defp maybe_put_meta(payload, nil), do: payload
+  defp maybe_put_meta(payload, meta), do: Map.put(payload, :meta, meta)
 
   defp search_mode(nil, pattern), do: inferred_mode(pattern)
   defp search_mode("", pattern), do: inferred_mode(pattern)

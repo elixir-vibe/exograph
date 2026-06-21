@@ -280,6 +280,55 @@ defmodule ExographShardedSemanticsTest do
              )
   end
 
+  test "sharded DSL queries apply limit globally" do
+    alpha_path =
+      fixture("limit_alpha.ex", """
+      defmodule Demo.LimitAlpha do
+        def alpha_one, do: :alpha
+        def alpha_two, do: :alpha
+      end
+      """)
+
+    beta_path =
+      fixture("limit_beta.ex", """
+      defmodule Demo.LimitBeta do
+        def beta_one, do: :beta
+        def beta_two, do: :beta
+      end
+      """)
+
+    {:ok, alpha_index} =
+      Exograph.index(alpha_path,
+        repo: Exograph.DuckDBRepo,
+        prefix: "sharded_limit_alpha",
+        migrate?: true,
+        min_mass: 4,
+        package: %{name: "alpha"},
+        package_version: %{name: "alpha", version: "1.0.0"}
+      )
+
+    {:ok, beta_index} =
+      Exograph.index(beta_path,
+        repo: Exograph.DuckDBRepo,
+        prefix: "sharded_limit_beta",
+        migrate?: true,
+        min_mass: 4,
+        package: %{name: "beta"},
+        package_version: %{name: "beta", version: "1.0.0"}
+      )
+
+    query = %Exograph.DSL.Query{
+      source: :fragment,
+      binding: :f,
+      predicates: [{:matches, :f, "def _ do ... end"}],
+      limit: 1
+    }
+
+    sharded = ShardedIndex.new([alpha_index, beta_index])
+
+    assert {:ok, [_one]} = Exograph.all(sharded, query, limit: 1)
+  end
+
   defp fixture(name, source) do
     dir =
       Path.join(

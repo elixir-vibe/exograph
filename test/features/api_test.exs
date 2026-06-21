@@ -82,6 +82,9 @@ defmodule Exograph.Features.APITest do
       body = json_body(resp)
       assert body["count"] > 0
       assert hd(body["results"])["type"] == "definition"
+      assert body["meta"]["limit"] == 5
+      assert body["meta"]["returned"] == body["count"]
+      assert body["meta"]["shards"]["total"] >= 1
     end
 
     test "rejects dangerous code" do

@@ -149,7 +149,9 @@ defmodule Exograph do
   def all(index, query, opts \\ [])
 
   def all(%ShardedIndex{} = index, %DSL.Query{} = query, opts) do
-    fanout(index, :all, [query], opts)
+    index
+    |> fanout(:all, [query], opts)
+    |> merge_hits(opts)
   end
 
   def all(%Index{} = index, %DSL.Query{source: :fragment} = query, opts) do
@@ -492,16 +494,34 @@ defmodule Exograph do
   end
 
   defp hit_sort_key(hit) do
-    fragment = Map.get(hit, :fragment)
-    score = Map.get(hit, :score, 1.0) || 1.0
+    fragment = hit_fragment(hit)
+    score = hit_score(hit)
 
     {
       -score,
       fragment_sort_value(fragment, :path),
       fragment_sort_value(fragment, :line),
-      Map.get(hit, :id) || Map.get(fragment || %{}, :id) || 0
+      hit_id(hit, fragment)
     }
   end
+
+  defp hit_fragment(%{fragment: fragment}), do: fragment
+  defp hit_fragment({first, _joined}), do: hit_fragment(first)
+  defp hit_fragment({first, _j1, _j2}), do: hit_fragment(first)
+  defp hit_fragment({first, _j1, _j2, _j3}), do: hit_fragment(first)
+  defp hit_fragment(_hit), do: nil
+
+  defp hit_score(%{score: score}) when is_number(score), do: score
+  defp hit_score({first, _joined}), do: hit_score(first)
+  defp hit_score({first, _j1, _j2}), do: hit_score(first)
+  defp hit_score({first, _j1, _j2, _j3}), do: hit_score(first)
+  defp hit_score(_hit), do: 1.0
+
+  defp hit_id(%{id: id}, _fragment) when not is_nil(id), do: id
+  defp hit_id({_first, joined}, fragment), do: hit_id(joined, fragment)
+  defp hit_id({_first, _j1, joined}, fragment), do: hit_id(joined, fragment)
+  defp hit_id({_first, _j1, _j2, joined}, fragment), do: hit_id(joined, fragment)
+  defp hit_id(_hit, fragment), do: Map.get(fragment || %{}, :id) || 0
 
   defp fragment_sort_value(nil, :path), do: ""
   defp fragment_sort_value(nil, :line), do: 0

@@ -11,7 +11,7 @@ defmodule Exograph.Web.QueryLive do
 
   @default_query """
   from(f in Fragment,
-    where: matches(f, "def _ do ... end"),
+    where: matches(f, "def handle_call(_, _, _) do ... end"),
     limit: 20
   )\
   """
@@ -63,6 +63,7 @@ defmodule Exograph.Web.QueryLive do
        page_size: 20,
        total_pages: 1,
        total_results: nil,
+       query_meta: nil,
        search_mode: "structural",
        viewing_source: nil
      )}
@@ -125,6 +126,7 @@ defmodule Exograph.Web.QueryLive do
         current_page: 1,
         total_pages: 1,
         total_results: nil,
+        query_meta: nil,
         has_more: false
       )
 
@@ -195,7 +197,7 @@ defmodule Exograph.Web.QueryLive do
   def handle_info({:query_result, query, result, _mode}, socket) do
     socket =
       case result do
-        {:ok, new_results, elapsed_ms, effective_limit, total} ->
+        {:ok, new_results, elapsed_ms, effective_limit, total, meta} ->
           page_size = socket.assigns.page_size
           has_more = length(new_results) >= min(effective_limit, page_size)
 
@@ -215,6 +217,7 @@ defmodule Exograph.Web.QueryLive do
             has_more: has_more,
             total_pages: max(total_pages, socket.assigns.total_pages),
             total_results: total,
+            query_meta: meta,
             loading: false
           )
           |> push_event("set_diagnostics", %{markers: []})
@@ -301,6 +304,20 @@ defmodule Exograph.Web.QueryLive do
         <div id="results-wrapper" class="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-4 space-y-3">
           <div :if={@error} class="p-4 text-red-400 font-mono text-sm whitespace-pre-wrap">
             {@error}
+          </div>
+
+          <div
+            :if={@query_meta && @query_meta.notices != []}
+            class="rounded-lg border border-amber-900/60 bg-amber-950/30 p-4 text-sm text-amber-100 space-y-2"
+          >
+            <div class="font-medium">Search notice</div>
+            <div :for={notice <- @query_meta.notices} class="text-amber-200/90">
+              {notice.message}
+            </div>
+            <div class="text-xs text-amber-300/70">
+              Searched {@query_meta.shards.successful}/{@query_meta.shards.total} shards;
+              total relation: {@query_meta.total.relation}.
+            </div>
           </div>
 
           <div :for={group <- (@results || [])} class="rounded-lg border border-zinc-800 overflow-hidden">
