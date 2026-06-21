@@ -59,12 +59,12 @@ defmodule Exograph.DSL.Executor do
   defp fragment_all(index, plan, opts) do
     limit = Keyword.get(opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
-    compiled_query = plan.query |> Compiler.compile() |> StructuralQuery.selector()
+    verifier = fragment_verifier(plan.query)
 
     hits =
       index
       |> stream_filtered_fragments(plan, opts)
-      |> Stream.flat_map(&verify_fragment(&1, compiled_query))
+      |> Stream.flat_map(&verify_fragment(&1, verifier))
       |> Stream.drop(skip)
       |> Enum.take(limit)
       |> hydrate_hit_sources(index)
@@ -75,7 +75,7 @@ defmodule Exograph.DSL.Executor do
   defp fragment_join_all(index, plan, opts) do
     limit = Keyword.get(query_opts = opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
-    compiled_query = plan.query |> Compiler.compile() |> StructuralQuery.selector()
+    verifier = fragment_verifier(plan.query)
 
     hits =
       if structural_plan?(plan) do
@@ -83,7 +83,7 @@ defmodule Exograph.DSL.Executor do
         |> stream_joined_fragments(plan, query_opts)
         |> Stream.flat_map(fn {fragment, joined_by_binding} ->
           fragment
-          |> verify_fragment(compiled_query)
+          |> verify_fragment(verifier)
           |> Enum.map(&select_multi_fragment_join(plan, &1, joined_by_binding))
         end)
       else
@@ -175,7 +175,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp pattern_kind({:matches, _binding, pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile(pattern) do
+    case ExAST.Pattern.compile_ast(pattern) do
       {kind, _, _} when kind in @def_kinds -> kind
       _ -> nil
     end
@@ -199,7 +199,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp pattern_name_arity({:matches, _binding, pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile(pattern) do
+    case ExAST.Pattern.compile_ast(pattern) do
       ast -> def_pattern_name_arity(ast)
     end
   rescue
@@ -254,7 +254,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp structural_query_kind(%StructuralQuery{source: pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile(pattern) do
+    case ExAST.Pattern.compile_ast(pattern) do
       {kind, _, _} when kind in @def_kinds -> kind
       _ -> nil
     end
@@ -265,7 +265,7 @@ defmodule Exograph.DSL.Executor do
   defp structural_query_kind(_), do: nil
 
   defp structural_query_name_arity(%StructuralQuery{source: pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile(pattern) do
+    case ExAST.Pattern.compile_ast(pattern) do
       ast -> def_pattern_name_arity(ast) || {nil, nil}
     end
   rescue
@@ -945,10 +945,11 @@ defmodule Exograph.DSL.Executor do
   defp light_join_projection?(_index, _plan), do: false
 
   defp plan_requires_source?(%Plan{query: query}) do
-    query
-    |> Compiler.compile()
-    |> StructuralQuery.selector()
-    |> StructuralQuery.requires_source?()
+    query_contains_text_predicate?(query) or
+      query
+      |> Compiler.compile()
+      |> StructuralQuery.selector()
+      |> StructuralQuery.requires_source?()
   end
 
   defp hydrate_hit_sources(hits, index) do
@@ -992,14 +993,93 @@ defmodule Exograph.DSL.Executor do
     |> Map.new(fn {id, source, path} -> {id, {source, path}} end)
   end
 
-  defp verify_fragment(fragment, compiled_query) do
-    case StructuralQuery.verify(compiled_query, fragment) do
-      {:ok, matches} ->
-        Enum.map(matches, &Hit.with_match(Hit.new(fragment: fragment, score: 1.0), &1))
+  defp verify_fragment(fragment, verifier) do
+    case verify_fragment_root(fragment, verifier) do
+      {:ok, match} ->
+        [Hit.with_match(Hit.new(fragment: fragment, score: 1.0), match)]
 
       :error ->
         []
     end
+  end
+
+  defp fragment_verifier(%Query{binding: binding, predicates: predicates}) do
+    %{
+      matches: predicates |> binding_patterns(binding, :matches) |> first_or_wildcard(),
+      contains: binding_patterns(predicates, binding, :contains)
+    }
+  end
+
+  defp binding_patterns(predicates, binding, kind) do
+    Enum.flat_map(predicates, fn
+      {^kind, ^binding, pattern} -> [pattern]
+      _predicate -> []
+    end)
+  end
+
+  defp first_or_wildcard([]), do: "_"
+  defp first_or_wildcard([pattern | _rest]), do: pattern
+
+  defp verify_fragment_root(fragment, %{matches: match_pattern, contains: contains_patterns}) do
+    with {:ok, captures} <- ExAST.Pattern.match(fragment.ast, match_pattern),
+         true <- Enum.all?(contains_patterns, &fragment_contains?(fragment, &1)) do
+      {:ok, %{node: fragment.ast, captures: captures}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp fragment_contains?(%Fragment{} = fragment, pattern) when is_binary(pattern) do
+    if ast_pattern?(pattern) do
+      fragment_contains_ast?(fragment, pattern)
+    else
+      fragment
+      |> fragment_source_text()
+      |> String.contains?(pattern)
+    end
+  end
+
+  defp fragment_contains_ast?(%Fragment{} = fragment, pattern) do
+    fragment.ast
+    |> ExAST.Patcher.find_all(pattern)
+    |> Enum.any?(fn %{node: node} -> node != fragment.ast end)
+  rescue
+    _ -> false
+  end
+
+  defp fragment_source_text(%Fragment{source: source, line: line, end_line: end_line})
+       when is_binary(source) and is_integer(line) do
+    lines = String.split(source, "\n", trim: false)
+    start = max(line - 1, 0)
+    count = fragment_source_line_count(line, end_line, length(lines), start)
+
+    lines
+    |> Enum.slice(start, count)
+    |> Enum.join("\n")
+  end
+
+  defp fragment_source_text(_fragment), do: ""
+
+  defp fragment_source_line_count(line, end_line, _line_count, _start)
+       when is_integer(end_line) and end_line >= line,
+       do: end_line - line + 1
+
+  defp fragment_source_line_count(_line, _end_line, line_count, start),
+    do: max(line_count - start, 0)
+
+  defp ast_pattern?(pattern) when is_binary(pattern) do
+    case Code.string_to_quoted(pattern) do
+      {:ok, nil} -> false
+      {:ok, {:__block__, _meta, []}} -> false
+      {:ok, _ast} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  defp query_contains_text_predicate?(%Query{binding: binding, predicates: predicates}) do
+    predicates
+    |> binding_patterns(binding, :contains)
+    |> Enum.any?(&(not ast_pattern?(&1)))
   end
 
   defp joined_fragment_batch_limit(index, plan, opts) do

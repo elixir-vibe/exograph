@@ -62,7 +62,11 @@ defmodule Exograph.DSL.Compiler do
 
     Enum.reduce(filters, selector, fn
       {:contains, _binding, pattern}, selector ->
-        ExAST.Selector.where_predicate(selector, ExAST.Query.contains(pattern))
+        if ast_pattern?(pattern) do
+          ExAST.Selector.where_predicate(selector, ExAST.Query.contains(pattern))
+        else
+          selector
+        end
     end)
   end
 
@@ -73,10 +77,21 @@ defmodule Exograph.DSL.Compiler do
     MapSet.to_list(plan.required_terms)
   end
 
-  defp structural_predicate?({kind, _binding, _value}) when kind in [:matches, :contains],
-    do: true
+  defp structural_predicate?({:matches, _binding, _value}), do: true
+  defp structural_predicate?({:contains, _binding, value}), do: ast_pattern?(value)
 
   defp structural_predicate?(_predicate), do: false
+
+  defp ast_pattern?(pattern) when is_binary(pattern) do
+    case Code.string_to_quoted(pattern) do
+      {:ok, nil} -> false
+      {:ok, {:__block__, _meta, []}} -> false
+      {:ok, _ast} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  defp ast_pattern?(_pattern), do: false
 
   defp normalize_predicate({kind, binding, value}), do: {kind, binding, value}
   defp normalize_predicate({kind, binding, _field, value}), do: {kind, binding, value}
