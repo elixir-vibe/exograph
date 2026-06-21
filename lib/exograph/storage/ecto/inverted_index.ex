@@ -108,22 +108,28 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
   def search_text_regex(%__MODULE__{} = index, %Regex{source: pattern}, opts) do
     limit = Keyword.get(opts, :limit, 50)
     files = files_source(index)
+    versions = package_versions_source(index)
 
     query =
       from(fragment in {source(index), FragmentRecord},
         join: file in ^files,
         on: file.id == fragment.file_id,
+        left_join: version in ^versions,
+        on: version.id == fragment.package_version_id,
         where: regexp_matches(file.source, ^pattern),
         order_by: [asc: file.path, asc: fragment.line],
         limit: ^limit,
-        select: {fragment, file.source, file.path}
+        select: {fragment, file.source, file.path, version.version}
       )
       |> Scope.where_scope(opts)
 
     hits =
       index.repo.all(query, timeout: 30_000)
-      |> Enum.map(fn {record, source, path} ->
-        Hit.new(fragment: Options.hydrate_fragment(record, source, path), score: 1.0)
+      |> Enum.map(fn {record, source, path, package_version} ->
+        Hit.new(
+          fragment: Options.hydrate_fragment(record, source, path, package_version),
+          score: 1.0
+        )
       end)
 
     {:ok, hits}
@@ -137,7 +143,9 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
     from(fragment in queryable,
       left_join: file in ^files_source(index),
       on: file.id == fragment.file_id,
-      select: {fragment, file.source, file.path}
+      left_join: version in ^package_versions_source(index),
+      on: version.id == fragment.package_version_id,
+      select: {fragment, file.source, file.path, version.version}
     )
   end
 
@@ -145,7 +153,9 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
     from(fragment in queryable,
       left_join: file in ^files_source(index),
       on: file.id == fragment.file_id,
-      select: {fragment, nil, file.path}
+      left_join: version in ^package_versions_source(index),
+      on: version.id == fragment.package_version_id,
+      select: {fragment, nil, file.path, version.version}
     )
   end
 
@@ -200,8 +210,13 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
     )
   end
 
-  defp hit({%FragmentRecord{} = record, source, path}, _query, required_id_set, optional_id_set) do
-    fragment = Options.hydrate_fragment(record, source, path)
+  defp hit(
+         {%FragmentRecord{} = record, source, path, package_version},
+         _query,
+         required_id_set,
+         optional_id_set
+       ) do
+    fragment = Options.hydrate_fragment(record, source, path, package_version)
     required_matches = MapSet.intersection(fragment.terms, required_id_set)
     optional_matches = MapSet.intersection(fragment.terms, optional_id_set)
 
@@ -213,6 +228,7 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
   end
 
   defp files_source(index), do: Options.files_source(index.prefix)
+  defp package_versions_source(index), do: Options.package_versions_source(index.prefix)
   defp definitions_source(index), do: Options.definitions_source(index.prefix)
   defp references_source(index), do: Options.references_source(index.prefix)
   defp call_edges_source(index), do: Options.call_edges_source(index.prefix)

@@ -9,23 +9,27 @@ defmodule Exograph.Storage.Ecto.FactQuery do
   def search(index, table_source, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
     files_source = Options.files_source(index.prefix)
+    versions_source = Options.package_versions_source(index.prefix)
 
-    results = ilike_search(index, table_source, literal, opts, limit, files_source)
+    results =
+      ilike_search(index, table_source, literal, opts, limit, files_source, versions_source)
 
     {:ok, Enum.map(results, &hit(&1, table_source))}
   end
 
-  defp ilike_search(index, table_source, literal, opts, limit, files_source) do
+  defp ilike_search(index, table_source, literal, opts, limit, files_source, versions_source) do
     query =
       from(fragment in {Options.fragments_source(index.prefix), FragmentRecord},
         join: fact in ^table_source,
         on: fact.fragment_id == fragment.id,
         left_join: file in ^files_source,
         on: file.id == fragment.file_id,
+        left_join: version in ^versions_source,
+        on: version.id == fragment.package_version_id,
         where: ilike(fact.qualified_name, ^"%#{escape_like(literal)}%"),
         order_by: [asc: fact.qualified_name, asc: fact.line],
         limit: ^limit,
-        select: {fragment, nil, file.path, fact}
+        select: {fragment, nil, file.path, version.version, fact}
       )
       |> where_scope(opts)
 
@@ -52,18 +56,24 @@ defmodule Exograph.Storage.Ecto.FactQuery do
     end)
   end
 
-  defp hit({record, source, path, fact}, {_table, Exograph.Storage.Ecto.DefinitionRecord}) do
+  defp hit(
+         {record, source, path, package_version, fact},
+         {_table, Exograph.Storage.Ecto.DefinitionRecord}
+       ) do
     DefinitionHit.new(
       definition: Exograph.Storage.Ecto.DefinitionRecord.to_definition(fact),
-      fragment: Options.hydrate_fragment(record, source, path),
+      fragment: Options.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )
   end
 
-  defp hit({record, source, path, fact}, {_table, Exograph.Storage.Ecto.ReferenceRecord}) do
+  defp hit(
+         {record, source, path, package_version, fact},
+         {_table, Exograph.Storage.Ecto.ReferenceRecord}
+       ) do
     ReferenceHit.new(
       reference: Exograph.Storage.Ecto.ReferenceRecord.to_reference(fact),
-      fragment: Options.hydrate_fragment(record, source, path),
+      fragment: Options.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )
   end

@@ -309,15 +309,18 @@ defmodule Exograph.DSL.Executor do
 
   defp base_fragment_query(index, cursor) do
     files_source = Options.files_source(index.inverted.prefix)
+    versions_source = Options.package_versions_source(index.inverted.prefix)
     fragments_source = Options.fragments_source(index.inverted.prefix)
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
         left_join: file in ^files_source,
         on: file.id == fragment.file_id,
+        left_join: version in ^versions_source,
+        on: version.id == fragment.package_version_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^@stream_batch_size,
-        select: {fragment, file.source, file.path}
+        select: {fragment, file.source, file.path, version.version}
       )
 
     where_after_cursor(query, cursor)
@@ -329,12 +332,15 @@ defmodule Exograph.DSL.Executor do
 
   defp base_fragment_candidate_query(index, cursor, include_source?) do
     files_source = Options.files_source(index.inverted.prefix)
+    versions_source = Options.package_versions_source(index.inverted.prefix)
     fragments_source = Options.fragments_source(index.inverted.prefix)
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
         left_join: file in ^files_source,
         on: file.id == fragment.file_id,
+        left_join: version in ^versions_source,
+        on: version.id == fragment.package_version_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^@stream_batch_size
       )
@@ -344,18 +350,20 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp select_fragment_candidate(query, true) do
-    select(query, [fragment, file], {
+    select(query, [fragment, file, version], {
       map(fragment, @candidate_fragment_fields),
       file.source,
-      file.path
+      file.path,
+      version.version
     })
   end
 
   defp select_fragment_candidate(query, false) do
-    select(query, [fragment, file], {
+    select(query, [fragment, file, version], {
       map(fragment, @candidate_fragment_fields),
       nil,
-      file.path
+      file.path,
+      version.version
     })
   end
 
@@ -364,7 +372,7 @@ defmodule Exograph.DSL.Executor do
   defp where_after_cursor(query, {path, line, id}) do
     where(
       query,
-      [fragment, file],
+      [fragment, file, _version],
       file.path > ^path or
         (file.path == ^path and fragment.line > ^line) or
         (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
@@ -378,20 +386,21 @@ defmodule Exograph.DSL.Executor do
 
   defp hydrate_fragment_batch(query, index) do
     index.inverted.repo.all(query)
-    |> Enum.map(fn {fragment, source, path} ->
-      hydrate_query_fragment(fragment, source, path)
+    |> Enum.map(fn {fragment, source, path, package_version} ->
+      hydrate_query_fragment(fragment, source, path, package_version)
     end)
   end
 
-  defp hydrate_query_fragment(%FragmentRecord{} = fragment, source, path) do
-    Options.hydrate_fragment(fragment, source, path)
+  defp hydrate_query_fragment(%FragmentRecord{} = fragment, source, path, package_version) do
+    Options.hydrate_fragment(fragment, source, path, package_version)
   end
 
-  defp hydrate_query_fragment(fragment, source, path) when is_map(fragment) do
+  defp hydrate_query_fragment(fragment, source, path, package_version) when is_map(fragment) do
     %Fragment{
       id: fragment.id,
       package_id: fragment.package_id,
       package_version_id: fragment.package_version_id,
+      package_version: package_version,
       file_id: fragment.file_id,
       file: path,
       source: source,
@@ -920,17 +929,20 @@ defmodule Exograph.DSL.Executor do
 
   defp full_fragments(index, ids) do
     files_source = Options.files_source(index.inverted.prefix)
+    versions_source = Options.package_versions_source(index.inverted.prefix)
     fragments_source = Options.fragments_source(index.inverted.prefix)
 
     from(fragment in {fragments_source, FragmentRecord},
       join: file in ^files_source,
       on: file.id == fragment.file_id,
+      left_join: version in ^versions_source,
+      on: version.id == fragment.package_version_id,
       where: fragment.id in ^ids,
-      select: {fragment, file.source, file.path}
+      select: {fragment, file.source, file.path, version.version}
     )
     |> index.inverted.repo.all()
-    |> Map.new(fn {fragment, source, path} ->
-      hydrated = Options.hydrate_fragment(fragment, source, path)
+    |> Map.new(fn {fragment, source, path, package_version} ->
+      hydrated = Options.hydrate_fragment(fragment, source, path, package_version)
       {hydrated.id, hydrated}
     end)
   end

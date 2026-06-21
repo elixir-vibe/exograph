@@ -36,7 +36,7 @@ defmodule Exograph.Web.SearchResult do
       fragment_line: f.line,
       joined_label: nil,
       preview: nil,
-      package_version: extract_package_version(f.file)
+      package_version: fragment_package_version(f)
     }
   end
 
@@ -54,7 +54,7 @@ defmodule Exograph.Web.SearchResult do
       fragment_line: f.line,
       joined_label: nil,
       preview: nil,
-      package_version: extract_package_version(f.file)
+      package_version: fragment_package_version(f)
     }
   end
 
@@ -74,7 +74,7 @@ defmodule Exograph.Web.SearchResult do
       fragment_line: f.line,
       joined_label: format_joined(joined),
       preview: nil,
-      package_version: extract_package_version(f.file)
+      package_version: fragment_package_version(f)
     }
   end
 
@@ -116,7 +116,7 @@ defmodule Exograph.Web.SearchResult do
       fragment_line: if(f, do: f.line, else: nil),
       joined_label: nil,
       preview: nil,
-      package_version: extract_package_version(file)
+      package_version: if(f, do: fragment_package_version(f), else: nil)
     }
   end
 
@@ -136,7 +136,7 @@ defmodule Exograph.Web.SearchResult do
       fragment_line: if(f, do: f.line, else: nil),
       joined_label: nil,
       preview: nil,
-      package_version: extract_package_version(file)
+      package_version: if(f, do: fragment_package_version(f), else: nil)
     }
   end
 
@@ -265,6 +265,9 @@ defmodule Exograph.Web.SearchResult do
         file |> Path.basename() |> Path.rootname()
     end
   end
+
+  defp fragment_package_version(%{package_version: version}) when is_binary(version), do: version
+  defp fragment_package_version(%{file: file}), do: extract_package_version(file)
 
   defp extract_package_version(nil), do: nil
   defp extract_package_version(""), do: nil

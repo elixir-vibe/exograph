@@ -12,6 +12,7 @@ defmodule Exograph.Storage.Ecto.FragmentRecord do
   schema "exograph_fragments" do
     field(:package_id, :integer)
     field(:package_version_id, :integer)
+    field(:package_version, :string, virtual: true)
     field(:file_id, :integer)
     field(:file, :string, virtual: true)
     field(:source, :string, virtual: true)
@@ -66,6 +67,7 @@ defmodule Exograph.Storage.Ecto.FragmentRecord do
       id: record.id,
       package_id: record.package_id,
       package_version_id: record.package_version_id,
+      package_version: record.package_version,
       file_id: record.file_id,
       file: record.file,
       source: record.source,

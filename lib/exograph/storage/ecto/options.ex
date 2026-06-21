@@ -52,14 +52,19 @@ defmodule Exograph.Storage.Ecto.Options do
     |> then(&struct(module, &1))
   end
 
-  def hydrate_fragment(record, source, path) do
+  def hydrate_fragment(record, source, path, package_version \\ nil) do
     record
     |> Map.put(:source, source)
     |> Map.put(:file, path)
+    |> Map.put(:package_version, package_version)
     |> Exograph.Storage.Ecto.FragmentRecord.to_fragment()
   end
 
   def files_source(prefix), do: {"#{prefix}_files", Exograph.Storage.Ecto.FileRecord}
+
+  def package_versions_source(prefix),
+    do: {"#{prefix}_package_versions", Exograph.Storage.Ecto.PackageVersionRecord}
+
   def fragments_source(prefix), do: "#{prefix}_fragments"
   def comments_source(prefix), do: {"#{prefix}_comments", Exograph.Storage.Ecto.CommentRecord}
 

@@ -35,6 +35,24 @@ defmodule Exograph.Web.SearchResultTest do
     assert result.package_version == "1.0.0"
   end
 
+  test "uses hydrated package version when file path is relative" do
+    hit = %Hit{
+      fragment: %Fragment{
+        file: "lib/demo.ex",
+        package_version: "1.2.3",
+        kind: :def,
+        name: "run",
+        arity: 0,
+        line: 1
+      },
+      match: nil
+    }
+
+    result = SearchResult.from(hit)
+
+    assert result.package_version == "1.2.3"
+  end
+
   test "internal unknown atom placeholders are hidden" do
     hit = %Hit{
       fragment: %Fragment{

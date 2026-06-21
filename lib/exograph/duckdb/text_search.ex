@@ -79,7 +79,7 @@ defmodule Exograph.DuckDB.TextSearch do
       fr.id, fr.package_id, fr.package_version_id, fr.file_id, fr.content_hash, fr.ast,
       fr.kind, fr.module, fr.name, fr.arity, fr.line, fr.end_line, fr.mass,
       fr.exact_hash, fr.terms, fr.sub_hashes, fr.inserted_at, fr.updated_at,
-      matched_files.source, matched_files.path
+      matched_files.source, matched_files.path, pv.version
     FROM matched_files
     INNER JOIN LATERAL (
       SELECT
@@ -91,13 +91,19 @@ defmodule Exograph.DuckDB.TextSearch do
       ORDER BY line ASC
       LIMIT 1
     ) AS fr ON true
+    LEFT JOIN #{Exograph.Storage.Ecto.SQL.table(prefix, "package_versions")} AS pv
+      ON pv.id = fr.package_version_id
     """
   end
 
   defp hits_from_rows(rows) do
     Enum.map(rows, fn row ->
-      {record, source, path} = fragment_record(row)
-      Hit.new(fragment: Options.hydrate_fragment(record, source, path), score: 1.0)
+      {record, source, path, package_version} = fragment_record(row)
+
+      Hit.new(
+        fragment: Options.hydrate_fragment(record, source, path, package_version),
+        score: 1.0
+      )
     end)
   end
 
@@ -121,7 +127,8 @@ defmodule Exograph.DuckDB.TextSearch do
          inserted_at,
          updated_at,
          source,
-         path
+         path,
+         package_version
        ]) do
     {%FragmentRecord{
        id: id,
@@ -142,7 +149,7 @@ defmodule Exograph.DuckDB.TextSearch do
        sub_hashes: sub_hashes || [],
        inserted_at: inserted_at,
        updated_at: updated_at
-     }, source, path}
+     }, source, path, package_version}
   end
 
   defp escape_like(value), do: value |> String.replace("%", "\\%") |> String.replace("_", "\\_")
