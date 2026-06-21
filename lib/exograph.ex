@@ -489,6 +489,7 @@ defmodule Exograph do
     {:ok,
      hits
      |> Enum.sort_by(&hit_sort_key/1)
+     |> Enum.uniq_by(&hit_identity/1)
      |> Stream.drop(skip)
      |> Enum.take(limit)}
   end
@@ -552,6 +553,59 @@ defmodule Exograph do
   defp hit_kind_rank({first, _j1, _j2}), do: hit_kind_rank(first)
   defp hit_kind_rank({first, _j1, _j2, _j3}), do: hit_kind_rank(first)
   defp hit_kind_rank(_hit), do: 8
+
+  defp hit_identity({first, joined}), do: {hit_identity(first), joined_identity(joined)}
+
+  defp hit_identity({first, j1, j2}),
+    do: {hit_identity(first), joined_identity(j1), joined_identity(j2)}
+
+  defp hit_identity({first, j1, j2, j3}),
+    do: {hit_identity(first), joined_identity(j1), joined_identity(j2), joined_identity(j3)}
+
+  defp hit_identity(hit) do
+    fragment = hit_fragment(hit)
+    path = fragment_sort_value(fragment, :path)
+    line = hit_line(hit, fragment)
+    {kind, name, arity} = hit_match_signature(hit)
+
+    if line > 0 and (kind || name || arity) do
+      {path, line, kind, name, arity}
+    else
+      {path, line, hit_id(hit, fragment)}
+    end
+  end
+
+  defp joined_identity(%{id: id}) when not is_nil(id), do: id
+  defp joined_identity(%{qualified_name: qualified_name}), do: qualified_name
+
+  defp joined_identity(%{caller_qualified_name: caller, callee_qualified_name: callee}),
+    do: {caller, callee}
+
+  defp joined_identity(other), do: inspect(other, limit: 20)
+
+  defp hit_match_signature(%{match: %{node: {kind, _meta, args}}}) when is_list(args) do
+    {name, arity} = args |> List.first() |> definition_head_name_arity()
+    {kind, name, arity}
+  end
+
+  defp hit_match_signature(%{fragment: %{kind: kind, name: name, arity: arity}}),
+    do: {kind, name, arity}
+
+  defp hit_match_signature({first, _joined}), do: hit_match_signature(first)
+  defp hit_match_signature({first, _j1, _j2}), do: hit_match_signature(first)
+  defp hit_match_signature({first, _j1, _j2, _j3}), do: hit_match_signature(first)
+  defp hit_match_signature(_hit), do: {nil, nil, nil}
+
+  defp definition_head_name_arity({:when, _meta, [head | _guards]}),
+    do: definition_head_name_arity(head)
+
+  defp definition_head_name_arity({name, _meta, args}) when is_atom(name) and is_list(args),
+    do: {Atom.to_string(name), length(args)}
+
+  defp definition_head_name_arity({name, _meta, nil}) when is_atom(name),
+    do: {Atom.to_string(name), 0}
+
+  defp definition_head_name_arity(_head), do: {nil, nil}
 
   defp hit_line(%{match: %{node: {_kind, meta, _args}}}, _fragment) when is_list(meta),
     do: Keyword.get(meta, :line, 0)
