@@ -94,13 +94,8 @@ defmodule Exograph.Web.QueryExecutor do
 
   defp total_payload(_total, returned, relation), do: %{value: returned, relation: relation}
 
-  defp notices(elapsed_ms, returned, _limit, total_relation) do
+  defp notices(elapsed_ms, returned, _limit, _total_relation) do
     []
-    |> maybe_notice(total_relation == "gte", %{
-      kind: :more_results,
-      message:
-        "Showing #{returned} results for this page. More matches may be available; use pagination or a cursor to continue."
-    })
     |> maybe_notice(elapsed_ms >= @slow_query_ms, %{
       kind: :slow_query,
       message:

@@ -63,6 +63,7 @@ defmodule Exograph.Features.APITest do
 
       notice_kinds = Enum.map(body["meta"]["notices"], & &1["kind"])
       refute "truncated" in notice_kinds
+      refute "more_results" in notice_kinds
     end
 
     test "limits results to requested limit" do

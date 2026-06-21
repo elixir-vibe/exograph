@@ -327,9 +327,11 @@ defmodule Exograph.Web.QueryLive do
             <div :for={notice <- @query_meta.notices} class="text-amber-200/90">
               {notice.message}
             </div>
-            <div class="text-xs text-amber-300/70">
-              Searched {@query_meta.shards.successful}/{@query_meta.shards.total} shards;
-              total relation: {@query_meta.total.relation}.
+            <div
+              :if={@query_meta.partial || @query_meta.shards.failed > 0}
+              class="text-xs text-amber-300/70"
+            >
+              Searched {@query_meta.shards.successful}/{@query_meta.shards.total} shards.
             </div>
           </div>
 
