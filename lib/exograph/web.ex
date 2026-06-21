@@ -41,7 +41,7 @@ defmodule Exograph.Web do
   attr(:rest, :global)
 
   def icon(assigns) do
-    if Code.ensure_loaded?(PhoenixIconify) do
+    if Code.ensure_loaded?(PhoenixIconify) and Code.ensure_loaded?(Mix.Project) do
       apply(PhoenixIconify, :icon, [assigns])
     else
       assigns = Phoenix.Component.assign_new(assigns, :class, fn -> nil end)
