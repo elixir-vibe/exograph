@@ -206,9 +206,14 @@ export const Editor = {
     });
 
     this.handleEvent("update_url", (payload) => {
-      const { q } = payload as { q: string };
+      const { q, page } = payload as { q: string; page?: number };
       const url = new URL(window.location.href);
       url.searchParams.set("q", q);
+      if (page && page > 1) {
+        url.searchParams.set("page", String(page));
+      } else {
+        url.searchParams.delete("page");
+      }
       history.replaceState(null, "", url.toString());
     });
 

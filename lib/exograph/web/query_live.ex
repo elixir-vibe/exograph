@@ -70,11 +70,15 @@ defmodule Exograph.Web.QueryLive do
   end
 
   @impl true
-  def handle_params(%{"q" => q}, _uri, socket) when q != "" do
-    {:noreply,
-     socket
-     |> assign(query: q)
-     |> push_event("set_editor_value", %{value: q})}
+  def handle_params(%{"q" => q} = params, _uri, socket) when q != "" do
+    page = parse_page(params["page"])
+
+    socket =
+      socket
+      |> push_event("set_editor_value", %{value: q})
+      |> start_query(q, page)
+
+    {:noreply, socket}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -111,34 +115,7 @@ defmodule Exograph.Web.QueryLive do
 
   @impl true
   def handle_event("run", %{"query" => query}, socket) do
-    index = socket.assigns.index
-    mode = socket.assigns.search_mode
-
-    socket =
-      assign(socket,
-        query: query,
-        error: nil,
-        results: nil,
-        elapsed_ms: nil,
-        result_count: nil,
-        loading: true,
-        all_results: [],
-        current_page: 1,
-        total_pages: 1,
-        total_results: nil,
-        query_meta: nil,
-        has_more: false
-      )
-
-    pid = self()
-    page_size = socket.assigns.page_size
-
-    Task.start(fn ->
-      result = QueryExecutor.execute(index, query, skip: 0, limit: page_size, mode: mode)
-      send(pid, {:query_result, query, result, :replace})
-    end)
-
-    {:noreply, socket}
+    {:noreply, start_query(socket, query, 1)}
   end
 
   @impl true
@@ -191,19 +168,39 @@ defmodule Exograph.Web.QueryLive do
   end
 
   defp go_to_page(socket, page) do
+    {:noreply, start_query(socket, socket.assigns.query, page)}
+  end
+
+  defp start_query(socket, query, page) do
     index = socket.assigns.index
-    query = socket.assigns.query
     mode = socket.assigns.search_mode
     page_size = socket.assigns.page_size
+    page = max(page, 1)
     skip = (page - 1) * page_size
     pid = self()
+
+    socket =
+      assign(socket,
+        query: query,
+        error: nil,
+        results: nil,
+        elapsed_ms: nil,
+        result_count: nil,
+        loading: true,
+        all_results: [],
+        current_page: page,
+        total_pages: page,
+        total_results: nil,
+        query_meta: nil,
+        has_more: false
+      )
 
     Task.start(fn ->
       result = QueryExecutor.execute(index, query, skip: skip, limit: page_size, mode: mode)
       send(pid, {:query_result, query, result, :replace})
     end)
 
-    {:noreply, assign(socket, loading: true, current_page: page)}
+    socket
   end
 
   @impl true
@@ -242,13 +239,13 @@ defmodule Exograph.Web.QueryLive do
             result_count: length(new_results),
             elapsed_ms: elapsed_ms,
             has_more: has_more,
-            total_pages: max(total_pages, socket.assigns.total_pages),
+            total_pages: total_pages,
             total_results: total,
             query_meta: meta,
             loading: false
           )
           |> push_event("set_diagnostics", %{markers: []})
-          |> push_event("update_url", %{q: query})
+          |> push_event("update_url", %{q: query, page: socket.assigns.current_page})
 
         {:error, %{message: message, markers: markers}} ->
           socket
@@ -275,10 +272,8 @@ defmodule Exograph.Web.QueryLive do
           <span :if={@result_count} class="tabular-nums">
             <span :if={@total_results}>Showing {@result_count} of {@total_results} results</span>
             <span :if={!@total_results}>Showing {@result_count} results</span>
-            across {length(@results || [])}
-            <span :if={length(@results || []) == 1}>package version</span>
-            <span :if={length(@results || []) != 1}>package versions</span>
-            in {@elapsed_ms}ms
+            <span class="text-zinc-600">·</span>
+            <span>{@elapsed_ms}ms</span>
           </span>
           <div class="flex items-center gap-1 bg-zinc-800 rounded-md p-0.5">
             <button
@@ -582,6 +577,16 @@ defmodule Exograph.Web.QueryLive do
 
   defp page_window(current, total) do
     [1, :ellipsis, current - 1, current, current + 1, :ellipsis, total]
+  end
+
+  defp parse_page(nil), do: 1
+  defp parse_page(""), do: 1
+
+  defp parse_page(page) when is_binary(page) do
+    case Integer.parse(page) do
+      {value, ""} when value > 0 -> value
+      _ -> 1
+    end
   end
 
   defp blank_to_nil(""), do: nil
