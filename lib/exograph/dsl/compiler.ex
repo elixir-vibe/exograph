@@ -74,8 +74,28 @@ defmodule Exograph.DSL.Compiler do
   def required_terms(%Query{} = query) do
     selector = compile(query)
     plan = ExAST.Index.plan(selector)
-    MapSet.to_list(plan.required_terms)
+
+    plan.required_terms
+    |> MapSet.to_list()
+    |> Enum.reject(&non_selective_root_term?/1)
   end
+
+  @spec text_contains_patterns(Query.t()) :: [String.t()]
+  def text_contains_patterns(%Query{binding: binding, predicates: predicates}) do
+    Enum.flat_map(predicates, fn
+      {:contains, ^binding, pattern} when is_binary(pattern) ->
+        if ast_pattern?(pattern), do: [], else: [pattern]
+
+      _predicate ->
+        []
+    end)
+  end
+
+  defp non_selective_root_term?("def.visibility:public"), do: true
+  defp non_selective_root_term?("def.visibility:private"), do: true
+  defp non_selective_root_term?("node:def"), do: true
+  defp non_selective_root_term?("node:def_like"), do: true
+  defp non_selective_root_term?(_term), do: false
 
   defp structural_predicate?({:matches, _binding, _value}), do: true
   defp structural_predicate?({:contains, _binding, value}), do: ast_pattern?(value)
@@ -83,15 +103,24 @@ defmodule Exograph.DSL.Compiler do
   defp structural_predicate?(_predicate), do: false
 
   defp ast_pattern?(pattern) when is_binary(pattern) do
-    case Code.string_to_quoted(pattern) do
-      {:ok, nil} -> false
-      {:ok, {:__block__, _meta, []}} -> false
-      {:ok, _ast} -> true
-      {:error, _reason} -> false
+    if plain_text_token?(pattern) do
+      false
+    else
+      case Code.string_to_quoted(pattern) do
+        {:ok, nil} -> false
+        {:ok, {:__block__, _meta, []}} -> false
+        {:ok, _ast} -> true
+        {:error, _reason} -> false
+      end
     end
   end
 
   defp ast_pattern?(_pattern), do: false
+
+  defp plain_text_token?(pattern) do
+    String.match?(pattern, ~r/^[[:alnum:]_#!?@.-]+$/u) and
+      not String.contains?(pattern, ["(", ")"])
+  end
 
   defp normalize_predicate({kind, binding, value}), do: {kind, binding, value}
   defp normalize_predicate({kind, binding, _field, value}), do: {kind, binding, value}

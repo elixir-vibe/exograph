@@ -71,6 +71,30 @@ defmodule Exograph.DSL.ExecutorTest do
     end)
   end
 
+  test "plain text contains token is not treated as an AST alias", %{index: index} do
+    query =
+      query!(
+        ~s|from(f in Fragment, where: matches(f, "def _ do ... end"), where: contains(f, "TODO"), limit: 20)|
+      )
+
+    assert Exograph.DSL.Compiler.required_terms(query) == []
+
+    index
+    |> Exograph.all(query, limit: 20)
+    |> assert_ok_hits(fn hits ->
+      assert Enum.map(hits, & &1.fragment.name) == ["other"]
+    end)
+  end
+
+  test "text contains handles empty candidate batches", %{index: index} do
+    query =
+      query!(
+        ~s|from(f in Fragment, where: matches(f, "def _ do ... end"), where: contains(f, "definitely_absent_text"), limit: 20)|
+      )
+
+    assert {:ok, []} = Exograph.all(index, query, limit: 20)
+  end
+
   test "named function patterns return only matching function fragments", %{index: index} do
     query!(~s|from(f in Fragment, where: matches(f, "def run(_) do ... end"), limit: 20)|)
     |> then(&Exograph.all(index, &1, limit: 20))

@@ -80,6 +80,38 @@ defmodule Exograph.DSL.Executor.Scope do
     do: where(queryable, [row], row.package_version_id == ^package_version_id)
 
   @doc false
+  def where_fragment_text_contains(queryable, plan) do
+    plan.query
+    |> Compiler.text_contains_patterns()
+    |> Enum.reduce(queryable, fn pattern, query ->
+      like = "%#{escape_like(pattern)}%"
+      where(query, [_fragment, file, _version], ilike(file.source, ^like))
+    end)
+  end
+
+  @doc false
+  def where_fragment_text_contains_third(queryable, plan) do
+    plan.query
+    |> Compiler.text_contains_patterns()
+    |> Enum.reduce(queryable, fn pattern, query ->
+      like = "%#{escape_like(pattern)}%"
+      where(query, [_first, _fragment, file], ilike(file.source, ^like))
+    end)
+  end
+
+  @doc false
+  def where_fragment_text_contains_fourth(queryable, plan) do
+    plan.query
+    |> Compiler.text_contains_patterns()
+    |> Enum.reduce(queryable, fn pattern, query ->
+      like = "%#{escape_like(pattern)}%"
+      where(query, [_fragment, _joined, file], ilike(file.source, ^like))
+    end)
+  end
+
+  defp escape_like(value), do: value |> String.replace("%", "\\%") |> String.replace("_", "\\_")
+
+  @doc false
   def where_structural_terms(queryable, index, plan) do
     case resolve_structural_term_ids(index, plan) do
       [] -> queryable

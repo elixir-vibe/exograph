@@ -175,13 +175,15 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp filtered_fragment_batch(index, plan, opts, cursor) do
-    base_filtered_fragment_query(index, cursor, plan_requires_source?(plan))
+    base_filtered_fragment_query(index, cursor, plan_requires_source_projection?(plan))
+    |> where_fragment_text_contains(plan)
     |> where_structural_terms(index, plan)
     |> where_pattern_kind(plan)
     |> where_pattern_name_arity(plan)
     |> where_source_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
     |> where_fragment_scope(opts)
     |> hydrate_fragment_batch(index)
+    |> hydrate_text_contains_sources(index, plan)
   end
 
   @def_kinds [:def, :defp, :defmacro, :defmacrop]
@@ -574,6 +576,7 @@ defmodule Exograph.DSL.Executor do
 
     query
     |> where_first_binding_join_predicates(predicates(plan, join.binding), join.assoc)
+    |> where_fragment_text_contains_third(plan)
     |> where_structural_terms_second(index, plan)
     |> where_second_binding_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
     |> where_fragment_scope_second(opts)
@@ -624,6 +627,7 @@ defmodule Exograph.DSL.Executor do
       end
 
     query
+    |> where_fragment_text_contains_fourth(plan)
     |> where_structural_terms(index, plan)
     |> where_source_predicates(predicates(plan, plan.binding), nil, :fragment)
     |> where_second_binding_predicates(predicates(plan, join.binding), join.binding, join.assoc)
@@ -993,12 +997,30 @@ defmodule Exograph.DSL.Executor do
 
   defp light_join_projection?(_index, _plan), do: false
 
-  defp plan_requires_source?(%Plan{query: query}) do
-    query_contains_text_predicate?(query) or
-      query
-      |> Compiler.compile()
-      |> StructuralQuery.selector()
-      |> StructuralQuery.requires_source?()
+  defp plan_requires_source_projection?(%Plan{query: query}) do
+    query
+    |> Compiler.compile()
+    |> StructuralQuery.selector()
+    |> StructuralQuery.requires_source?()
+  end
+
+  defp hydrate_text_contains_sources(fragments, index, %Plan{query: query}) do
+    if query_contains_text_predicate?(query) do
+      sources = fragment_sources(index, Enum.map(fragments, & &1.id))
+
+      Enum.map(fragments, fn
+        %Fragment{id: id} = fragment when is_integer(id) ->
+          case Map.fetch(sources, id) do
+            {:ok, {source, path}} -> %{fragment | source: source, file: path}
+            :error -> fragment
+          end
+
+        fragment ->
+          fragment
+      end)
+    else
+      fragments
+    end
   end
 
   defp hydrate_hit_sources(hits, index) do
@@ -1027,6 +1049,8 @@ defmodule Exograph.DSL.Executor do
       end)
     end
   end
+
+  defp fragment_sources(_index, []), do: %{}
 
   defp fragment_sources(index, ids) do
     files_source = Options.files_source(index.inverted.prefix)
@@ -1117,12 +1141,21 @@ defmodule Exograph.DSL.Executor do
     do: max(line_count - start, 0)
 
   defp ast_pattern?(pattern) when is_binary(pattern) do
-    case Code.string_to_quoted(pattern) do
-      {:ok, nil} -> false
-      {:ok, {:__block__, _meta, []}} -> false
-      {:ok, _ast} -> true
-      {:error, _reason} -> false
+    if plain_text_token?(pattern) do
+      false
+    else
+      case Code.string_to_quoted(pattern) do
+        {:ok, nil} -> false
+        {:ok, {:__block__, _meta, []}} -> false
+        {:ok, _ast} -> true
+        {:error, _reason} -> false
+      end
     end
+  end
+
+  defp plain_text_token?(pattern) do
+    String.match?(pattern, ~r/^[[:alnum:]_#!?@.-]+$/u) and
+      not String.contains?(pattern, ["(", ")"])
   end
 
   defp query_contains_text_predicate?(%Query{binding: binding, predicates: predicates}) do
