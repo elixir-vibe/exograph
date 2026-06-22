@@ -81,6 +81,12 @@ defmodule Exograph.DSL.ExecutorTest do
     end)
   end
 
+  test "counts named function patterns exactly", %{index: index} do
+    query = query!(~s|from(f in Fragment, where: matches(f, "def run(_) do ... end"), limit: 1)|)
+
+    assert {:ok, 1} = Exograph.count(index, query)
+  end
+
   defp query!(source) do
     assert {:ok, query} = SafeEval.eval(source)
     query

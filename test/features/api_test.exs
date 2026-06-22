@@ -60,6 +60,8 @@ defmodule Exograph.Features.APITest do
       body = json_body(resp)
       assert body["count"] > 0
       assert length(body["results"]) <= 20
+      assert body["meta"]["total"]["relation"] == "eq"
+      assert body["meta"]["total"]["value"] >= body["count"]
 
       notice_kinds = Enum.map(body["meta"]["notices"], & &1["kind"])
       refute "truncated" in notice_kinds

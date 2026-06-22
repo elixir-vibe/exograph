@@ -162,6 +162,19 @@ defmodule Exograph do
     DSL.Executor.all(index, query, opts)
   end
 
+  @doc false
+  def count(index, query, opts \\ [])
+
+  def count(%ShardedIndex{} = index, %DSL.Query{} = query, opts) do
+    index
+    |> fanout(:count, [query], Keyword.drop(opts, [:limit, :skip]))
+    |> sum_counts()
+  end
+
+  def count(%Index{} = index, %DSL.Query{} = query, opts) do
+    DSL.Executor.count(index, query, opts)
+  end
+
   @spec search_callers(Index.t(), String.t(), keyword()) :: {:ok, [Exograph.CallEdge.t()]}
   def search_callers(index, callee, opts \\ [])
 
@@ -358,6 +371,10 @@ defmodule Exograph do
     ])
   end
 
+  defp sum_counts({:ok, counts}) when is_list(counts), do: {:ok, Enum.sum(counts)}
+  defp sum_counts(:unknown), do: :unknown
+  defp sum_counts({:error, _reason} = error), do: error
+
   defp fanout(%ShardedIndex{shards: shards}, function, args, opts) do
     limit = Keyword.get(opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
@@ -376,7 +393,9 @@ defmodule Exograph do
       ordered: false
     )
     |> Enum.reduce_while({:ok, []}, fn
-      {:ok, {:ok, hits}}, {:ok, acc} -> {:cont, {:ok, hits ++ acc}}
+      {:ok, {:ok, hits}}, {:ok, acc} when is_list(hits) -> {:cont, {:ok, hits ++ acc}}
+      {:ok, {:ok, count}}, {:ok, acc} when is_integer(count) -> {:cont, {:ok, [count | acc]}}
+      {:ok, :unknown}, _acc -> {:halt, :unknown}
       {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
       {:exit, reason}, _acc -> {:halt, {:error, reason}}
     end)

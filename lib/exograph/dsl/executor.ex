@@ -24,6 +24,28 @@ defmodule Exograph.DSL.Executor do
     execute(index, Planner.plan(query), opts)
   end
 
+  def count(index, %Query{} = query, opts \\ []) do
+    do_count(index, Planner.plan(query), opts)
+  end
+
+  defp do_count(index, %Plan{source: :fragment, joins: []} = plan, opts) do
+    if exact_fragment_count_supported?(plan) do
+      verifier = fragment_verifier(plan.query)
+
+      count =
+        index
+        |> stream_filtered_fragments(plan, Keyword.drop(opts, [:limit, :skip]))
+        |> Stream.flat_map(&verify_fragment(&1, verifier))
+        |> Enum.count()
+
+      {:ok, count}
+    else
+      :unknown
+    end
+  end
+
+  defp do_count(_index, _plan, _opts), do: :unknown
+
   defp execute(index, %Plan{source: :fragment, joins: []} = plan, opts) do
     fragment_all(index, plan, opts)
   end
@@ -218,6 +240,21 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp def_pattern_name_arity(_ast), do: nil
+
+  defp exact_fragment_count_supported?(%Plan{
+         query: %Query{binding: binding, predicates: predicates}
+       }) do
+    Enum.any?(predicates, fn
+      {:matches, ^binding, pattern} when is_binary(pattern) ->
+        match?(
+          {_name, arity} when is_integer(arity),
+          pattern_name_arity({:matches, binding, pattern})
+        )
+
+      _predicate ->
+        false
+    end)
+  end
 
   def stream_structural(index, %Exograph.StructuralQuery{} = compiled_query, opts) do
     term_strings = MapSet.to_list(compiled_query.required_terms)

@@ -212,13 +212,27 @@ defmodule Exograph.Web.QueryLive do
       case result do
         {:ok, new_results, elapsed_ms, effective_limit, total, meta} ->
           page_size = socket.assigns.page_size
-          has_more = length(new_results) >= min(effective_limit, page_size)
 
           total_pages =
             cond do
-              total -> ceil(total / page_size)
-              has_more -> socket.assigns.current_page + 1
-              true -> socket.assigns.current_page
+              is_integer(total) and total > 0 ->
+                ceil(total / page_size)
+
+              is_integer(total) ->
+                1
+
+              length(new_results) >= min(effective_limit, page_size) ->
+                socket.assigns.current_page + 1
+
+              true ->
+                socket.assigns.current_page
+            end
+
+          has_more =
+            if is_integer(total) do
+              socket.assigns.current_page < total_pages
+            else
+              length(new_results) >= min(effective_limit, page_size)
             end
 
           socket
@@ -259,8 +273,8 @@ defmodule Exograph.Web.QueryLive do
         </div>
         <div class="flex items-center gap-4 text-sm text-zinc-400">
           <span :if={@result_count} class="tabular-nums">
-            <span :if={@total_results}>{@total_results} results</span>
-            <span :if={!@total_results}>{@result_count} results</span>
+            <span :if={@total_results}>Showing {@result_count} of {@total_results} results</span>
+            <span :if={!@total_results}>Showing {@result_count} results</span>
             across {length(@results || [])}
             <span :if={length(@results || []) == 1}>package version</span>
             <span :if={length(@results || []) != 1}>package versions</span>
