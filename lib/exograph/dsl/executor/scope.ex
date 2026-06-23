@@ -114,16 +114,18 @@ defmodule Exograph.DSL.Executor.Scope do
   @doc false
   def where_structural_terms(queryable, index, plan) do
     case resolve_structural_term_ids(index, plan) do
-      [] -> queryable
-      ids -> where_fragment_term_ids(queryable, index, ids)
+      :no_required_terms -> queryable
+      :missing_required_term -> where(queryable, false)
+      {:ok, ids} -> where_fragment_term_ids(queryable, index, ids)
     end
   end
 
   @doc false
   def where_structural_terms_second(queryable, index, plan) do
     case resolve_structural_term_ids(index, plan) do
-      [] -> queryable
-      ids -> where_second_fragment_term_ids(queryable, index, ids)
+      :no_required_terms -> queryable
+      :missing_required_term -> where(queryable, false)
+      {:ok, ids} -> where_second_fragment_term_ids(queryable, index, ids)
     end
   end
 
@@ -164,9 +166,15 @@ defmodule Exograph.DSL.Executor.Scope do
     required_terms = Compiler.required_terms(plan.query)
 
     if required_terms == [] do
-      []
+      :no_required_terms
     else
-      EctoInvertedIndex.resolve_term_ids(index.inverted, required_terms)
+      ids = EctoInvertedIndex.resolve_term_ids(index.inverted, required_terms)
+
+      if ids == [] do
+        :missing_required_term
+      else
+        {:ok, ids}
+      end
     end
   end
 end

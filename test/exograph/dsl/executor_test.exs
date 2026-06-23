@@ -95,6 +95,13 @@ defmodule Exograph.DSL.ExecutorTest do
     assert {:ok, []} = Exograph.all(index, query, limit: 20)
   end
 
+  test "missing structural terms return no candidates", %{index: index} do
+    query =
+      query!(~s|from(f in Fragment, where: contains(f, "def handle_event(_, _, _)"), limit: 20)|)
+
+    assert {:ok, []} = Exograph.all(index, query, limit: 20)
+  end
+
   test "named function patterns return only matching function fragments", %{index: index} do
     query!(~s|from(f in Fragment, where: matches(f, "def run(_) do ... end"), limit: 20)|)
     |> then(&Exograph.all(index, &1, limit: 20))
