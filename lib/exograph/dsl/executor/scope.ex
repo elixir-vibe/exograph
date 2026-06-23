@@ -4,8 +4,7 @@ defmodule Exograph.DSL.Executor.Scope do
   import Ecto.Query
 
   alias Exograph.DSL.Compiler
-  alias Exograph.Storage.Ecto.Options
-  alias Exograph.Storage.Ecto.InvertedIndex, as: EctoInvertedIndex
+  alias Exograph.Storage.Ecto.{InvertedIndex, Options}
 
   @doc false
   def where_fragment_scope(queryable, opts) do
@@ -168,7 +167,7 @@ defmodule Exograph.DSL.Executor.Scope do
     if required_terms == [] do
       :no_required_terms
     else
-      ids = EctoInvertedIndex.resolve_term_ids(index.inverted, required_terms)
+      ids = InvertedIndex.resolve_term_ids(index.inverted, required_terms)
 
       if ids == [] do
         :missing_required_term

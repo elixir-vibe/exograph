@@ -35,11 +35,14 @@ defmodule Exograph do
   }
 
   alias Exograph.Extractor.ExAST, as: ExASTExtractor
-  alias Exograph.Storage.Ecto.FragmentStore, as: EctoFragmentStore
-  alias Exograph.Storage.Ecto.InvertedIndex, as: EctoInvertedIndex
-  alias Exograph.Storage.Ecto.PackageRecord
-  alias Exograph.Storage.Ecto.PackageVersionRecord
-  alias Exograph.Storage.Ecto.TreeStore, as: EctoTreeStore
+
+  alias Exograph.Storage.Ecto.{
+    FragmentStore,
+    InvertedIndex,
+    PackageRecord,
+    PackageVersionRecord,
+    TreeStore
+  }
 
   import Ecto.Query, only: [from: 2]
 
@@ -93,9 +96,9 @@ defmodule Exograph do
     store_opts_without_migration = Keyword.put(store_opts, :migrate?, false)
     batch_size = Keyword.get(opts, :index_batch_size, 2_000)
 
-    with {:ok, inverted} <- EctoInvertedIndex.new(store_opts),
-         {:ok, fragment_store} <- EctoFragmentStore.new(store_opts_without_migration),
-         {:ok, tree_store} <- EctoTreeStore.new(store_opts_without_migration),
+    with {:ok, inverted} <- InvertedIndex.new(store_opts),
+         {:ok, fragment_store} <- FragmentStore.new(store_opts_without_migration),
+         {:ok, tree_store} <- TreeStore.new(store_opts_without_migration),
          {:ok, {inverted, fragment_store, tree_store}} <-
            put_fragment_stream(fragments, batch_size, inverted, fragment_store, tree_store) do
       {:ok,
@@ -186,7 +189,7 @@ defmodule Exograph do
   end
 
   def search_callers(%Index{} = index, callee, opts) when is_binary(callee) do
-    EctoInvertedIndex.search_callers(index.inverted, callee, opts)
+    InvertedIndex.search_callers(index.inverted, callee, opts)
   end
 
   @spec search_callees(Index.t(), String.t(), keyword()) :: {:ok, [Exograph.CallEdge.t()]}
@@ -199,7 +202,7 @@ defmodule Exograph do
   end
 
   def search_callees(%Index{} = index, caller, opts) when is_binary(caller) do
-    EctoInvertedIndex.search_callees(index.inverted, caller, opts)
+    InvertedIndex.search_callees(index.inverted, caller, opts)
   end
 
   @doc false
@@ -219,12 +222,12 @@ defmodule Exograph do
   end
 
   def search_text(%Index{} = index, %Regex{} = regex, opts) do
-    {:ok, hits} = EctoInvertedIndex.search_text_regex(index.inverted, regex, opts)
+    {:ok, hits} = InvertedIndex.search_text_regex(index.inverted, regex, opts)
     typed_hits(hits, TextHit)
   end
 
   def search_text(%Index{} = index, literal, opts) when is_binary(literal) do
-    {:ok, hits} = EctoInvertedIndex.search_text(index.inverted, literal, opts)
+    {:ok, hits} = InvertedIndex.search_text(index.inverted, literal, opts)
 
     hits
     |> Enum.filter(&text_match?(&1.fragment.source || "", literal))
@@ -242,7 +245,7 @@ defmodule Exograph do
   end
 
   def search_comments(%Index{} = index, literal, opts) when is_binary(literal) do
-    {:ok, hits} = EctoInvertedIndex.search_comments(index.inverted, literal, opts)
+    {:ok, hits} = InvertedIndex.search_comments(index.inverted, literal, opts)
 
     hits
     |> Enum.filter(&text_match?(comments_text(&1.fragment.source), literal))
@@ -262,7 +265,7 @@ defmodule Exograph do
 
   def search_definitions(%Index{} = index, partial_name, opts)
       when is_binary(partial_name) do
-    case EctoInvertedIndex.search_definitions(index.inverted, partial_name, opts) do
+    case InvertedIndex.search_definitions(index.inverted, partial_name, opts) do
       {:ok, hits} -> typed_hits(hits, DefinitionHit)
       {:error, _} -> {:ok, []}
     end
@@ -281,7 +284,7 @@ defmodule Exograph do
 
   def search_references(%Index{} = index, partial_name, opts)
       when is_binary(partial_name) do
-    case EctoInvertedIndex.search_references(index.inverted, partial_name, opts) do
+    case InvertedIndex.search_references(index.inverted, partial_name, opts) do
       {:ok, hits} -> typed_hits(hits, ReferenceHit)
       {:error, _} -> {:ok, []}
     end
@@ -296,7 +299,7 @@ defmodule Exograph do
   @doc false
   @spec tree_nodes(Index.t(), Exograph.Fragment.id()) :: [Exograph.Tree.Node.t()]
   def tree_nodes(%Index{} = index, fragment_id) do
-    EctoTreeStore.nodes(index.tree_store, fragment_id)
+    TreeStore.nodes(index.tree_store, fragment_id)
   end
 
   defp put_fragment_stream(fragments, batch_size, inverted, fragment_store, tree_store) do
@@ -309,17 +312,17 @@ defmodule Exograph do
                                                                              tree_store}} ->
       {:ok, inverted} =
         Exograph.Hex.StageTimings.measure(:inverted_index_add, fn ->
-          EctoInvertedIndex.add(inverted, batch)
+          InvertedIndex.add(inverted, batch)
         end)
 
       {:ok, fragment_store} =
         Exograph.Hex.StageTimings.measure(:fragment_store_put, fn ->
-          EctoFragmentStore.put(fragment_store, batch)
+          FragmentStore.put(fragment_store, batch)
         end)
 
       {:ok, tree_store} =
         Exograph.Hex.StageTimings.measure(:tree_store_put, fn ->
-          EctoTreeStore.put_fragments(tree_store, batch)
+          TreeStore.put_fragments(tree_store, batch)
         end)
 
       {:cont, {:ok, {inverted, fragment_store, tree_store}}}

@@ -8,8 +8,7 @@ defmodule Exograph.DSL.Executor do
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
   alias Exograph.DSL.{Compiler, JoinSemantics, Plan, Planner, Query, Sources}
   alias Exograph.DSL.Plan.Join
-  alias Exograph.Storage.Ecto.FragmentStore, as: EctoFragmentStore
-  alias Exograph.Storage.Ecto.InvertedIndex, as: EctoInvertedIndex
+  alias Exograph.Storage.Ecto.{FragmentStore, InvertedIndex}
   alias Exograph.StructuralQuery
 
   alias Exograph.Storage.Ecto.{
@@ -260,7 +259,7 @@ defmodule Exograph.DSL.Executor do
 
   def stream_structural(index, %Exograph.StructuralQuery{} = compiled_query, opts) do
     term_strings = MapSet.to_list(compiled_query.required_terms)
-    term_ids = EctoInvertedIndex.resolve_term_ids(index.inverted, term_strings)
+    term_ids = InvertedIndex.resolve_term_ids(index.inverted, term_strings)
     kind_filter = structural_query_kind(compiled_query)
     {name_filter, arity_filter} = structural_query_name_arity(compiled_query)
 
@@ -491,7 +490,7 @@ defmodule Exograph.DSL.Executor do
       index,
       plan,
       Keyword.put_new_lazy(opts, :candidate_limit, fn ->
-        EctoFragmentStore.count(index.fragment_store)
+        FragmentStore.count(index.fragment_store)
       end),
       nil
     )
@@ -1177,7 +1176,7 @@ defmodule Exograph.DSL.Executor do
 
   defp candidate_limit(index, opts) do
     Keyword.get_lazy(opts, :candidate_limit, fn ->
-      EctoFragmentStore.count(index.fragment_store)
+      FragmentStore.count(index.fragment_store)
     end)
   end
 
