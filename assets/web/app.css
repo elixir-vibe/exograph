@@ -4,6 +4,7 @@
 
 [data-phx-main] {
   height: 100%;
+  height: 100dvh;
 }
 
 .code-preview,

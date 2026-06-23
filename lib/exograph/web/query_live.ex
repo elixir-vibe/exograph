@@ -287,13 +287,13 @@ defmodule Exograph.Web.QueryLive do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <header class="flex items-center justify-between px-6 py-3 border-b border-zinc-800">
-        <div class="flex items-center gap-3">
+      <header class="flex flex-col gap-3 px-4 py-3 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 class="text-lg font-semibold tracking-tight">Exograph</h1>
           <span class="text-xs text-zinc-500">{@package_count} packages indexed</span>
         </div>
-        <div class="flex items-center gap-4 text-sm text-zinc-400">
-          <span :if={@result_count} class="tabular-nums">
+        <div class="flex w-full flex-wrap items-center gap-2 text-sm text-zinc-400 sm:w-auto sm:justify-end sm:gap-4">
+          <span :if={@result_count} class="min-w-0 flex-1 tabular-nums sm:flex-none">
             <span :if={@total_results}>Showing {@result_count} of {@total_results} results</span>
             <span :if={!@total_results}>Showing {@result_count} results</span>
             <span class="text-zinc-600">·</span>
@@ -322,7 +322,7 @@ defmodule Exograph.Web.QueryLive do
       </header>
 
       <div class="flex flex-col flex-1 min-h-0">
-        <div id="editor-wrapper" class="h-[160px] border-b border-zinc-800" phx-update="ignore">
+        <div id="editor-wrapper" class="h-[120px] border-b border-zinc-800 sm:h-[160px]" phx-update="ignore">
           <div
             id="editor"
             phx-hook="Editor"
@@ -331,7 +331,7 @@ defmodule Exograph.Web.QueryLive do
           />
         </div>
 
-        <div id="results-wrapper" class="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-4 space-y-3">
+        <div id="results-wrapper" class="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-3 space-y-3 sm:p-4">
           <div :if={@error} class="p-4 text-red-400 font-mono text-sm whitespace-pre-wrap">
             {@error}
           </div>
@@ -354,7 +354,7 @@ defmodule Exograph.Web.QueryLive do
 
           <div :for={group <- (@results || [])} class="rounded-lg border border-zinc-800 overflow-hidden">
             <div
-              class="flex items-center gap-3 px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 w-full cursor-pointer hover:bg-zinc-800/50 transition-colors"
+              class="flex w-full cursor-pointer flex-wrap items-center gap-2 px-3 py-2.5 bg-zinc-900 border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors sm:gap-3 sm:px-4"
               phx-click="toggle_package"
               phx-value-package={group.key}
             >
@@ -365,7 +365,7 @@ defmodule Exograph.Web.QueryLive do
               <a
                 href={group.package_url}
                 target="_blank"
-                class="text-sm font-semibold text-zinc-200 hover:text-blue-400"
+                class="min-w-0 max-w-full truncate text-sm font-semibold text-zinc-200 hover:text-blue-400"
                 onclick="event.stopPropagation()"
               >
                 {group.package}
@@ -383,32 +383,32 @@ defmodule Exograph.Web.QueryLive do
 
             <div :if={not MapSet.member?(@collapsed_packages, group.key)} class="divide-y divide-zinc-800">
               <div :for={file_group <- group.files}>
-                <div class="flex items-center gap-2 px-4 py-2 bg-zinc-900/40 border-b border-zinc-800/50">
+                <div class="flex min-w-0 items-center gap-2 px-3 py-2 bg-zinc-900/40 border-b border-zinc-800/50 sm:px-4">
                   <.icon name="heroicons:document-text" class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                   <a
                     :if={file_group.source_url}
                     href={file_group.source_url}
                     target="_blank"
-                    class="text-blue-400 font-mono text-xs hover:text-blue-300"
+                    class="min-w-0 truncate text-blue-400 font-mono text-xs hover:text-blue-300"
                   >
                     {file_group.file}
                   </a>
-                  <span :if={!file_group.source_url} class="text-blue-400 font-mono text-xs">
+                  <span :if={!file_group.source_url} class="min-w-0 truncate text-blue-400 font-mono text-xs">
                     {file_group.file}
                   </span>
                 </div>
 
                 <div class="divide-y divide-zinc-800/40">
-                  <div :for={result <- file_group.results} class="px-4 py-3">
+                  <div :for={result <- file_group.results} class="px-3 py-3 sm:px-4">
                     <div class="flex items-center gap-2 mb-2 flex-wrap">
                       <span class={"inline-flex items-center px-1.5 py-0.5 text-xs rounded font-medium " <> badge_class(result.kind)}>
                         {to_string(result.kind)}
                       </span>
-                      <span class="text-zinc-200 font-mono text-sm">{display_name(result)}</span>
+                      <span class="min-w-0 break-all text-zinc-200 font-mono text-sm sm:break-normal">{display_name(result)}</span>
                       <span :if={result.module} class="text-zinc-500 text-xs font-mono">
                         {result.module}
                       </span>
-                      <span class="ml-auto text-zinc-600 text-xs tabular-nums">
+                      <span class="ml-0 text-zinc-600 text-xs tabular-nums sm:ml-auto">
                         line {result.line}
                       </span>
                       <button
@@ -424,18 +424,18 @@ defmodule Exograph.Web.QueryLive do
                       </button>
                       <span
                         :if={result.joined_label}
-                        class="text-zinc-500 text-xs font-mono ml-2"
+                        class="basis-full text-zinc-500 text-xs font-mono sm:basis-auto sm:ml-2"
                       >
                         {result.joined_label}
                       </span>
                     </div>
 
-                    <div :if={result.preview} class="code-preview rounded border border-zinc-800 overflow-hidden py-1">
+                    <div :if={result.preview} class="code-preview rounded border border-zinc-800 overflow-x-auto py-1">
                       <div
                         :for={{line_num, html, is_matched} <- result.preview}
                         class={"flex font-mono" <> if(is_matched, do: " bg-blue-900/20 border-l-2 border-l-blue-500", else: "")}
                       >
-                        <span class="w-10 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 flex-1 overflow-x-hidden text-zinc-300 whitespace-pre">{raw(html)}</code>
+                        <span class="w-10 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
                       </div>
                     </div>
                   </div>
@@ -484,7 +484,7 @@ defmodule Exograph.Web.QueryLive do
           <div :if={@results == []} class="p-8 text-center text-zinc-500">No results</div>
           <div :if={is_nil(@results) && is_nil(@error)} class="px-6 py-8">
             <p class="text-sm text-zinc-500 mb-4">Try an example:</p>
-            <div class="grid grid-cols-2 gap-3 max-w-2xl">
+            <div class="grid grid-cols-1 gap-3 max-w-2xl sm:grid-cols-2">
               <button
                 :for={{label, desc, query} <- @examples}
                 phx-click="set_query"
@@ -504,13 +504,13 @@ defmodule Exograph.Web.QueryLive do
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       >
         <div
-          class="bg-zinc-900 rounded-lg border border-zinc-700 w-[90vw] h-[80vh] flex flex-col"
+          class="bg-zinc-900 rounded-lg border border-zinc-700 w-[96vw] h-[86dvh] flex flex-col sm:w-[90vw] sm:h-[80vh]"
           phx-click-away="close_source"
         >
-          <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-            <div class="flex items-center gap-2">
+          <div class="flex items-start justify-between gap-3 px-3 py-3 border-b border-zinc-800 sm:px-4">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
               <.icon name="heroicons:document-text" class="w-4 h-4 text-zinc-500" />
-              <span class="text-sm font-mono text-blue-400">{@viewing_source.file}</span>
+              <span class="min-w-0 break-all text-sm font-mono text-blue-400">{@viewing_source.file}</span>
               <span class="text-xs text-zinc-500">{@viewing_source.package}</span>
               <span
                 :if={@viewing_source.package_version}
@@ -536,7 +536,7 @@ defmodule Exograph.Web.QueryLive do
                 id={"source-line-#{line_num}"}
                 class={"flex font-mono" <> if(is_highlighted, do: " bg-blue-900/30 border-l-2 border-l-blue-500", else: "")}
               >
-                <span class="w-12 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 flex-1 overflow-x-hidden text-zinc-300 whitespace-pre">{raw(html)}</code>
+                <span class="w-12 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
               </div>
             </div>
           </div>
