@@ -24,8 +24,8 @@ config :volt, :server,
 config :release_kit, :artifact,
   port: 4200,
   health_path: "/",
-  prebuild: [
-    {ReleaseKit.Step.Volt, root: "assets", production: true, frozen: true}
+  assets: [
+    volt: [root: "assets", tailwind: true, production: true, frozen: true]
   ],
   env_clear: %{
     "EXOGRAPH_WEB" => "true",
