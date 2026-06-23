@@ -111,6 +111,19 @@ defmodule Exograph.Features.APITest do
     end
   end
 
+  describe "GET /api/health" do
+    test "returns runtime and index metadata" do
+      body = api_get("/api/health") |> json_body()
+
+      assert body["status"] == "ok"
+      assert body["application"]["name"] == "exograph"
+      assert body["application"]["version"]
+      assert body["index"]["kind"]
+      assert is_integer(body["index"]["opened_shards"])
+      assert body["runtime"]["prefix"]
+    end
+  end
+
   describe "GET /api/stats" do
     test "returns index statistics" do
       body = api_get("/api/stats") |> json_body()

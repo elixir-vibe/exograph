@@ -20,7 +20,7 @@ defmodule Exograph.Web.APIController do
     TermRecord
   }
 
-  alias Exograph.Web.{QueryExecutor, SearchResult}
+  alias Exograph.Web.{Health, QueryExecutor, SearchResult}
 
   @stats_sources [
     {"packages", PackageRecord},
@@ -111,6 +111,10 @@ defmodule Exograph.Web.APIController do
       {:error, message} ->
         conn |> put_status(400) |> json(%{error: message})
     end
+  end
+
+  def health(conn, _params) do
+    json(conn, Health.payload(index()))
   end
 
   def packages(conn, _params) do
