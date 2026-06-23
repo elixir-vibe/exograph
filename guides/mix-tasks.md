@@ -122,7 +122,7 @@ Use [ReleaseKit](https://hex.pm/packages/release_kit) directly to produce the OT
 
     MIX_ENV=prod mix release_kit.artifact --out-dir _build/prod/artifacts
 
-Exograph configures `ReleaseKit.Step.Volt` as an artifact prebuild step, so the command installs locked frontend packages, builds Volt assets, assembles the OTP release, and writes the manifest. Exograph does not wrap ReleaseKit; deployment tools such as `HostKit.Recipes.OTPRelease` consume the generated manifest directly:
+Exograph configures ReleaseKit's `assets: [volt: ...]` pipeline, so the command installs locked frontend packages, builds Tailwind and Volt assets, assembles the OTP release, and writes the typed manifest. Exograph does not wrap ReleaseKit; deployment tools such as `HostKit.Recipes.OTPRelease` consume the generated manifest directly:
 
     _build/prod/artifacts/exograph-20260620-abcdef0.tar.gz
     _build/prod/artifacts/exograph.etf

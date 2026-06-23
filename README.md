@@ -100,6 +100,7 @@ The web server exposes a JSON API:
 
     POST /api/search   — structural, text, or regex search
     POST /api/query    — DSL query execution
+    GET  /api/health   — app, release, runtime, and index health metadata
     GET  /api/packages — list indexed packages
     GET  /api/stats    — index statistics
 

@@ -40,6 +40,14 @@ Parameters:
 - `query` (required) — DSL query string
 - `cursor` — pagination cursor
 
+### GET /api/health
+
+Runtime health and deployment metadata.
+
+    curl http://localhost:4200/api/health
+
+Response includes the application version, release path/name, runtime metadata, and index shape such as `kind`, `shard_count`, and `opened_shards`. HostKit readiness checks can use this endpoint to verify the API and opened index, not just the HTML route.
+
 ### GET /api/packages
 
 List indexed packages sorted by fragment count.
@@ -51,6 +59,12 @@ List indexed packages sorted by fragment count.
 Index statistics.
 
     curl http://localhost:4200/api/stats
+
+## Telemetry
+
+Web search requests emit `[:exograph, :web, :query, :stop]` with `duration_ms` and `returned` measurements plus endpoint, query kind, status, and truncated query metadata.
+
+Sharded fanout emits `[:exograph, :shard, :query, :stop]` with per-shard duration, returned count, function, shard identity, and status metadata. Queries slower than the configured thresholds are also logged as warnings.
 
 ## Rate Limiting
 

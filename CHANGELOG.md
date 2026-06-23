@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added `/api/health` with release, runtime, and index metadata for deployment readiness checks.
+- Added web query and per-shard query telemetry with slow-query warnings.
+
+### Changed
+
+- Updated ReleaseKit configuration to `release_kit 0.2.1` and the `assets: [volt: ...]` pipeline.
+- `POST /api/search` now accepts structural predicate shorthand such as `contains(f, def handle_event(_, _, _))`.
+- Mirrored Exograph test paths under `test/exograph/` and documented the layout in `AGENTS.md`.
+
 ## 0.9.0 - 2026-06-20
 
 ### Changed
