@@ -27,6 +27,7 @@ defmodule Exograph do
     Index,
     ReferenceHit,
     ShardedIndex,
+    ShardTelemetry,
     Similarity,
     StructuralQuery,
     Text,
@@ -383,10 +384,16 @@ defmodule Exograph do
     |> candidate_shards(opts)
     |> Task.async_stream(
       fn shard ->
-        Exograph.DuckDBShards.with_repo(shard, fn ->
-          shard_opts = shard_opts(shard, opts, limit + skip)
-          apply(__MODULE__, function, [shard_index(shard) | args] ++ [shard_opts])
-        end)
+        {elapsed_us, result} =
+          :timer.tc(fn ->
+            Exograph.DuckDBShards.with_repo(shard, fn ->
+              shard_opts = shard_opts(shard, opts, limit + skip)
+              apply(__MODULE__, function, [shard_index(shard) | args] ++ [shard_opts])
+            end)
+          end)
+
+        ShardTelemetry.record(function, shard, Float.round(elapsed_us / 1000, 1), result)
+        result
       end,
       max_concurrency: Keyword.get(opts, :shard_concurrency, length(shards)),
       timeout: Keyword.get(opts, :timeout, :infinity),

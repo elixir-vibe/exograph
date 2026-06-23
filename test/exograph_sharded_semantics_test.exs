@@ -17,6 +17,68 @@ defmodule ExographShardedSemanticsTest do
     :ok
   end
 
+  test "sharded fanout emits per-shard telemetry" do
+    alpha_path =
+      fixture("telemetry_alpha.ex", """
+      defmodule Demo.TelemetryAlpha do
+        def alpha_value do
+          :alpha
+        end
+      end
+      """)
+
+    beta_path =
+      fixture("telemetry_beta.ex", """
+      defmodule Demo.TelemetryBeta do
+        def beta_value do
+          :beta
+        end
+      end
+      """)
+
+    {:ok, alpha_index} =
+      Exograph.index(alpha_path,
+        repo: Exograph.DuckDBRepo,
+        prefix: "telemetry_alpha",
+        migrate?: true,
+        min_mass: 4
+      )
+
+    {:ok, beta_index} =
+      Exograph.index(beta_path,
+        repo: Exograph.DuckDBRepo,
+        prefix: "telemetry_beta",
+        migrate?: true,
+        min_mass: 4
+      )
+
+    sharded =
+      ShardedIndex.new([
+        %{id: 0, prefix: "telemetry_alpha", index: alpha_index},
+        %{id: 1, prefix: "telemetry_beta", index: beta_index}
+      ])
+
+    handler_id = {__MODULE__, self(), make_ref()}
+
+    :telemetry.attach(
+      handler_id,
+      [:exograph, :shard, :query, :stop],
+      &__MODULE__.handle_event/4,
+      self()
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:ok, [_hit | _]} = Exograph.search(sharded, "def alpha_value do ... end", limit: 10)
+
+    assert_receive {:shard_query_stop, measurements, metadata}
+    assert is_float(measurements.duration_ms)
+    assert metadata.function == :search
+    assert metadata.status == :ok
+    assert metadata.shard_id in [0, 1]
+    assert metadata.shard_prefix in ["telemetry_alpha", "telemetry_beta"]
+  end
+
   test "package-scoped sharded search routes to the matching shard" do
     alpha_path =
       fixture("alpha.ex", """
@@ -327,6 +389,10 @@ defmodule ExographShardedSemanticsTest do
     sharded = ShardedIndex.new([alpha_index, beta_index])
 
     assert {:ok, [_one]} = Exograph.all(sharded, query, limit: 1)
+  end
+
+  def handle_event(_event, measurements, metadata, test_pid) do
+    send(test_pid, {:shard_query_stop, measurements, metadata})
   end
 
   defp fixture(name, source) do
