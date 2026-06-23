@@ -1,4 +1,4 @@
-defmodule ExographDuckDBHexCorpusTest do
+defmodule Exograph.Hex.CorpusTest do
   use ExUnit.Case, async: false
 
   alias Exograph.DuckDBSupport

@@ -1,4 +1,4 @@
-defmodule ExographDuckDBShardsTest do
+defmodule Exograph.DuckDBShardsTest do
   use ExUnit.Case, async: true
 
   alias Exograph.DuckDBShards

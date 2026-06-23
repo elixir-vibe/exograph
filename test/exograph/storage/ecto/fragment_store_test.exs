@@ -1,4 +1,4 @@
-defmodule ExographDuckDBDefaultsTest do
+defmodule Exograph.Storage.Ecto.FragmentStoreTest do
   use ExUnit.Case, async: true
 
   alias Exograph.Storage.Ecto.FragmentStore

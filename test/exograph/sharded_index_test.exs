@@ -1,4 +1,4 @@
-defmodule ExographShardedSemanticsTest do
+defmodule Exograph.ShardedIndexTest do
   use ExUnit.Case, async: false
 
   alias Exograph.DuckDBSupport

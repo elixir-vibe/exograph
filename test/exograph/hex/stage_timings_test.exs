@@ -1,4 +1,4 @@
-defmodule ExographStageTimingsTest do
+defmodule Exograph.Hex.StageTimingsTest do
   use ExUnit.Case, async: false
 
   alias Exograph.Hex.StageTimings

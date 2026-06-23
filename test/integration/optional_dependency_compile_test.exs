@@ -1,4 +1,4 @@
-defmodule Exograph.OptionalDependencyCompileTest do
+defmodule Exograph.Integration.OptionalDependencyCompileTest do
   use ExUnit.Case, async: false
 
   test "project compilers omit phoenix_iconify when the compiler module is absent" do

@@ -1,4 +1,4 @@
-defmodule ExographDuckDBOfflineBuildTest do
+defmodule Exograph.DuckDB.OfflineBuildTest do
   use ExUnit.Case, async: false
 
   alias Exograph.DuckDB.OfflineBuild
