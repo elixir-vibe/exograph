@@ -11,7 +11,7 @@ defmodule Exograph.Storage.SQL do
     |> insert_chunks(repo, source, insert_opts, max_concurrency)
   end
 
-  def table(prefix, name), do: ~s("#{prefix}_#{name}")
+  def table(prefix, name), do: ~s("#{Exograph.Storage.Schema.table_name(prefix, name)}")
 
   def copy_integer_rows(_repo, _table, _columns, []), do: :ok
 

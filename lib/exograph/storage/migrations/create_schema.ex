@@ -3,6 +3,8 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
   use Ecto.Migration
 
+  alias Exograph.Storage.Schema
+
   def up do
     create_if_not_exists table(name("schema_migrations"), table_opts(primary_key: false)) do
       add(:version, :bigint, primary_key: true)
@@ -299,8 +301,8 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
   defp table_opts(opts \\ []), do: opts
 
-  defp name(suffix), do: "#{table_prefix()}_#{suffix}"
-  defp index_name(table, suffix), do: "#{table_prefix()}_#{table}_#{suffix}_idx"
+  defp name(suffix), do: Schema.table_name(table_prefix(), suffix)
+  defp index_name(table, suffix), do: Schema.index_name(table_prefix(), table, suffix)
 
   defp table_prefix do
     Application.fetch_env!(:exograph, __MODULE__)[:prefix]
