@@ -165,16 +165,25 @@ defmodule Exograph.Web.APIController do
   defp result_count({:error, _reason}), do: 0
 
   defp search_structural(index, pattern, opts) do
-    if dsl_query?(pattern) do
-      case QueryExecutor.execute(index, pattern, Keyword.put(opts, :mode, "structural")) do
-        {:ok, hits, _elapsed_ms, _effective_limit, _total, meta} -> {:ok, hits, meta}
-        {:error, reason} -> {:error, reason}
-      end
-    else
-      case Exograph.search(index, pattern, opts) do
-        {:ok, hits} -> {:ok, hits, nil}
-        {:error, reason} -> {:error, reason}
-      end
+    cond do
+      dsl_query?(pattern) ->
+        execute_structural_dsl(index, pattern, opts)
+
+      shorthand_query?(pattern) ->
+        execute_structural_dsl(index, expand_shorthand_query!(pattern, opts), opts)
+
+      true ->
+        case Exograph.search(index, pattern, opts) do
+          {:ok, hits} -> {:ok, hits, nil}
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp execute_structural_dsl(index, pattern, opts) do
+    case QueryExecutor.execute(index, pattern, Keyword.put(opts, :mode, "structural")) do
+      {:ok, hits, _elapsed_ms, _effective_limit, _total, meta} -> {:ok, hits, meta}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -184,6 +193,31 @@ defmodule Exograph.Web.APIController do
   end
 
   defp dsl_query?(_pattern), do: false
+
+  defp shorthand_query?(pattern) when is_binary(pattern) do
+    trimmed = String.trim(pattern)
+    String.starts_with?(trimmed, "matches(") or String.starts_with?(trimmed, "contains(")
+  end
+
+  defp shorthand_query?(_pattern), do: false
+
+  defp expand_shorthand_query!(pattern, opts) do
+    limit = Keyword.get(opts, :limit, QueryExecutor.default_limit())
+
+    case Code.string_to_quoted(pattern) do
+      {:ok, {kind, _meta, [{binding, _, nil}, ast_pattern]}}
+      when kind in [:matches, :contains] and is_atom(binding) ->
+        pattern = if is_binary(ast_pattern), do: ast_pattern, else: Macro.to_string(ast_pattern)
+
+        ~s|from(#{binding} in Fragment, where: #{kind}(#{binding}, #{inspect(pattern)}), limit: #{limit})|
+
+      {:ok, _other} ->
+        pattern
+
+      {:error, _reason} ->
+        pattern
+    end
+  end
 
   defp error_payload(%{} = reason), do: reason
   defp error_payload(reason), do: to_string(reason)

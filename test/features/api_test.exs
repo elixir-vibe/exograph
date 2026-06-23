@@ -48,6 +48,20 @@ defmodule Exograph.Features.APITest do
       assert page1_lines != page2_lines
     end
 
+    test "expands structural predicate shorthand" do
+      resp =
+        api_post("/api/search", %{
+          pattern: ~s|matches(f, def handle_call(_, _, _) do ... end)|,
+          limit: 5
+        })
+
+      assert resp.status == 200
+      body = json_body(resp)
+      assert body["count"] > 0
+      assert body["count"] <= 5
+      assert body["meta"]["limit"] == 5
+    end
+
     test "executes DSL query patterns" do
       resp =
         api_post("/api/search", %{
