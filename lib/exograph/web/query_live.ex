@@ -11,30 +11,59 @@ defmodule Exograph.Web.QueryLive do
 
   @default_query """
   from(f in Fragment,
-    where: matches(f, "def handle_call(_, _, _) do ... end"),
+    where: matches(f, "def mount(_, _, _) do ... end"),
+    where: contains(f, "Repo."),
     limit: 20
   )\
   """
 
   @examples [
-    {"Pattern search", "Find structural code patterns",
-     ~S'from(f in Fragment, where: matches(f, "Repo.get!(_, _)"), limit: 20)'},
-    {"GenServer callbacks", "Find handle_call implementations",
-     ~S'from(f in Fragment, where: matches(f, "def handle_call(_, _, _) do ... end"), limit: 20)'},
-    {"Functions calling Enum.map", "Join fragments with their references",
+    {"LiveView mount Repo work", "Audit Reach's disconnected mount Repo smell",
+     ~S"""
+     from(f in Fragment,
+       where: matches(f, "def mount(_, _, _) do ... end"),
+       where: contains(f, "Repo."),
+       limit: 20)
+     """},
+    {"Guarded mount subscriptions", "Compare PubSub subscribe patterns with connected?/1 guards",
+     ~S"""
+     from(f in Fragment,
+       where: matches(f, "def mount(_, _, _) do ... end"),
+       where: contains(f, "subscribe"),
+       where: contains(f, "connected?"),
+       limit: 20)
+     """},
+    {"Parser atom audit", "Join references and source text to inspect String.to_atom/1 usage",
      ~S"""
      from(f in Fragment,
        join: r in assoc(f, :references),
-       where: r.qualified_name == "Enum.map/2",
-       where: f.kind == :def,
+       where: r.qualified_name == "String.to_atom/1",
+       where: f.kind in [:def, :defp],
+       where: contains(f, "parse"),
+       where: matches(f, "def _ do ... end"),
+       select: {f, r},
        limit: 20)
      """},
-    {"Public API definitions", "Prefix-search public function names",
-     ~S'from(d in Definition, where: d.kind == :def, where: prefix_search(d.name, "fetch"))'},
-    {"Call graph: who calls Repo.transaction", "Explore callers via call edges",
-     ~S'from(e in CallEdge, where: e.callee_qualified_name == "Ecto.Repo.transaction/2", limit: 20)'},
-    {"Functions with TODO comments", "Combine pattern + text search",
-     ~S'from(f in Fragment, where: matches(f, "def _ do ... end"), where: contains(f, "# TODO"), limit: 20)'}
+    {"Safe binary_to_term contrast",
+     "Find [:safe] counterexamples for unsafe deserialization rules",
+     ~S'from(f in Fragment, where: contains(f, ":erlang.binary_to_term(_, [:safe])"), limit: 20)'},
+    {"Raw HTML audit", "Join Phoenix.HTML.raw/1 references with surrounding function source",
+     ~S"""
+     from(f in Fragment,
+       join: r in assoc(f, :references),
+       where: r.qualified_name == "Phoenix.HTML.raw/1",
+       where: f.kind in [:def, :defp],
+       where: contains(f, "safe"),
+       select: {f, r},
+       limit: 20)
+     """},
+    {"Repo call inside Enum.map", "Search for N+1-style Repo work inside enumerable callbacks",
+     ~S"""
+     from(f in Fragment,
+       where: matches(f, "def _ do Enum.map(_, fn _ -> ... end) end"),
+       where: contains(f, "Repo."),
+       limit: 20)
+     """}
   ]
 
   @impl true
@@ -64,7 +93,6 @@ defmodule Exograph.Web.QueryLive do
        total_pages: 1,
        total_results: nil,
        query_meta: nil,
-       search_mode: "structural",
        viewing_source: nil
      )}
   end
@@ -86,11 +114,6 @@ defmodule Exograph.Web.QueryLive do
   @impl true
   def handle_event("set_query", %{"query" => query}, socket) do
     {:noreply, push_event(socket, "set_editor_value", %{value: String.trim(query)})}
-  end
-
-  @impl true
-  def handle_event("set_mode", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, search_mode: mode)}
   end
 
   @impl true
@@ -173,7 +196,6 @@ defmodule Exograph.Web.QueryLive do
 
   defp start_query(socket, query, page) do
     index = socket.assigns.index
-    mode = socket.assigns.search_mode
     page_size = socket.assigns.page_size
     page = max(page, 1)
     skip = (page - 1) * page_size
@@ -196,7 +218,9 @@ defmodule Exograph.Web.QueryLive do
       )
 
     Task.start(fn ->
-      result = QueryExecutor.execute(index, query, skip: skip, limit: page_size, mode: mode)
+      result =
+        QueryExecutor.execute(index, query, skip: skip, limit: page_size, mode: "structural")
+
       send(pid, {:query_result, query, result, :replace})
     end)
 
@@ -275,22 +299,6 @@ defmodule Exograph.Web.QueryLive do
             <span class="text-zinc-600">·</span>
             <span>{@elapsed_ms}ms</span>
           </span>
-          <div class="flex items-center gap-1 bg-zinc-800 rounded-md p-0.5">
-            <button
-              phx-click="set_mode"
-              phx-value-mode="structural"
-              class={"px-2 py-1 text-xs rounded cursor-pointer " <> if(@search_mode == "structural", do: "bg-zinc-700 text-zinc-200", else: "text-zinc-500 hover:text-zinc-300")}
-            >
-              Structural
-            </button>
-            <button
-              phx-click="set_mode"
-              phx-value-mode="text"
-              class={"px-2 py-1 text-xs rounded cursor-pointer " <> if(@search_mode == "text", do: "bg-zinc-700 text-zinc-200", else: "text-zinc-500 hover:text-zinc-300")}
-            >
-              Text
-            </button>
-          </div>
           <button
             id="fmt-btn"
             phx-hook="FormatButton"
