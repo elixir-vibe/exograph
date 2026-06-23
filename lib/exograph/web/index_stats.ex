@@ -2,7 +2,7 @@ defmodule Exograph.Web.IndexStats do
   @moduledoc false
 
   alias Exograph.ShardedIndex
-  alias Exograph.Storage.Ecto.PackageRecord
+  alias Exograph.Storage.PackageRecord
 
   def package_count(%ShardedIndex{shards: shards}) do
     shards

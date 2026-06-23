@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.FileRecord do
+defmodule Exograph.Storage.FileRecord do
   @moduledoc false
 
   use Ecto.Schema

@@ -6,7 +6,7 @@ defmodule Exograph.Web.APIController do
 
   alias Exograph.ShardedIndex
 
-  alias Exograph.Storage.Ecto.{
+  alias Exograph.Storage.{
     CallEdgeRecord,
     CommentRecord,
     DefinitionRecord,

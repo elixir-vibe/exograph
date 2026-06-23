@@ -1,10 +1,10 @@
-defmodule Exograph.Storage.Ecto.FactQuery do
+defmodule Exograph.Storage.FactQuery do
   @moduledoc false
 
   import Ecto.Query
 
   alias Exograph.{DefinitionHit, ReferenceHit, Scope, Text}
-  alias Exograph.Storage.Ecto.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Options}
 
   def search(index, table_source, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
@@ -58,10 +58,10 @@ defmodule Exograph.Storage.Ecto.FactQuery do
 
   defp hit(
          {record, source, path, package_version, fact},
-         {_table, Exograph.Storage.Ecto.DefinitionRecord}
+         {_table, Exograph.Storage.DefinitionRecord}
        ) do
     DefinitionHit.new(
-      definition: Exograph.Storage.Ecto.DefinitionRecord.to_definition(fact),
+      definition: Exograph.Storage.DefinitionRecord.to_definition(fact),
       fragment: Options.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )
@@ -69,10 +69,10 @@ defmodule Exograph.Storage.Ecto.FactQuery do
 
   defp hit(
          {record, source, path, package_version, fact},
-         {_table, Exograph.Storage.Ecto.ReferenceRecord}
+         {_table, Exograph.Storage.ReferenceRecord}
        ) do
     ReferenceHit.new(
-      reference: Exograph.Storage.Ecto.ReferenceRecord.to_reference(fact),
+      reference: Exograph.Storage.ReferenceRecord.to_reference(fact),
       fragment: Options.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )

@@ -1,10 +1,10 @@
-defmodule Exograph.Storage.Ecto.TreeStore do
+defmodule Exograph.Storage.TreeStore do
   @moduledoc """
   Durable AST tree node store backed by Ecto repositories.
   """
 
   alias Exograph.DuckDB
-  alias Exograph.Storage.Ecto.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Options}
   alias Exograph.Tree
 
   defstruct repo: nil, prefix: "exograph"

@@ -2,7 +2,7 @@ defmodule Exograph.Similarity do
   @moduledoc false
 
   alias ExDNA.AST.{EditDistance, Fingerprint, Normalizer}
-  alias Exograph.Storage.Ecto.FragmentStore
+  alias Exograph.Storage.FragmentStore
   alias Exograph.Index
 
   @default_opts [min_mass: 8, min_similarity: 0.8, limit: 20]

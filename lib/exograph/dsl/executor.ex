@@ -8,10 +8,10 @@ defmodule Exograph.DSL.Executor do
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
   alias Exograph.DSL.{Compiler, JoinSemantics, Plan, Planner, Query, Sources}
   alias Exograph.DSL.Plan.Join
-  alias Exograph.Storage.Ecto.{FragmentStore, InvertedIndex}
+  alias Exograph.Storage.{FragmentStore, InvertedIndex}
   alias Exograph.StructuralQuery
 
-  alias Exograph.Storage.Ecto.{
+  alias Exograph.Storage.{
     CallEdgeRecord,
     DefinitionRecord,
     FragmentRecord,

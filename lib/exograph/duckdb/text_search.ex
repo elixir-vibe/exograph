@@ -2,7 +2,7 @@ defmodule Exograph.DuckDB.TextSearch do
   @moduledoc false
 
   alias Exograph.Hit
-  alias Exograph.Storage.Ecto.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Options}
 
   def search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
     limit = Keyword.get(opts, :limit, 50)
@@ -28,7 +28,7 @@ defmodule Exograph.DuckDB.TextSearch do
         source,
         path,
         "#{schema}".match_bm25(id, ?, fields := '#{field_name}') AS score
-      FROM #{Exograph.Storage.Ecto.SQL.table(index.prefix, "files")}
+      FROM #{Exograph.Storage.SQL.table(index.prefix, "files")}
       WHERE "#{schema}".match_bm25(id, ?, fields := '#{field_name}') > 0#{scope_sql}
       ORDER BY score DESC, path ASC
       LIMIT ?
@@ -53,7 +53,7 @@ defmodule Exograph.DuckDB.TextSearch do
     statement = """
     WITH matched_files AS (
       SELECT id, source, path
-      FROM #{Exograph.Storage.Ecto.SQL.table(index.prefix, "files")}
+      FROM #{Exograph.Storage.SQL.table(index.prefix, "files")}
       WHERE "#{column}" ILIKE ?#{scope_sql}
       ORDER BY path ASC
       LIMIT ?
@@ -86,12 +86,12 @@ defmodule Exograph.DuckDB.TextSearch do
         id, package_id, package_version_id, file_id, content_hash, ast,
         kind, module, name, arity, line, end_line, mass,
         exact_hash, terms, sub_hashes, inserted_at, updated_at
-      FROM #{Exograph.Storage.Ecto.SQL.table(prefix, "fragments")}
+      FROM #{Exograph.Storage.SQL.table(prefix, "fragments")}
       WHERE file_id = matched_files.id
       ORDER BY line ASC
       LIMIT 1
     ) AS fr ON true
-    LEFT JOIN #{Exograph.Storage.Ecto.SQL.table(prefix, "package_versions")} AS pv
+    LEFT JOIN #{Exograph.Storage.SQL.table(prefix, "package_versions")} AS pv
       ON pv.id = fr.package_version_id
     """
   end

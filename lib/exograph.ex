@@ -36,7 +36,7 @@ defmodule Exograph do
 
   alias Exograph.Extractor.ExAST, as: ExASTExtractor
 
-  alias Exograph.Storage.Ecto.{
+  alias Exograph.Storage.{
     FragmentStore,
     InvertedIndex,
     PackageRecord,

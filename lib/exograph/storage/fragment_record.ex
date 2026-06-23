@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.FragmentRecord do
+defmodule Exograph.Storage.FragmentRecord do
   @moduledoc false
 
   use Ecto.Schema

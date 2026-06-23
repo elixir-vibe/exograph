@@ -1,7 +1,7 @@
 defmodule Exograph.DSL.Sources do
   @moduledoc false
 
-  alias Exograph.Storage.Ecto.{CallEdgeRecord, DefinitionRecord, Options, ReferenceRecord}
+  alias Exograph.Storage.{CallEdgeRecord, DefinitionRecord, Options, ReferenceRecord}
 
   @symbol_fact_fields MapSet.new([
                         :id,

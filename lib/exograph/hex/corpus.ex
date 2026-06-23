@@ -5,7 +5,7 @@ defmodule Exograph.Hex.Corpus do
 
   alias Exograph.{Package, PackageVersion}
 
-  alias Exograph.Storage.Ecto.{
+  alias Exograph.Storage.{
     PackageRecord,
     PackageVersionRecord
   }
@@ -769,11 +769,11 @@ defmodule Exograph.Hex.Corpus do
     pkg_source = "#{prefix}_packages"
 
     pkgs =
-      from(p in {pkg_source, Exograph.Storage.Ecto.PackageRecord},
+      from(p in {pkg_source, Exograph.Storage.PackageRecord},
         select: %{id: p.id, name: p.name}
       )
 
-    from(pv in {pv_source, Exograph.Storage.Ecto.PackageVersionRecord},
+    from(pv in {pv_source, Exograph.Storage.PackageVersionRecord},
       join: p in subquery(pkgs),
       on: p.id == pv.package_id,
       select: {p.name, pv.version}

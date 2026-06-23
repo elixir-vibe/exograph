@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.SQL do
+defmodule Exograph.Storage.SQL do
   @moduledoc false
 
   def bulk_insert_all(repo, source, entries, opts \\ []) do

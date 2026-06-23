@@ -276,7 +276,7 @@ defmodule Exograph.Hex.CorpusTest do
   defp indexed_fragments(prefix) do
     prefix
     |> index!()
-    |> then(&Exograph.Storage.Ecto.FragmentStore.all(&1.fragment_store))
+    |> then(&Exograph.Storage.FragmentStore.all(&1.fragment_store))
   end
 
   defp search_text(prefix, literal), do: Exograph.search_text(index!(prefix), literal)

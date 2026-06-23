@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.Options do
+defmodule Exograph.Storage.Options do
   @moduledoc false
 
   alias Exograph.{DuckDB, Package, PackageVersion}
@@ -57,33 +57,33 @@ defmodule Exograph.Storage.Ecto.Options do
     |> Map.put(:source, source)
     |> Map.put(:file, path)
     |> Map.put(:package_version, package_version)
-    |> Exograph.Storage.Ecto.FragmentRecord.to_fragment()
+    |> Exograph.Storage.FragmentRecord.to_fragment()
   end
 
-  def files_source(prefix), do: {"#{prefix}_files", Exograph.Storage.Ecto.FileRecord}
+  def files_source(prefix), do: {"#{prefix}_files", Exograph.Storage.FileRecord}
 
   def package_versions_source(prefix),
-    do: {"#{prefix}_package_versions", Exograph.Storage.Ecto.PackageVersionRecord}
+    do: {"#{prefix}_package_versions", Exograph.Storage.PackageVersionRecord}
 
   def fragments_source(prefix), do: "#{prefix}_fragments"
-  def comments_source(prefix), do: {"#{prefix}_comments", Exograph.Storage.Ecto.CommentRecord}
+  def comments_source(prefix), do: {"#{prefix}_comments", Exograph.Storage.CommentRecord}
 
   def definitions_source(prefix),
-    do: {"#{prefix}_definitions", Exograph.Storage.Ecto.DefinitionRecord}
+    do: {"#{prefix}_definitions", Exograph.Storage.DefinitionRecord}
 
   def references_source(prefix),
-    do: {"#{prefix}_references", Exograph.Storage.Ecto.ReferenceRecord}
+    do: {"#{prefix}_references", Exograph.Storage.ReferenceRecord}
 
   def graph_nodes_source(prefix),
-    do: {"#{prefix}_graph_nodes", Exograph.Storage.Ecto.GraphNodeRecord}
+    do: {"#{prefix}_graph_nodes", Exograph.Storage.GraphNodeRecord}
 
   def call_edges_source(prefix),
-    do: {"#{prefix}_call_edges", Exograph.Storage.Ecto.CallEdgeRecord}
+    do: {"#{prefix}_call_edges", Exograph.Storage.CallEdgeRecord}
 
-  def terms_source(prefix), do: {"#{prefix}_terms", Exograph.Storage.Ecto.TermRecord}
+  def terms_source(prefix), do: {"#{prefix}_terms", Exograph.Storage.TermRecord}
 
   def fragment_terms_source(prefix),
-    do: {"#{prefix}_fragment_terms", Exograph.Storage.Ecto.FragmentTermRecord}
+    do: {"#{prefix}_fragment_terms", Exograph.Storage.FragmentTermRecord}
 
   def migrate(opts) do
     if Keyword.get(opts, :migrate?, false), do: DuckDB.migrate!(opts)

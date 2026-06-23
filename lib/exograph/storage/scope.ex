@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.Scope do
+defmodule Exograph.Storage.Scope do
   @moduledoc false
 
   import Ecto.Query

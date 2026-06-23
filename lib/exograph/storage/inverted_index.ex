@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.InvertedIndex do
+defmodule Exograph.Storage.InvertedIndex do
   @moduledoc """
   Ecto candidate retrieval for DuckDB/QuackDB indexes.
 
@@ -10,7 +10,7 @@ defmodule Exograph.Storage.Ecto.InvertedIndex do
   import QuackDB.Ecto.Regex, only: [regexp_matches: 2]
 
   alias Exograph.{Hit, Package, PackageVersion}
-  alias Exograph.Storage.Ecto.{CallEdgeRecord, FactQuery, FragmentRecord, Options, Scope}
+  alias Exograph.Storage.{CallEdgeRecord, FactQuery, FragmentRecord, Options, Scope}
   alias Exograph.StructuralQuery
 
   defstruct repo: nil, prefix: "exograph", package: nil, package_version: nil, bm25?: true

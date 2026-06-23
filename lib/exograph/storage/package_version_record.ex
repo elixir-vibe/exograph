@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.PackageVersionRecord do
+defmodule Exograph.Storage.PackageVersionRecord do
   @moduledoc false
 
   use Ecto.Schema

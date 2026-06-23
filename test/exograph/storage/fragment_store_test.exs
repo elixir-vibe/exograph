@@ -1,7 +1,7 @@
-defmodule Exograph.Storage.Ecto.FragmentStoreTest do
+defmodule Exograph.Storage.FragmentStoreTest do
   use ExUnit.Case, async: true
 
-  alias Exograph.Storage.Ecto.FragmentStore
+  alias Exograph.Storage.FragmentStore
 
   test "DuckDB fragment append defaults to MERGE" do
     assert {:ok, %FragmentStore{duckdb_fragment_append: :merge}} =

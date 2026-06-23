@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.SchemaMigration do
+defmodule Exograph.Storage.SchemaMigration do
   @moduledoc """
   Schema record used to mark Exograph DuckDB migrations applied.
   """

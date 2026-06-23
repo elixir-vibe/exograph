@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.CallEdgeRecord do
+defmodule Exograph.Storage.CallEdgeRecord do
   @moduledoc false
 
   use Ecto.Schema

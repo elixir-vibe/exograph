@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.FragmentStore do
+defmodule Exograph.Storage.FragmentStore do
   @moduledoc """
   Durable fragment store backed by Ecto repositories.
   """
@@ -17,7 +17,7 @@ defmodule Exograph.Storage.Ecto.FragmentStore do
 
   alias Exograph.Extractor.Reach, as: ReachExtractor
 
-  alias Exograph.Storage.Ecto.{
+  alias Exograph.Storage.{
     CallEdgeRecord,
     CommentRecord,
     DefinitionRecord,

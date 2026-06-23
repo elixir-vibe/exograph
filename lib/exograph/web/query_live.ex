@@ -606,7 +606,7 @@ defmodule Exograph.Web.QueryLive do
     repo = assigns.index.inverted.repo
     source = "#{prefix}_files"
 
-    from(f in {source, Exograph.Storage.Ecto.FileRecord},
+    from(f in {source, Exograph.Storage.FileRecord},
       where: ilike(f.path, ^"%#{relative_path}"),
       limit: 1,
       select: f.source

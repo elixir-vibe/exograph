@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.GraphNodeRecord do
+defmodule Exograph.Storage.GraphNodeRecord do
   @moduledoc false
 
   use Ecto.Schema

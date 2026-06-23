@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Ecto.CommentRecord do
+defmodule Exograph.Storage.CommentRecord do
   @moduledoc false
 
   use Ecto.Schema

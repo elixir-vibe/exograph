@@ -4,7 +4,7 @@ defmodule Exograph.DuckDB do
   """
 
   alias Ecto.Migration.Runner
-  alias Exograph.Storage.Ecto.Migrations.CreateSchema
+  alias Exograph.Storage.Migrations.CreateSchema
 
   @doc "Configures DuckDB execution threads for the current connection."
   def configure_threads!(_repo, nil), do: :ok
@@ -27,7 +27,7 @@ defmodule Exograph.DuckDB do
     )
 
     repo.insert_all(
-      {"#{prefix}_schema_migrations", Exograph.Storage.Ecto.SchemaMigration},
+      {"#{prefix}_schema_migrations", Exograph.Storage.SchemaMigration},
       [%{version: 1}],
       conflict_target: [:version],
       on_conflict: :nothing

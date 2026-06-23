@@ -1,32 +1,18 @@
-defmodule Exograph.Storage.Ecto.DefinitionRecord do
+defmodule Exograph.Storage.ReferenceRecord do
   @moduledoc false
 
   use Ecto.Schema
 
-  alias Exograph.Definition
+  alias Exograph.Reference
 
   @primary_key {:id, :id, autogenerate: true}
   @schema_prefix nil
-  schema "exograph_definitions" do
+  schema "exograph_references" do
     field(:package_id, :integer)
     field(:package_version_id, :integer)
     field(:file_id, :integer)
     field(:fragment_id, :integer)
-
-    field(:kind, Ecto.Enum,
-      values: [
-        :module,
-        :def,
-        :defp,
-        :defmacro,
-        :defmacrop,
-        :defdelegate,
-        :defcallback,
-        :defmacrocallback,
-        :attribute
-      ]
-    )
-
+    field(:kind, Ecto.Enum, values: [:local_call, :remote_call, :alias, :module_attribute])
     field(:module, :string)
     field(:name, :string)
     field(:arity, :integer)
@@ -52,9 +38,9 @@ defmodule Exograph.Storage.Ecto.DefinitionRecord do
     :column
   ]
 
-  def from_definition(%Definition{} = definition), do: Map.take(definition, @fields -- [:id])
+  def from_reference(%Reference{} = reference), do: Map.take(reference, @fields -- [:id])
 
-  def to_definition(%__MODULE__{} = record) do
-    struct(Definition, Map.take(record, @fields))
+  def to_reference(%__MODULE__{} = record) do
+    struct(Reference, Map.take(record, @fields))
   end
 end

@@ -53,7 +53,7 @@
 ### Changed
 
 - Switched to the published `quackdb` dependency.
-- Moved shared Ecto storage internals to `Exograph.Storage.Ecto.*`.
+- Moved shared storage internals to `Exograph.Storage.*`.
 - Updated docs around DuckDB/QuackDB corpus indexing and deployment.
 
 ### Fixed

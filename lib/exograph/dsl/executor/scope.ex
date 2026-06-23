@@ -4,7 +4,7 @@ defmodule Exograph.DSL.Executor.Scope do
   import Ecto.Query
 
   alias Exograph.DSL.Compiler
-  alias Exograph.Storage.Ecto.{InvertedIndex, Options}
+  alias Exograph.Storage.{InvertedIndex, Options}
 
   @doc false
   def where_fragment_scope(queryable, opts) do

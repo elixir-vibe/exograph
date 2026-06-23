@@ -60,7 +60,7 @@ defmodule Mix.Tasks.Exograph.Index do
         elapsed_ms =
           System.convert_time_unit(System.monotonic_time() - started_at, :native, :millisecond)
 
-        fragments = Exograph.Storage.Ecto.FragmentStore.all(index.fragment_store)
+        fragments = Exograph.Storage.FragmentStore.all(index.fragment_store)
         summary = summary(paths, fragments, elapsed_ms)
 
         if Keyword.get(opts, :json, false) do
