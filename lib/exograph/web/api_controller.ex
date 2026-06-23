@@ -6,33 +6,21 @@ defmodule Exograph.Web.APIController do
 
   alias Exograph.ShardedIndex
 
-  alias Exograph.Storage.{
-    CallEdgeRecord,
-    CommentRecord,
-    DefinitionRecord,
-    FileRecord,
-    FragmentRecord,
-    FragmentTermRecord,
-    Schema,
-    PackageRecord,
-    PackageVersionRecord,
-    ReferenceRecord,
-    TermRecord
-  }
+  alias Exograph.Storage.Schema
 
   alias Exograph.Web.{Health, QueryExecutor, QueryTelemetry, SearchResult}
 
-  @stats_sources [
-    {"packages", PackageRecord},
-    {"package_versions", PackageVersionRecord},
-    {"files", FileRecord},
-    {"fragments", FragmentRecord},
-    {"fragment_terms", FragmentTermRecord},
-    {"definitions", DefinitionRecord},
-    {"references", ReferenceRecord},
-    {"comments", CommentRecord},
-    {"call_edges", CallEdgeRecord},
-    {"terms", TermRecord}
+  @stats_tables [
+    :packages,
+    :package_versions,
+    :files,
+    :fragments,
+    :fragment_terms,
+    :definitions,
+    :references,
+    :comments,
+    :call_edges,
+    :terms
   ]
   @search_timeout_ms 20_000
 
@@ -273,7 +261,7 @@ defmodule Exograph.Web.APIController do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    from(p in {"#{prefix}_packages", PackageRecord},
+    from(p in Schema.packages_source(prefix),
       left_join: f in ^Schema.fragments_source(prefix),
       on: f.package_id == p.id,
       group_by: [p.id, p.name],
@@ -298,16 +286,16 @@ defmodule Exograph.Web.APIController do
   defp stats_payload(index), do: Map.put(table_counts(index), "prefix", index.inverted.prefix)
 
   defp zero_counts do
-    Map.new(@stats_sources, fn {name, _schema} -> {name, 0} end)
+    Map.new(@stats_tables, fn table -> {Atom.to_string(table), 0} end)
   end
 
   defp table_counts(index) do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    Map.new(@stats_sources, fn {name, schema} ->
-      source = "#{prefix}_#{name}"
-      {name, repo.aggregate({source, schema}, :count, timeout: 30_000)}
+    Map.new(@stats_tables, fn table ->
+      {Atom.to_string(table),
+       repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
     end)
   end
 

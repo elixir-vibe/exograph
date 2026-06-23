@@ -4,6 +4,7 @@ defmodule Exograph.DuckDB do
   """
 
   alias Ecto.Migration.Runner
+  alias Exograph.Storage.Schema
   alias Exograph.Storage.Migrations.CreateSchema
 
   @doc "Configures DuckDB execution threads for the current connection."
@@ -27,7 +28,7 @@ defmodule Exograph.DuckDB do
     )
 
     repo.insert_all(
-      {"#{prefix}_schema_migrations", Exograph.Storage.SchemaMigration},
+      Schema.source(:schema_migrations, prefix),
       [%{version: 1}],
       conflict_target: [:version],
       on_conflict: :nothing
@@ -59,9 +60,9 @@ defmodule Exograph.DuckDB do
   def optimize_structural_indexes!(opts) do
     repo = Keyword.fetch!(opts, :repo)
     prefix = Keyword.get(opts, :prefix, "exograph")
-    table = "#{prefix}_fragment_terms"
+    table = Schema.table_name(prefix, :fragment_terms)
 
-    fragments_table = "#{prefix}_fragments"
+    fragments_table = Schema.table_name(prefix, :fragments)
 
     repo.query!(
       ~s|
@@ -79,7 +80,9 @@ defmodule Exograph.DuckDB do
 
   defp create_fts_index!(repo, prefix, table, id_column, columns) do
     repo.query!(
-      QuackDB.FTS.create_index("#{prefix}_#{table}", id_column, columns, overwrite: true),
+      QuackDB.FTS.create_index(Schema.table_name(prefix, table), id_column, columns,
+        overwrite: true
+      ),
       []
     )
   end

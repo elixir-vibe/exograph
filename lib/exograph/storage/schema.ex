@@ -3,6 +3,40 @@ defmodule Exograph.Storage.Schema do
 
   alias Exograph.{DuckDB, Package, PackageVersion}
 
+  import Exograph.Storage.Schema.DSL
+
+  alias Exograph.Storage.{
+    CallEdgeRecord,
+    CommentRecord,
+    DefinitionRecord,
+    FileRecord,
+    FragmentRecord,
+    FragmentTermRecord,
+    GraphNodeRecord,
+    PackageRecord,
+    PackageVersionRecord,
+    ReferenceRecord,
+    SchemaMigration,
+    TermRecord,
+    TreeNodeRecord
+  }
+
+  @tables [
+    table(:schema_migrations, SchemaMigration, primary_key: false),
+    table(:packages, PackageRecord),
+    table(:package_versions, PackageVersionRecord),
+    table(:files, FileRecord),
+    table(:terms, TermRecord, primary_key: false),
+    table(:fragment_terms, FragmentTermRecord, primary_key: false),
+    table(:fragments, FragmentRecord),
+    table(:comments, CommentRecord),
+    table(:definitions, DefinitionRecord),
+    table(:references, ReferenceRecord),
+    table(:graph_nodes, GraphNodeRecord),
+    table(:call_edges, CallEdgeRecord),
+    table(:tree_nodes, TreeNodeRecord, primary_key: false)
+  ]
+
   def repo(opts), do: Keyword.fetch!(opts, :repo)
 
   def prefix(opts), do: Keyword.get(opts, :prefix, "exograph")
@@ -60,38 +94,54 @@ defmodule Exograph.Storage.Schema do
     |> Exograph.Storage.FragmentRecord.to_fragment()
   end
 
-  def table_name(prefix, suffix), do: "#{prefix}_#{suffix}"
+  def tables, do: @tables
+
+  def table(table), do: table!(table)
+
+  def source(table, prefix) do
+    table = table!(table)
+    {table_name(prefix, table.name), table.record}
+  end
+
+  def table_name(prefix, table) when is_atom(table) do
+    "#{prefix}_#{table!(table).name}"
+  end
+
+  def table_name(prefix, suffix) when is_binary(suffix), do: "#{prefix}_#{suffix}"
+
+  def index_name(prefix, table, suffix) when is_atom(table),
+    do: index_name(prefix, Atom.to_string(table!(table).name), suffix)
 
   def index_name(prefix, table, suffix), do: "#{prefix}_#{table}_#{suffix}_idx"
 
-  def files_source(prefix), do: {table_name(prefix, "files"), Exograph.Storage.FileRecord}
+  def packages_source(prefix), do: source(:packages, prefix)
 
-  def package_versions_source(prefix),
-    do: {table_name(prefix, "package_versions"), Exograph.Storage.PackageVersionRecord}
+  def files_source(prefix), do: source(:files, prefix)
 
-  def fragments_source(prefix), do: table_name(prefix, "fragments")
+  def package_versions_source(prefix), do: source(:package_versions, prefix)
 
-  def comments_source(prefix),
-    do: {table_name(prefix, "comments"), Exograph.Storage.CommentRecord}
+  def fragments_source(prefix), do: table_name(prefix, :fragments)
 
-  def definitions_source(prefix),
-    do: {table_name(prefix, "definitions"), Exograph.Storage.DefinitionRecord}
+  def comments_source(prefix), do: source(:comments, prefix)
 
-  def references_source(prefix),
-    do: {table_name(prefix, "references"), Exograph.Storage.ReferenceRecord}
+  def definitions_source(prefix), do: source(:definitions, prefix)
 
-  def graph_nodes_source(prefix),
-    do: {table_name(prefix, "graph_nodes"), Exograph.Storage.GraphNodeRecord}
+  def references_source(prefix), do: source(:references, prefix)
 
-  def call_edges_source(prefix),
-    do: {table_name(prefix, "call_edges"), Exograph.Storage.CallEdgeRecord}
+  def graph_nodes_source(prefix), do: source(:graph_nodes, prefix)
 
-  def terms_source(prefix), do: {table_name(prefix, "terms"), Exograph.Storage.TermRecord}
+  def call_edges_source(prefix), do: source(:call_edges, prefix)
 
-  def fragment_terms_source(prefix),
-    do: {table_name(prefix, "fragment_terms"), Exograph.Storage.FragmentTermRecord}
+  def terms_source(prefix), do: source(:terms, prefix)
+
+  def fragment_terms_source(prefix), do: source(:fragment_terms, prefix)
 
   def migrate(opts) do
     if Keyword.get(opts, :migrate?, false), do: DuckDB.migrate!(opts)
+  end
+
+  defp table!(name) do
+    Enum.find(@tables, &(&1.name == name)) ||
+      raise ArgumentError, "unknown storage table: #{name}"
   end
 end

@@ -5,6 +5,7 @@ defmodule Exograph.Web.QueryLive do
 
   import Exograph.Web.ResultFormatter, only: [display_name: 1, badge_class: 1]
 
+  alias Exograph.Storage.Schema
   alias Exograph.Web.IndexStats
   alias Exograph.Web.QueryExecutor
   alias Exograph.Web.ResultFormatter
@@ -604,9 +605,9 @@ defmodule Exograph.Web.QueryLive do
     import Ecto.Query
     prefix = assigns.prefix
     repo = assigns.index.inverted.repo
-    source = "#{prefix}_files"
+    source = Schema.files_source(prefix)
 
-    from(f in {source, Exograph.Storage.FileRecord},
+    from(f in source,
       where: ilike(f.path, ^"%#{relative_path}"),
       limit: 1,
       select: f.source

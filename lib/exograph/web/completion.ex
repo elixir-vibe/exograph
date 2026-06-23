@@ -197,8 +197,7 @@ defmodule Exograph.Web.Completion do
           {Schema.call_edges_source(prefix), :callee_qualified_name}
 
         {:modules, :module} ->
-          table = Schema.fragments_source(prefix)
-          {{table, Exograph.Storage.FragmentRecord}, :module}
+          {Schema.source(:fragments, prefix), :module}
       end
 
     require Ecto.Query

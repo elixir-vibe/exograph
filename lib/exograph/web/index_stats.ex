@@ -2,7 +2,7 @@ defmodule Exograph.Web.IndexStats do
   @moduledoc false
 
   alias Exograph.ShardedIndex
-  alias Exograph.Storage.PackageRecord
+  alias Exograph.Storage.Schema
 
   def package_count(%ShardedIndex{shards: shards}) do
     shards
@@ -16,7 +16,7 @@ defmodule Exograph.Web.IndexStats do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    repo.aggregate({"#{prefix}_packages", PackageRecord}, :count)
+    repo.aggregate(Schema.packages_source(prefix), :count)
   rescue
     _ -> 0
   end

@@ -264,7 +264,7 @@ defmodule Exograph.Storage.FragmentStore do
 
     {_count, pkg_returning} =
       store.repo.insert_all(
-        {"#{store.prefix}_packages", PackageRecord},
+        Schema.packages_source(store.prefix),
         [PackageRecord.from_package(package) |> Map.merge(%{inserted_at: now, updated_at: now})],
         conflict_target: [:ecosystem, :name],
         on_conflict: :nothing,
@@ -278,7 +278,7 @@ defmodule Exograph.Storage.FragmentStore do
           id
 
         [] ->
-          from(p in {"#{store.prefix}_packages", PackageRecord},
+          from(p in Schema.packages_source(store.prefix),
             where: p.ecosystem == ^to_string(package.ecosystem) and p.name == ^package.name,
             select: p.id
           )
@@ -293,7 +293,7 @@ defmodule Exograph.Storage.FragmentStore do
 
       {_count, pv_returning} =
         store.repo.insert_all(
-          {"#{store.prefix}_package_versions", PackageVersionRecord},
+          Schema.package_versions_source(store.prefix),
           [
             PackageVersionRecord.from_package_version(pv)
             |> Map.merge(%{inserted_at: now, updated_at: now})
@@ -312,7 +312,7 @@ defmodule Exograph.Storage.FragmentStore do
             id
 
           [] ->
-            from(pv_row in {"#{store.prefix}_package_versions", PackageVersionRecord},
+            from(pv_row in Schema.package_versions_source(store.prefix),
               where: pv_row.package_id == ^package_id and pv_row.version == ^pv_version,
               select: pv_row.id
             )

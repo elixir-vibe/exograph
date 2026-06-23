@@ -5,10 +5,7 @@ defmodule Exograph.Hex.Corpus do
 
   alias Exograph.{Package, PackageVersion}
 
-  alias Exograph.Storage.{
-    PackageRecord,
-    PackageVersionRecord
-  }
+  alias Exograph.Storage.{PackageRecord, PackageVersionRecord, Schema}
 
   require Logger
 
@@ -446,7 +443,7 @@ defmodule Exograph.Hex.Corpus do
       end)
 
     if package_entries != [] do
-      repo.insert_all({"#{prefix}_packages", PackageRecord}, package_entries,
+      repo.insert_all(Schema.packages_source(prefix), package_entries,
         conflict_target: [:ecosystem, :name],
         on_conflict: :nothing,
         timeout: :infinity
@@ -456,7 +453,7 @@ defmodule Exograph.Hex.Corpus do
     names = Enum.map(packages, & &1.name)
 
     package_ids =
-      from(p in {"#{prefix}_packages", PackageRecord},
+      from(p in Schema.packages_source(prefix),
         where: p.ecosystem == "hex" and p.name in ^names,
         select: {p.name, p.id}
       )
@@ -484,7 +481,7 @@ defmodule Exograph.Hex.Corpus do
       end)
 
     if version_entries != [] do
-      repo.insert_all({"#{prefix}_package_versions", PackageVersionRecord}, version_entries,
+      repo.insert_all(Schema.package_versions_source(prefix), version_entries,
         conflict_target: [:package_id, :version],
         on_conflict: :nothing,
         timeout: :infinity
@@ -496,7 +493,7 @@ defmodule Exograph.Hex.Corpus do
     version_values = Enum.map(versions, & &1.version)
     package_id_to_name = Map.new(package_ids, fn {name, id} -> {id, name} end)
 
-    from(pv in {"#{prefix}_package_versions", PackageVersionRecord},
+    from(pv in Schema.package_versions_source(prefix),
       where: pv.package_id in ^package_ids_for_versions and pv.version in ^version_values,
       select: {pv.package_id, pv.version, pv.id}
     )
@@ -765,15 +762,12 @@ defmodule Exograph.Hex.Corpus do
   defp existing_versions(repo, prefix) do
     import Ecto.Query
 
-    pv_source = "#{prefix}_package_versions"
-    pkg_source = "#{prefix}_packages"
-
     pkgs =
-      from(p in {pkg_source, Exograph.Storage.PackageRecord},
+      from(p in Schema.packages_source(prefix),
         select: %{id: p.id, name: p.name}
       )
 
-    from(pv in {pv_source, Exograph.Storage.PackageVersionRecord},
+    from(pv in Schema.package_versions_source(prefix),
       join: p in subquery(pkgs),
       on: p.id == pv.package_id,
       select: {p.name, pv.version}

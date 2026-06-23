@@ -36,13 +36,7 @@ defmodule Exograph do
 
   alias Exograph.Extractor.ExAST, as: ExASTExtractor
 
-  alias Exograph.Storage.{
-    FragmentStore,
-    InvertedIndex,
-    PackageRecord,
-    PackageVersionRecord,
-    TreeStore
-  }
+  alias Exograph.Storage.{FragmentStore, InvertedIndex, Schema, TreeStore}
 
   import Ecto.Query, only: [from: 2]
 
@@ -449,7 +443,7 @@ defmodule Exograph do
     package_id = shard_package_id(repo, prefix, package_name(package_key))
 
     if package_id do
-      package_versions_source = {"#{prefix}_package_versions", PackageVersionRecord}
+      package_versions_source = Schema.package_versions_source(prefix)
 
       query =
         from(pv in package_versions_source,
@@ -464,7 +458,7 @@ defmodule Exograph do
   end
 
   defp shard_package_id(repo, prefix, name) do
-    packages_source = {"#{prefix}_packages", PackageRecord}
+    packages_source = Schema.packages_source(prefix)
 
     query =
       from(p in packages_source,
