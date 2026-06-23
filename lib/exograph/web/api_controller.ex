@@ -20,7 +20,7 @@ defmodule Exograph.Web.APIController do
     TermRecord
   }
 
-  alias Exograph.Web.{Health, QueryExecutor, SearchResult}
+  alias Exograph.Web.{Health, QueryExecutor, QueryTelemetry, SearchResult}
 
   @stats_sources [
     {"packages", PackageRecord},
@@ -72,6 +72,19 @@ defmodule Exograph.Web.APIController do
         end
       end)
 
+    elapsed_ms = Float.round(elapsed_us / 1000, 1)
+
+    QueryTelemetry.record(
+      mode,
+      pattern,
+      elapsed_ms,
+      result_status(result),
+      result_count(result),
+      %{
+        endpoint: "/api/search"
+      }
+    )
+
     case result do
       {:ok, hits, meta} ->
         next_cursor = if length(hits) == limit, do: encode_cursor(skip + limit), else: nil
@@ -79,7 +92,7 @@ defmodule Exograph.Web.APIController do
         payload = %{
           results: Enum.map(hits, &serialize_result/1),
           count: length(hits),
-          elapsed_ms: Float.round(elapsed_us / 1000, 1),
+          elapsed_ms: elapsed_ms,
           next_cursor: next_cursor
         }
 
@@ -95,8 +108,15 @@ defmodule Exograph.Web.APIController do
     query_string = params["query"] || ""
     skip = decode_cursor(params["cursor"])
 
-    case QueryExecutor.execute(index, query_string, skip: skip) do
+    {elapsed_us, result} =
+      :timer.tc(fn -> QueryExecutor.execute(index, query_string, skip: skip) end)
+
+    case result do
       {:ok, hits, elapsed_ms, effective_limit, _total, meta} ->
+        QueryTelemetry.record("dsl", query_string, elapsed_ms, :ok, length(hits), %{
+          endpoint: "/api/query"
+        })
+
         next_cursor =
           if length(hits) >= effective_limit, do: encode_cursor(skip + effective_limit), else: nil
 
@@ -109,6 +129,17 @@ defmodule Exograph.Web.APIController do
         })
 
       {:error, message} ->
+        QueryTelemetry.record(
+          "dsl",
+          query_string,
+          Float.round(elapsed_us / 1000, 1),
+          :error,
+          0,
+          %{
+            endpoint: "/api/query"
+          }
+        )
+
         conn |> put_status(400) |> json(%{error: message})
     end
   end
@@ -126,6 +157,12 @@ defmodule Exograph.Web.APIController do
   end
 
   defp index, do: Application.get_env(:exograph, :web_index)
+
+  defp result_status({:ok, _hits, _meta}), do: :ok
+  defp result_status({:error, _reason}), do: :error
+
+  defp result_count({:ok, hits, _meta}), do: length(hits)
+  defp result_count({:error, _reason}), do: 0
 
   defp search_structural(index, pattern, opts) do
     if dsl_query?(pattern) do

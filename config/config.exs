@@ -23,7 +23,7 @@ config :volt, :server,
 
 config :release_kit, :artifact,
   port: 4200,
-  health_path: "/",
+  health_path: "/api/health",
   assets: [
     volt: [root: "assets", tailwind: true, production: true, frozen: true]
   ],
