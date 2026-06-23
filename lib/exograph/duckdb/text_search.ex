@@ -2,7 +2,7 @@ defmodule Exograph.DuckDB.TextSearch do
   @moduledoc false
 
   alias Exograph.Hit
-  alias Exograph.Storage.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Schema}
 
   def search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
     limit = Keyword.get(opts, :limit, 50)
@@ -15,7 +15,7 @@ defmodule Exograph.DuckDB.TextSearch do
   end
 
   defp bm25_file_search(index, literal, field, limit, opts) do
-    {files_table, _schema} = Options.files_source(index.prefix)
+    {files_table, _schema} = Schema.files_source(index.prefix)
     schema = QuackDB.FTS.schema_name("main.#{files_table}")
     field_name = Atom.to_string(field)
 
@@ -101,7 +101,7 @@ defmodule Exograph.DuckDB.TextSearch do
       {record, source, path, package_version} = fragment_record(row)
 
       Hit.new(
-        fragment: Options.hydrate_fragment(record, source, path, package_version),
+        fragment: Schema.hydrate_fragment(record, source, path, package_version),
         score: 1.0
       )
     end)

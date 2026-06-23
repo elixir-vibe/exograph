@@ -1,7 +1,7 @@
 defmodule Exograph.Web.Completion do
   @moduledoc false
 
-  alias Exograph.Storage.Options
+  alias Exograph.Storage.Schema
 
   # imported for @eval_env to capture DSL macros
   import Exograph.DSL, warn: false
@@ -191,13 +191,13 @@ defmodule Exograph.Web.Completion do
     {queryable, column} =
       case {source, field} do
         {:references, :qualified_name} ->
-          {Options.references_source(prefix), :qualified_name}
+          {Schema.references_source(prefix), :qualified_name}
 
         {:call_edges, :callee_qualified_name} ->
-          {Options.call_edges_source(prefix), :callee_qualified_name}
+          {Schema.call_edges_source(prefix), :callee_qualified_name}
 
         {:modules, :module} ->
-          table = Options.fragments_source(prefix)
+          table = Schema.fragments_source(prefix)
           {{table, Exograph.Storage.FragmentRecord}, :module}
       end
 

@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Exograph.Web do
       mix exograph.web --prefix exograph
       mix exograph.web --manifest-path data/hex-shards/manifest.term
 
-  Options:
+  Schema:
 
     * `--repo` — Ecto repo module (optional, uses built-in repo if omitted)
     * `--prefix` — table prefix (default: `exograph`)

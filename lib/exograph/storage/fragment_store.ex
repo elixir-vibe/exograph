@@ -24,7 +24,7 @@ defmodule Exograph.Storage.FragmentStore do
     FileRecord,
     FragmentRecord,
     GraphNodeRecord,
-    Options,
+    Schema,
     PackageRecord,
     PackageVersionRecord,
     ReferenceRecord,
@@ -66,7 +66,7 @@ defmodule Exograph.Storage.FragmentStore do
           static_atoms: atom()
         }
 
-  def new(opts \\ []), do: {:ok, Options.store(__MODULE__, opts)}
+  def new(opts \\ []), do: {:ok, Schema.store(__MODULE__, opts)}
 
   def put(%__MODULE__{} = store, fragments) when is_list(fragments) do
     if offline_duckdb?(store) do
@@ -175,7 +175,7 @@ defmodule Exograph.Storage.FragmentStore do
 
     case store.repo.one(query) do
       {%FragmentRecord{} = record, source, path} ->
-        {:ok, Options.hydrate_fragment(record, source, path)}
+        {:ok, Schema.hydrate_fragment(record, source, path)}
 
       nil ->
         :error
@@ -192,7 +192,7 @@ defmodule Exograph.Storage.FragmentStore do
       )
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Options.hydrate_fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path} -> Schema.hydrate_fragment(record, source, path) end)
   end
 
   def count(%__MODULE__{} = store) do
@@ -225,7 +225,7 @@ defmodule Exograph.Storage.FragmentStore do
       end
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Options.hydrate_fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path} -> Schema.hydrate_fragment(record, source, path) end)
   end
 
   def term_frequencies(_store, []), do: %{}
@@ -673,7 +673,7 @@ defmodule Exograph.Storage.FragmentStore do
     Exograph.Hex.StageTimings.count(:fragment_terms_rows, length(entries))
 
     if entries != [] do
-      source = Options.fragment_terms_source(store.prefix)
+      source = Schema.fragment_terms_source(store.prefix)
 
       Exograph.Hex.StageTimings.measure(:fragment_terms_bulk_insert, fn ->
         bulk_insert_fragment_terms(store, source, entries)
@@ -1120,12 +1120,12 @@ defmodule Exograph.Storage.FragmentStore do
     }
   end
 
-  defp files_source(store), do: Options.files_source(store.prefix)
-  defp comments_source(store), do: Options.comments_source(store.prefix)
-  defp definitions_source(store), do: Options.definitions_source(store.prefix)
-  defp references_source(store), do: Options.references_source(store.prefix)
-  defp graph_nodes_source(store), do: Options.graph_nodes_source(store.prefix)
-  defp call_edges_source(store), do: Options.call_edges_source(store.prefix)
-  defp terms_source(store), do: Options.terms_source(store.prefix)
-  defp source(store), do: Options.fragments_source(store.prefix)
+  defp files_source(store), do: Schema.files_source(store.prefix)
+  defp comments_source(store), do: Schema.comments_source(store.prefix)
+  defp definitions_source(store), do: Schema.definitions_source(store.prefix)
+  defp references_source(store), do: Schema.references_source(store.prefix)
+  defp graph_nodes_source(store), do: Schema.graph_nodes_source(store.prefix)
+  defp call_edges_source(store), do: Schema.call_edges_source(store.prefix)
+  defp terms_source(store), do: Schema.terms_source(store.prefix)
+  defp source(store), do: Schema.fragments_source(store.prefix)
 end

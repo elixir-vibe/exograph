@@ -4,7 +4,7 @@ defmodule Exograph.Storage.TreeStore do
   """
 
   alias Exograph.DuckDB
-  alias Exograph.Storage.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Schema}
   alias Exograph.Tree
 
   defstruct repo: nil, prefix: "exograph"
@@ -24,7 +24,7 @@ defmodule Exograph.Storage.TreeStore do
   def put_fragments(%__MODULE__{} = store, fragments) when is_list(fragments), do: {:ok, store}
 
   def nodes(%__MODULE__{} = store, fragment_id) do
-    case store.repo.get({Options.fragments_source(store.prefix), FragmentRecord}, fragment_id) do
+    case store.repo.get({Schema.fragments_source(store.prefix), FragmentRecord}, fragment_id) do
       %FragmentRecord{} = record ->
         record
         |> FragmentRecord.to_fragment()

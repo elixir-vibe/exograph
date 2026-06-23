@@ -13,7 +13,7 @@ defmodule Exograph.Web.APIController do
     FileRecord,
     FragmentRecord,
     FragmentTermRecord,
-    Options,
+    Schema,
     PackageRecord,
     PackageVersionRecord,
     ReferenceRecord,
@@ -274,7 +274,7 @@ defmodule Exograph.Web.APIController do
     repo = index.inverted.repo
 
     from(p in {"#{prefix}_packages", PackageRecord},
-      left_join: f in ^Options.fragments_source(prefix),
+      left_join: f in ^Schema.fragments_source(prefix),
       on: f.package_id == p.id,
       group_by: [p.id, p.name],
       order_by: [desc: count(f.id)],

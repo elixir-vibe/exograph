@@ -4,7 +4,7 @@ defmodule Exograph.DSL.Executor.Scope do
   import Ecto.Query
 
   alias Exograph.DSL.Compiler
-  alias Exograph.Storage.{InvertedIndex, Options}
+  alias Exograph.Storage.{InvertedIndex, Schema}
 
   @doc false
   def where_fragment_scope(queryable, opts) do
@@ -153,7 +153,7 @@ defmodule Exograph.DSL.Executor.Scope do
   defp duckdb_term_candidates(index, ids) do
     required_count = length(ids)
 
-    from(term in Options.fragment_terms_source(index.inverted.prefix),
+    from(term in Schema.fragment_terms_source(index.inverted.prefix),
       where: term.term_id in ^ids,
       group_by: term.fragment_id,
       having: count(term.term_id, :distinct) == ^required_count,

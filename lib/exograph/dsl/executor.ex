@@ -15,7 +15,7 @@ defmodule Exograph.DSL.Executor do
     CallEdgeRecord,
     DefinitionRecord,
     FragmentRecord,
-    Options,
+    Schema,
     ReferenceRecord
   }
 
@@ -346,9 +346,9 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp base_fragment_query(index, cursor) do
-    files_source = Options.files_source(index.inverted.prefix)
-    versions_source = Options.package_versions_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
@@ -369,9 +369,9 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp base_fragment_candidate_query(index, cursor, include_source?) do
-    files_source = Options.files_source(index.inverted.prefix)
-    versions_source = Options.package_versions_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
@@ -430,7 +430,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp hydrate_query_fragment(%FragmentRecord{} = fragment, source, path, package_version) do
-    Options.hydrate_fragment(fragment, source, path, package_version)
+    Schema.hydrate_fragment(fragment, source, path, package_version)
   end
 
   defp hydrate_query_fragment(fragment, source, path, package_version) when is_map(fragment) do
@@ -514,8 +514,8 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_fragments_fact_first(index, plan, join, opts, cursor) do
     candidate_limit = candidate_limit(index, opts)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
     {join_table, join_record} = Sources.primary_source(join.assoc, index.inverted.prefix)
@@ -590,8 +590,8 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_fragments_fragment_first(index, plan, join, opts, cursor) do
     candidate_limit = candidate_limit(index, opts)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
     query =
@@ -642,8 +642,8 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
     candidate_limit = candidate_limit(index, opts)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
     from(fragment in {fragments_source, FragmentRecord},
@@ -681,7 +681,7 @@ defmodule Exograph.DSL.Executor do
     |> index.inverted.repo.all()
     |> Enum.map(fn {fragment, source, path, first, second} ->
       {
-        Options.hydrate_fragment(fragment, source, path),
+        Schema.hydrate_fragment(fragment, source, path),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second)
@@ -696,8 +696,8 @@ defmodule Exograph.DSL.Executor do
          opts
        ) do
     candidate_limit = candidate_limit(index, opts)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
     from(fragment in {fragments_source, FragmentRecord},
@@ -742,7 +742,7 @@ defmodule Exograph.DSL.Executor do
     |> index.inverted.repo.all()
     |> Enum.map(fn {fragment, source, path, first, second, third} ->
       {
-        Options.hydrate_fragment(fragment, source, path),
+        Schema.hydrate_fragment(fragment, source, path),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second),
@@ -754,12 +754,12 @@ defmodule Exograph.DSL.Executor do
 
   defp definition_calls_join_all(index, plan, call_edge_binding, opts) do
     limit = Keyword.get(opts, :limit, 50)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     queryable =
-      from(definition in Options.definitions_source(index.inverted.prefix),
-        join: edge in ^Options.call_edges_source(index.inverted.prefix),
+      from(definition in Schema.definitions_source(index.inverted.prefix),
+        join: edge in ^Schema.call_edges_source(index.inverted.prefix),
         on: edge.caller_qualified_name == definition.qualified_name,
         left_join: fragment in ^{fragments_source, FragmentRecord},
         on: fragment.id == definition.fragment_id,
@@ -778,7 +778,7 @@ defmodule Exograph.DSL.Executor do
 
     results =
       index.inverted.repo.all(queryable)
-      |> Enum.map(&hit(&1, Options.definitions_source(index.inverted.prefix)))
+      |> Enum.map(&hit(&1, Schema.definitions_source(index.inverted.prefix)))
 
     {:ok, results}
   end
@@ -897,7 +897,7 @@ defmodule Exograph.DSL.Executor do
     if light_join_projection?(index, plan) do
       hydrate_light_fragment(fragment, source, path)
     else
-      Options.hydrate_fragment(fragment, source, path)
+      Schema.hydrate_fragment(fragment, source, path)
     end
   end
 
@@ -968,9 +968,9 @@ defmodule Exograph.DSL.Executor do
   defp full_fragments(_index, []), do: %{}
 
   defp full_fragments(index, ids) do
-    files_source = Options.files_source(index.inverted.prefix)
-    versions_source = Options.package_versions_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     from(fragment in {fragments_source, FragmentRecord},
       join: file in ^files_source,
@@ -982,7 +982,7 @@ defmodule Exograph.DSL.Executor do
     )
     |> index.inverted.repo.all()
     |> Map.new(fn {fragment, source, path, package_version} ->
-      hydrated = Options.hydrate_fragment(fragment, source, path, package_version)
+      hydrated = Schema.hydrate_fragment(fragment, source, path, package_version)
       {hydrated.id, hydrated}
     end)
   end
@@ -1052,8 +1052,8 @@ defmodule Exograph.DSL.Executor do
   defp fragment_sources(_index, []), do: %{}
 
   defp fragment_sources(index, ids) do
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     from(fragment in {fragments_source, FragmentRecord},
       join: file in ^files_source,
@@ -1188,8 +1188,8 @@ defmodule Exograph.DSL.Executor do
     source = Sources.source(source_name, index.inverted.prefix)
     limit = Keyword.get(opts, :limit, 50)
     skip = Keyword.get(opts, :skip, 0)
-    files_source = Options.files_source(index.inverted.prefix)
-    fragments_source = Options.fragments_source(index.inverted.prefix)
+    files_source = Schema.files_source(index.inverted.prefix)
+    fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
       from(fact in source,
@@ -1217,7 +1217,7 @@ defmodule Exograph.DSL.Executor do
     skip = Keyword.get(opts, :skip, 0)
 
     query =
-      from(edge in Options.call_edges_source(index.inverted.prefix),
+      from(edge in Schema.call_edges_source(index.inverted.prefix),
         order_by: [asc: edge.caller_qualified_name, asc: edge.callee_qualified_name, asc: edge.id],
         offset: ^skip,
         limit: ^limit,
@@ -1254,5 +1254,5 @@ defmodule Exograph.DSL.Executor do
   defp hydrate_fragment(nil, _source, _path), do: nil
 
   defp hydrate_fragment(fragment, source, path),
-    do: Options.hydrate_fragment(fragment, source, path)
+    do: Schema.hydrate_fragment(fragment, source, path)
 end

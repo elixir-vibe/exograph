@@ -1,7 +1,7 @@
 defmodule Exograph.DSL.Sources do
   @moduledoc false
 
-  alias Exograph.Storage.{CallEdgeRecord, DefinitionRecord, Options, ReferenceRecord}
+  alias Exograph.Storage.{CallEdgeRecord, DefinitionRecord, Schema, ReferenceRecord}
 
   @symbol_fact_fields MapSet.new([
                         :id,
@@ -46,21 +46,21 @@ defmodule Exograph.DSL.Sources do
                       :column
                     ])
 
-  def source(:definition, prefix), do: Options.definitions_source(prefix)
-  def source(:reference, prefix), do: Options.references_source(prefix)
-  def source(:call_edge, prefix), do: Options.call_edges_source(prefix)
+  def source(:definition, prefix), do: Schema.definitions_source(prefix)
+  def source(:reference, prefix), do: Schema.references_source(prefix)
+  def source(:call_edge, prefix), do: Schema.call_edges_source(prefix)
 
   def source_record(:definition), do: DefinitionRecord
   def source_record(:reference), do: ReferenceRecord
   def source_record(:call_edge), do: CallEdgeRecord
 
-  def primary_source(:definitions, prefix), do: Options.definitions_source(prefix)
-  def primary_source(:references, prefix), do: Options.references_source(prefix)
-  def primary_source(:calls, prefix), do: Options.call_edges_source(prefix)
+  def primary_source(:definitions, prefix), do: Schema.definitions_source(prefix)
+  def primary_source(:references, prefix), do: Schema.references_source(prefix)
+  def primary_source(:calls, prefix), do: Schema.call_edges_source(prefix)
 
-  def join_source(:definitions, prefix), do: Options.definitions_source(prefix)
-  def join_source(:references, prefix), do: Options.references_source(prefix)
-  def join_source(:calls, prefix), do: Options.call_edges_source(prefix)
+  def join_source(:definitions, prefix), do: Schema.definitions_source(prefix)
+  def join_source(:references, prefix), do: Schema.references_source(prefix)
+  def join_source(:calls, prefix), do: Schema.call_edges_source(prefix)
 
   def fields(:fragment), do: @fragment_fields
   def fields(:definition), do: @symbol_fact_fields

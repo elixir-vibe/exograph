@@ -1,4 +1,4 @@
-defmodule Exograph.Storage.Options do
+defmodule Exograph.Storage.Schema do
   @moduledoc false
 
   alias Exograph.{DuckDB, Package, PackageVersion}

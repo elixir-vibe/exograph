@@ -10,7 +10,7 @@ defmodule Mix.Tasks.Exograph.Index do
       mix exograph.index --migrate lib test
       mix exograph.index --min-mass 8 --stats lib
 
-  ## Options
+  ## Schema
 
     * `--repo` - Ecto repo module for a QuackDB-backed DuckDB repo
     * `--prefix` - Exograph table prefix (default: `exograph`)

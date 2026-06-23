@@ -4,12 +4,12 @@ defmodule Exograph.Storage.FactQuery do
   import Ecto.Query
 
   alias Exograph.{DefinitionHit, ReferenceHit, Scope, Text}
-  alias Exograph.Storage.{FragmentRecord, Options}
+  alias Exograph.Storage.{FragmentRecord, Schema}
 
   def search(index, table_source, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
-    files_source = Options.files_source(index.prefix)
-    versions_source = Options.package_versions_source(index.prefix)
+    files_source = Schema.files_source(index.prefix)
+    versions_source = Schema.package_versions_source(index.prefix)
 
     results =
       ilike_search(index, table_source, literal, opts, limit, files_source, versions_source)
@@ -19,7 +19,7 @@ defmodule Exograph.Storage.FactQuery do
 
   defp ilike_search(index, table_source, literal, opts, limit, files_source, versions_source) do
     query =
-      from(fragment in {Options.fragments_source(index.prefix), FragmentRecord},
+      from(fragment in {Schema.fragments_source(index.prefix), FragmentRecord},
         join: fact in ^table_source,
         on: fact.fragment_id == fragment.id,
         left_join: file in ^files_source,
@@ -62,7 +62,7 @@ defmodule Exograph.Storage.FactQuery do
        ) do
     DefinitionHit.new(
       definition: Exograph.Storage.DefinitionRecord.to_definition(fact),
-      fragment: Options.hydrate_fragment(record, source, path, package_version),
+      fragment: Schema.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )
   end
@@ -73,7 +73,7 @@ defmodule Exograph.Storage.FactQuery do
        ) do
     ReferenceHit.new(
       reference: Exograph.Storage.ReferenceRecord.to_reference(fact),
-      fragment: Options.hydrate_fragment(record, source, path, package_version),
+      fragment: Schema.hydrate_fragment(record, source, path, package_version),
       score: 1.0
     )
   end

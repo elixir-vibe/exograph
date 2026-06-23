@@ -10,7 +10,7 @@ defmodule Exograph.Storage.InvertedIndex do
   import QuackDB.Ecto.Regex, only: [regexp_matches: 2]
 
   alias Exograph.{Hit, Package, PackageVersion}
-  alias Exograph.Storage.{CallEdgeRecord, FactQuery, FragmentRecord, Options, Scope}
+  alias Exograph.Storage.{CallEdgeRecord, FactQuery, FragmentRecord, Schema, Scope}
   alias Exograph.StructuralQuery
 
   defstruct repo: nil, prefix: "exograph", package: nil, package_version: nil, bm25?: true
@@ -23,7 +23,7 @@ defmodule Exograph.Storage.InvertedIndex do
           bm25?: boolean()
         }
 
-  def new(opts \\ []), do: {:ok, Options.store(__MODULE__, opts)}
+  def new(opts \\ []), do: {:ok, Schema.store(__MODULE__, opts)}
 
   def add(%__MODULE__{} = index, fragments) when is_list(fragments) do
     {:ok, index}
@@ -94,7 +94,7 @@ defmodule Exograph.Storage.InvertedIndex do
   def resolve_term_ids(_index, []), do: []
 
   def resolve_term_ids(index, terms) when is_list(terms) do
-    from(t in Options.terms_source(index.prefix), where: t.term in ^terms, select: t.id)
+    from(t in Schema.terms_source(index.prefix), where: t.term in ^terms, select: t.id)
     |> index.repo.all(timeout: :infinity)
   rescue
     _ -> []
@@ -127,7 +127,7 @@ defmodule Exograph.Storage.InvertedIndex do
       index.repo.all(query, timeout: 30_000)
       |> Enum.map(fn {record, source, path, package_version} ->
         Hit.new(
-          fragment: Options.hydrate_fragment(record, source, path, package_version),
+          fragment: Schema.hydrate_fragment(record, source, path, package_version),
           score: 1.0
         )
       end)
@@ -194,7 +194,7 @@ defmodule Exograph.Storage.InvertedIndex do
   defp required_term_candidates(index, ids) do
     required_count = length(ids)
 
-    from(term in Options.fragment_terms_source(index.prefix),
+    from(term in Schema.fragment_terms_source(index.prefix),
       where: term.term_id in ^ids,
       group_by: term.fragment_id,
       having: count(term.term_id, :distinct) == ^required_count,
@@ -203,7 +203,7 @@ defmodule Exograph.Storage.InvertedIndex do
   end
 
   defp any_term_candidates(index, ids) do
-    from(term in Options.fragment_terms_source(index.prefix),
+    from(term in Schema.fragment_terms_source(index.prefix),
       where: term.term_id in ^ids,
       distinct: term.fragment_id,
       select: term.fragment_id
@@ -216,7 +216,7 @@ defmodule Exograph.Storage.InvertedIndex do
          required_id_set,
          optional_id_set
        ) do
-    fragment = Options.hydrate_fragment(record, source, path, package_version)
+    fragment = Schema.hydrate_fragment(record, source, path, package_version)
     required_matches = MapSet.intersection(fragment.terms, required_id_set)
     optional_matches = MapSet.intersection(fragment.terms, optional_id_set)
 
@@ -227,10 +227,10 @@ defmodule Exograph.Storage.InvertedIndex do
     )
   end
 
-  defp files_source(index), do: Options.files_source(index.prefix)
-  defp package_versions_source(index), do: Options.package_versions_source(index.prefix)
-  defp definitions_source(index), do: Options.definitions_source(index.prefix)
-  defp references_source(index), do: Options.references_source(index.prefix)
-  defp call_edges_source(index), do: Options.call_edges_source(index.prefix)
-  defp source(index), do: Options.fragments_source(index.prefix)
+  defp files_source(index), do: Schema.files_source(index.prefix)
+  defp package_versions_source(index), do: Schema.package_versions_source(index.prefix)
+  defp definitions_source(index), do: Schema.definitions_source(index.prefix)
+  defp references_source(index), do: Schema.references_source(index.prefix)
+  defp call_edges_source(index), do: Schema.call_edges_source(index.prefix)
+  defp source(index), do: Schema.fragments_source(index.prefix)
 end

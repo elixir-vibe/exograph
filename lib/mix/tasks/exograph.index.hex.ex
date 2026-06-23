@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
   Already-indexed packages (by name+version) are skipped by default.
   Use `--force` to re-index everything.
 
-  ## Options
+  ## Schema
 
     * `--mode` - `latest` (default), `top`, or `all`
     * `--limit` - max packages to index

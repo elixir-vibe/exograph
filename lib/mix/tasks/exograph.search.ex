@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Exograph.Search do
       mix exograph.search '/users/:id' lib --text
       mix exograph.search 'Repo\\.get!\\(' lib --regex
 
-  ## Options
+  ## Schema
 
     * `--repo` - Ecto repo module for a QuackDB-backed DuckDB repo
     * `--prefix` - Exograph table prefix (default: `exograph`)
