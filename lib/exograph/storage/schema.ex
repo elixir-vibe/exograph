@@ -23,18 +23,54 @@ defmodule Exograph.Storage.Schema do
 
   @tables [
     table(:schema_migrations, SchemaMigration, primary_key: false),
-    table(:packages, PackageRecord),
-    table(:package_versions, PackageVersionRecord),
-    table(:files, FileRecord),
-    table(:terms, TermRecord, primary_key: false),
+    table(:packages, PackageRecord) do
+      unique_index([:ecosystem, :name], name: :ecosystem_name)
+    end,
+    table(:package_versions, PackageVersionRecord) do
+      unique_index([:package_id, :version], name: :package_version)
+    end,
+    table(:files, FileRecord) do
+      index([:package_version_id, :path], name: :package_path)
+      unique_index([:package_version_id, :sha256], name: :package_version_sha256)
+    end,
+    table(:terms, TermRecord, primary_key: false) do
+      unique_index([:term], name: :term)
+    end,
     table(:fragment_terms, FragmentTermRecord, primary_key: false),
-    table(:fragments, FragmentRecord),
-    table(:comments, CommentRecord),
-    table(:definitions, DefinitionRecord),
-    table(:references, ReferenceRecord),
-    table(:graph_nodes, GraphNodeRecord),
-    table(:call_edges, CallEdgeRecord),
-    table(:tree_nodes, TreeNodeRecord, primary_key: false)
+    table(:fragments, FragmentRecord) do
+      unique_index([:content_hash], name: :content_hash)
+      index([:package_id, :package_version_id], name: :package)
+      index([:file_id], name: :file)
+      index([:file_id, :line], name: :file_line)
+      index([:file_id, :kind, :line], name: :file_kind_line)
+      index([:kind, :name, :arity], name: :kind_name_arity)
+    end,
+    table(:comments, CommentRecord) do
+      index([:file_id], name: :file)
+      index([:fragment_id], name: :fragment)
+    end,
+    table(:definitions, DefinitionRecord) do
+      index([:qualified_name], name: :qualified)
+      index([:fragment_id], name: :fragment)
+      index([:file_id, :line], name: :file_line)
+    end,
+    table(:references, ReferenceRecord) do
+      index([:qualified_name], name: :qualified)
+      index([:fragment_id], name: :fragment)
+      index([:file_id, :line], name: :file_line)
+    end,
+    table(:graph_nodes, GraphNodeRecord) do
+      index([:qualified_name], name: :qualified)
+      index([:file_id], name: :file)
+    end,
+    table(:call_edges, CallEdgeRecord) do
+      index([:caller_qualified_name], name: :caller)
+      index([:callee_qualified_name], name: :callee)
+      index([:file_id], name: :file)
+    end,
+    table(:tree_nodes, TreeNodeRecord, primary_key: false) do
+      index([:fragment_id], name: :fragment)
+    end
   ]
 
   def repo(opts), do: Keyword.fetch!(opts, :repo)
@@ -112,7 +148,7 @@ defmodule Exograph.Storage.Schema do
   def index_name(prefix, table, suffix) when is_atom(table),
     do: index_name(prefix, Atom.to_string(table!(table).name), suffix)
 
-  def index_name(prefix, table, suffix), do: "#{prefix}_#{table}_#{suffix}_idx"
+  def index_name(prefix, table, suffix), do: "#{prefix}_#{table}_#{to_string(suffix)}_idx"
 
   def packages_source(prefix), do: source(:packages, prefix)
 
