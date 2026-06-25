@@ -2,7 +2,7 @@ defmodule Exograph.Hex.CorpusTest do
   use ExUnit.Case, async: false
 
   alias Exograph.DuckDBSupport
-  alias Exograph.Storage.{SQL, Schema}
+  alias Exograph.Storage.SQL
 
   @moduletag :integration
 
@@ -42,7 +42,7 @@ defmodule Exograph.Hex.CorpusTest do
              reach_summary(online_prefix)
   end
 
-  test "duckdb fragment append mode is forwarded through the corpus pipeline" do
+  test "duckdb fragment append merge compatibility uses Ecto append path" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     prefix = "exograph_duckdb_append_mode_#{System.unique_integer([:positive])}"
@@ -51,7 +51,6 @@ defmodule Exograph.Hex.CorpusTest do
       index_top_package!(prefix, duckdb_build_mode: :online, duckdb_fragment_append: :merge)
 
     assert results.ok == 1
-    assert temporary_table_exists?(fragment_merge_table(prefix))
   end
 
   test "duckdb duplicate source paths are indexed once per package version" do
@@ -246,19 +245,6 @@ defmodule Exograph.Hex.CorpusTest do
       [[caller, callee] | _] -> %{caller: caller, callee: callee}
       [] -> nil
     end
-  end
-
-  defp fragment_merge_table(prefix) do
-    source = Schema.table_name(prefix, :fragments)
-    hash = :erlang.phash2(source, 4_294_967_296) |> Integer.to_string(36)
-    "exograph_fragment_merge_#{hash}"
-  end
-
-  defp temporary_table_exists?(table) do
-    Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{table}"|, [])
-    true
-  rescue
-    _ -> false
   end
 
   defp package_version_fact_counts(prefix, suffix) do

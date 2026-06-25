@@ -39,7 +39,9 @@ defmodule Exograph.Storage.Schema do
     table(:terms, TermRecord, primary_key: false) do
       unique_index([:term], name: :term)
     end,
-    table(:fragment_terms, FragmentTermRecord, primary_key: false),
+    table(:fragment_terms, FragmentTermRecord, primary_key: false) do
+      index([:term_id, :fragment_id], name: :term_fragment)
+    end,
     table(:fragments, FragmentRecord) do
       unique_index([:content_hash], name: :content_hash)
       index([:package_id, :package_version_id], name: :package)

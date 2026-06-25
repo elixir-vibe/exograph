@@ -183,8 +183,6 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
     end
 
     create_indexes(:tree_nodes)
-
-    backfill_duckdb_fragment_terms()
   end
 
   def down do
@@ -217,15 +215,5 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
   defp table_prefix do
     Application.fetch_env!(:exograph, __MODULE__)[:prefix]
-  end
-
-  defp backfill_duckdb_fragment_terms do
-    execute(~s|DELETE FROM "#{name(:fragment_terms)}"|)
-
-    execute(~s|
-    INSERT INTO "#{name(:fragment_terms)}" (term_id, fragment_id)
-    SELECT DISTINCT unnest(terms) AS term_id, id AS fragment_id
-    FROM "#{name(:fragments)}"
-    |)
   end
 end

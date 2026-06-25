@@ -73,7 +73,9 @@ defmodule Exograph.DuckDBSupport do
       |> Enum.reverse()
       |> Enum.each(fn table ->
         Exograph.DuckDBRepo.query!(
-          ["DROP TABLE IF EXISTS ", Exograph.Storage.SQL.table(prefix, table.name)],
+          QuackDB.DDL.drop_table(Exograph.Storage.Schema.table_name(prefix, table.name),
+            if_exists: true
+          ),
           []
         )
       end)

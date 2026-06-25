@@ -43,7 +43,8 @@ defmodule Exograph.Storage.Config do
       defer_fragment_terms?: Keyword.get(opts, :defer_fragment_terms?, false),
       duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
       duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
-      duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :merge),
+      duckdb_fragment_append:
+        fragment_append_mode(Keyword.get(opts, :duckdb_fragment_append, :ecto)),
       duckdb_fragment_payload_metrics?:
         Keyword.get(opts, :duckdb_fragment_payload_metrics?, false),
       static_atoms: Keyword.get(opts, :static_atoms, :existing)
@@ -60,4 +61,7 @@ defmodule Exograph.Storage.Config do
   def migrate(opts) do
     if Keyword.get(opts, :migrate?, false), do: DuckDB.migrate!(opts)
   end
+
+  defp fragment_append_mode(:merge), do: :ecto
+  defp fragment_append_mode(mode), do: mode
 end

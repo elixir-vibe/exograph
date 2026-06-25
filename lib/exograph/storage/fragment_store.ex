@@ -240,21 +240,14 @@ defmodule Exograph.Storage.FragmentStore do
     else
       ids = Map.values(term_to_id)
       id_to_term = Map.new(term_to_id, fn {term, id} -> {id, term} end)
+      id_set = MapSet.new(ids)
 
-      # unnest + GROUP BY has no Ecto DSL equivalent
-      {:ok, %{rows: rows}} =
-        SQL.query(
-          store.repo,
-          """
-          SELECT term_id, count(*)::bigint
-          FROM #{source(store)}, unnest(terms) AS term_id
-          WHERE term_id = ANY($1)
-          GROUP BY term_id
-          """,
-          [ids]
-        )
-
-      Map.new(rows, fn [id, count] -> {Map.fetch!(id_to_term, id), count} end)
+      from(fragment in {source(store), FragmentRecord}, select: fragment.terms)
+      |> store.repo.all()
+      |> Enum.flat_map(&(&1 || []))
+      |> Enum.filter(&MapSet.member?(id_set, &1))
+      |> Enum.frequencies()
+      |> Map.new(fn {id, count} -> {Map.fetch!(id_to_term, id), count} end)
     end
   end
 
@@ -1109,7 +1102,9 @@ defmodule Exograph.Storage.FragmentStore do
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
 
-  defp offline_duckdb?(%{duckdb_build_mode: :offline}), do: true
+  defp offline_duckdb?(%{duckdb_build_mode: :offline}) do
+    Application.get_env(:exograph, :offline_build_enabled?, false)
+  end
 
   defp offline_duckdb?(_store), do: false
 

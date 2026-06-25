@@ -3,8 +3,8 @@ defmodule Exograph.Storage.FragmentStoreTest do
 
   alias Exograph.Storage.FragmentStore
 
-  test "DuckDB fragment append defaults to MERGE" do
-    assert {:ok, %FragmentStore{duckdb_fragment_append: :merge}} =
+  test "DuckDB fragment append defaults to Ecto append" do
+    assert {:ok, %FragmentStore{duckdb_fragment_append: :ecto}} =
              FragmentStore.new(repo: Exograph.DuckDBRepo, migrate?: false)
   end
 end

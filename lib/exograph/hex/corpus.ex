@@ -741,17 +741,9 @@ defmodule Exograph.Hex.Corpus do
 
   defp migrate!(repo, prefix), do: Exograph.DuckDB.migrate!(repo: repo, prefix: prefix)
 
-  defp prepare_backend!(repo, prefix, opts) do
-    if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
-      Exograph.DuckDB.OfflineBuild.create_stages!(repo, prefix)
-    end
-  end
+  defp prepare_backend!(_repo, _prefix, _opts), do: :ok
 
   defp finalize_backend!(repo, prefix, opts) do
-    if Keyword.get(opts, :duckdb_build_mode, :online) == :offline do
-      Exograph.DuckDB.OfflineBuild.finalize!(repo, prefix)
-    end
-
     if Keyword.get(opts, :bm25?, true) do
       Exograph.DuckDB.create_bm25_indexes!(repo: repo, prefix: prefix)
     else

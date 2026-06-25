@@ -36,8 +36,8 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-queue-target` - DBConnection queue target in milliseconds for DuckDB shard repos (default: `60000`)
     * `--duckdb-queue-interval` - DBConnection queue interval in milliseconds for DuckDB shard repos (default: `120000`)
     * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
-    * `--duckdb-build-mode` - DuckDB corpus build strategy: `online` (default) or experimental `offline` metadata flag
-    * `--duckdb-fragment-append` - DuckDB fragment insert strategy: `merge` (default) or `ecto`
+    * `--duckdb-build-mode` - DuckDB corpus build strategy. `offline` is accepted for compatibility and uses the online Ecto/QuackDB path.
+    * `--duckdb-fragment-append` - DuckDB fragment insert strategy. `merge` is accepted for compatibility and uses the Ecto/QuackDB path.
     * `--duckdb-insert-buffer-size` - buffered DuckDB fact rows per table before flushing (default: `50000`)
     * `--manifest-path` - write a sharded DuckDB manifest to this path for `mix exograph.web --manifest-path ...`
     * `--report-path` - write indexing totals and failures as JSON
@@ -245,18 +245,18 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
 
   defp duckdb_build_mode(nil), do: :online
   defp duckdb_build_mode("online"), do: :online
-  defp duckdb_build_mode("offline"), do: :offline
+  defp duckdb_build_mode("offline"), do: :online
 
   defp duckdb_build_mode(value) do
-    Mix.raise("Unknown DuckDB build mode #{inspect(value)}; use online or offline")
+    Mix.raise("Unknown DuckDB build mode #{inspect(value)}; use online")
   end
 
-  defp duckdb_fragment_append(nil), do: :merge
+  defp duckdb_fragment_append(nil), do: :ecto
   defp duckdb_fragment_append("ecto"), do: :ecto
-  defp duckdb_fragment_append("merge"), do: :merge
+  defp duckdb_fragment_append("merge"), do: :ecto
 
   defp duckdb_fragment_append(value) do
-    Mix.raise("Unknown DuckDB fragment append mode #{inspect(value)}; use ecto or merge")
+    Mix.raise("Unknown DuckDB fragment append mode #{inspect(value)}; use ecto")
   end
 
   defp resolve_repo(opts) do

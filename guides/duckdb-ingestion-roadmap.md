@@ -4,7 +4,7 @@ This note tracks longer-horizon ideas for Exograph's DuckDB Hex-corpus builder. 
 
 ## Current state
 
-The default DuckDB path uses normal Ecto semantics:
+The default DuckDB path uses Ecto/QuackDB APIs rather than Exograph-owned raw DuckDB SQL assembly:
 
 ```elixir
 Repo.insert_all(FragmentRecord, rows,
@@ -15,27 +15,20 @@ Repo.insert_all(FragmentRecord, rows,
 )
 ```
 
-This path remains available behind `--duckdb-fragment-append ecto`, but it pays DuckDB unique/ART index maintenance and conflict checking during online ingestion.
-
-DuckDB fragment append now defaults to the MERGE path after repeated parity benchmarks. The previous Ecto-style append path can be forced with:
+Compatibility flags from previous benchmark work are still accepted, but they now route to the same Ecto/QuackDB path:
 
 ```bash
-mix exograph.index.hex --duckdb-fragment-append ecto ...
-```
-
-There is also an experimental DuckDB build-mode option for report/benchmark labeling:
-
-```bash
+mix exograph.index.hex --duckdb-fragment-append merge ...
 mix exograph.index.hex --duckdb-build-mode offline ...
 ```
 
-The build-mode flag now selects an initial offline staging path for files, terms, fragments, definitions, references, comments, and fragment_terms. The default remains online, and the offline path is still experimental until quality parity and larger benchmarks are complete. For reproducible topN runs, write the resolved package list with `--entries-output-path` and rerun with `--entries-file` instead of relying on a live top list.
+For reproducible topN runs, write the resolved package list with `--entries-output-path` and rerun with `--entries-file` instead of relying on a live top list.
 
-MERGE measurements show lower cumulative `fragment_append_rows` time, exact `top --limit 500 --concurrency 1` parity, repeated exact post-dedupe `top --limit 500 --concurrency 4` parity, and exact fixed-snapshot `top2000 --concurrency 4` parity against explicit Ecto. The default path was then validated on `top --limit 500`, `top --limit 100 --reach`, and fixed top2000 entries; all reported `duckdb_fragment_append: merge` without requiring the explicit flag. A `top --limit 500 --concurrency 4` Ecto baseline failed once on a DuckDB duplicate unique-key race while the MERGE run completed. DuckDB source inspection shows `ON CONFLICT` conflict handling is scoped to the current insert chunk/visible rows before append; concurrent transactions can still both attempt the same unique ART key and one can fail at commit. Exograph now retries DuckDB fragment appends on primary-key/unique-constraint races inside the fragment append operation and records `fragment_append_retries` in timing snapshots. The later fact-count nondeterminism was traced to duplicate source paths inside Hex tarballs; Exograph now deduplicates source tuples by `{path, package_version}` before extraction.
+Earlier MERGE/offline measurements are retained below as historical context, but those paths are no longer active in Exograph. If a future ingestion shape needs DuckDB-specific SQL, add the missing abstraction to QuackDB first and consume it from Exograph through a typed API.
 
 ## Ingestion decision checkpoint
 
-The current default remains **single-DuckDB online MERGE**. It is the only path with repeated exact quality parity at fixed top500/top2000 scale, it uses released QuackDB dependencies, and it remains operationally simple. On the current fixed top500 benchmark, released QuackDB `0.5.13` is around `91.7s` elapsed with `87.2s` aggregate fragment append, `27.9s` temp-stage append, and `25.9s` MERGE query. On fixed top2000, released QuackDB `0.5.12` completed at `465.1s` elapsed / `489.4s` wall with `1635 indexed / 365 skipped / 0 failed`.
+The current default is **single-DuckDB online Ecto/QuackDB append**. It preserves the public single-index semantics and avoids Exograph-owned raw SQL. Historical MERGE benchmarks remain useful evidence for future QuackDB API work, but MERGE is no longer an Exograph-local code path.
 
 Sharded DuckDB is **not a drop-in replacement** for the default. It is the fastest large-corpus ingestion shape observed so far (`70.2s` fixed top500 with four shards, global concurrency `8`, per-shard concurrency/pool size `2`, and `duckdb_threads 2`), and it strongly suggests single-file write/MERGE contention matters. However, shard-local fragment/content/term identity changes global semantics: fragment/term counts increase, broad structural queries can over-count, and a simple fanout dedup by fragment hash did not restore parity. Treat sharding as an opt-in/product-level read architecture candidate with explicit shard-local/global semantics, not as an invisible performance flag. See [Sharded DuckDB semantics](sharded-duckdb.md) for the current contract.
 

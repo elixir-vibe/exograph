@@ -1,7 +1,11 @@
 defmodule Exograph.Storage.SQL do
   @moduledoc """
-  SQL helpers used by the DuckDB/QuackDB storage layer.
+  Identifier quoting helpers used at QuackDB helper boundaries.
   """
+
+  def table(prefix, name), do: identifier(Exograph.Storage.Schema.table_name(prefix, name))
+
+  def identifier(name), do: QuackDB.Type.quote_identifier(to_string(name))
 
   def bulk_insert_all(repo, source, entries, opts \\ []) do
     chunk_size = Keyword.get(opts, :chunk_size, 1_000)
@@ -11,51 +15,6 @@ defmodule Exograph.Storage.SQL do
     entries
     |> Enum.chunk_every(chunk_size)
     |> insert_chunks(repo, source, insert_opts, max_concurrency)
-  end
-
-  def table(prefix, name), do: identifier(Exograph.Storage.Schema.table_name(prefix, name))
-
-  def identifier(name), do: quote_identifier(name)
-
-  def copy_integer_rows(_repo, _table, _columns, []), do: :ok
-
-  def copy_integer_rows(repo, table, columns, rows) do
-    table_name = source_table_name(table)
-    column_names = Enum.map_join(columns, ", ", &quote_identifier/1)
-    sql = "COPY #{quote_identifier(table_name)} (#{column_names}) FROM STDIN WITH (FORMAT csv)"
-
-    repo.transaction(
-      fn ->
-        stream = Ecto.Adapters.SQL.stream(repo, sql, [], timeout: :infinity)
-
-        rows
-        |> Stream.map(&integer_csv_row(&1, columns))
-        |> Enum.into(stream)
-      end,
-      timeout: :infinity
-    )
-
-    :ok
-  end
-
-  def query(repo, sql, params \\ []), do: Ecto.Adapters.SQL.query(repo, sql, params)
-
-  defp source_table_name({table, _schema}), do: table
-  defp source_table_name(table) when is_binary(table), do: table
-
-  defp quote_identifier(identifier) when is_atom(identifier) do
-    identifier |> Atom.to_string() |> quote_identifier()
-  end
-
-  defp quote_identifier(identifier) when is_binary(identifier) do
-    ~s("#{String.replace(identifier, "\"", "\"\"")}")
-  end
-
-  defp integer_csv_row(row, columns) do
-    columns
-    |> Enum.map(fn column -> Map.fetch!(row, column) end)
-    |> Enum.join(",")
-    |> Kernel.<>("\n")
   end
 
   defp insert_chunks([], _repo, _source, _opts, _max_concurrency), do: :ok
@@ -90,25 +49,20 @@ defmodule Exograph.Storage.SQL do
   defp with_dynamic_repo(_repo, nil, fun), do: fun.()
 
   defp with_dynamic_repo(repo, dynamic_repo, fun) do
-    if function_exported?(repo, :put_dynamic_repo, 1) and
-         function_exported?(repo, :get_dynamic_repo, 0) do
-      previous = repo.get_dynamic_repo()
-      repo.put_dynamic_repo(dynamic_repo)
+    previous = repo.put_dynamic_repo(dynamic_repo)
 
-      try do
-        fun.()
-      after
-        repo.put_dynamic_repo(previous)
-      end
-    else
+    try do
       fun.()
+    after
+      repo.put_dynamic_repo(previous)
     end
   end
 
   defp repo_pool_size(repo) do
     repo.config()
-    |> Keyword.get(:exograph_bulk_concurrency, 2)
-    |> min(System.schedulers_online())
+    |> Keyword.get(:pool_size, System.schedulers_online())
     |> max(1)
+  rescue
+    _ -> System.schedulers_online()
   end
 end
