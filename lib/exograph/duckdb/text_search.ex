@@ -2,7 +2,7 @@ defmodule Exograph.DuckDB.TextSearch do
   @moduledoc false
 
   alias Exograph.Hit
-  alias Exograph.Storage.{FragmentRecord, Schema}
+  alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
 
   def search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
     limit = Keyword.get(opts, :limit, 50)
@@ -101,7 +101,7 @@ defmodule Exograph.DuckDB.TextSearch do
       {record, source, path, package_version} = fragment_record(row)
 
       Hit.new(
-        fragment: Schema.hydrate_fragment(record, source, path, package_version),
+        fragment: Hydration.fragment(record, source, path, package_version),
         score: 1.0
       )
     end)

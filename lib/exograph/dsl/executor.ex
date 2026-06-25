@@ -8,7 +8,7 @@ defmodule Exograph.DSL.Executor do
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
   alias Exograph.DSL.{Compiler, JoinSemantics, Plan, Planner, Query, Sources}
   alias Exograph.DSL.Plan.Join
-  alias Exograph.Storage.{FragmentStore, InvertedIndex}
+  alias Exograph.Storage.{FragmentStore, Hydration, InvertedIndex}
   alias Exograph.StructuralQuery
 
   alias Exograph.Storage.{
@@ -430,7 +430,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp hydrate_query_fragment(%FragmentRecord{} = fragment, source, path, package_version) do
-    Schema.hydrate_fragment(fragment, source, path, package_version)
+    Hydration.fragment(fragment, source, path, package_version)
   end
 
   defp hydrate_query_fragment(fragment, source, path, package_version) when is_map(fragment) do
@@ -681,7 +681,7 @@ defmodule Exograph.DSL.Executor do
     |> index.inverted.repo.all()
     |> Enum.map(fn {fragment, source, path, first, second} ->
       {
-        Schema.hydrate_fragment(fragment, source, path),
+        Hydration.fragment(fragment, source, path),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second)
@@ -742,7 +742,7 @@ defmodule Exograph.DSL.Executor do
     |> index.inverted.repo.all()
     |> Enum.map(fn {fragment, source, path, first, second, third} ->
       {
-        Schema.hydrate_fragment(fragment, source, path),
+        Hydration.fragment(fragment, source, path),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second),
@@ -897,7 +897,7 @@ defmodule Exograph.DSL.Executor do
     if light_join_projection?(index, plan) do
       hydrate_light_fragment(fragment, source, path)
     else
-      Schema.hydrate_fragment(fragment, source, path)
+      Hydration.fragment(fragment, source, path)
     end
   end
 
@@ -982,7 +982,7 @@ defmodule Exograph.DSL.Executor do
     )
     |> index.inverted.repo.all()
     |> Map.new(fn {fragment, source, path, package_version} ->
-      hydrated = Schema.hydrate_fragment(fragment, source, path, package_version)
+      hydrated = Hydration.fragment(fragment, source, path, package_version)
       {hydrated.id, hydrated}
     end)
   end
@@ -1254,5 +1254,5 @@ defmodule Exograph.DSL.Executor do
   defp hydrate_fragment(nil, _source, _path), do: nil
 
   defp hydrate_fragment(fragment, source, path),
-    do: Schema.hydrate_fragment(fragment, source, path)
+    do: Hydration.fragment(fragment, source, path)
 end

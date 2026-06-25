@@ -4,7 +4,7 @@ defmodule Exograph.Storage.FactQuery do
   import Ecto.Query
 
   alias Exograph.{DefinitionHit, ReferenceHit, Scope, Text}
-  alias Exograph.Storage.{FragmentRecord, Schema}
+  alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
 
   def search(index, table_source, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
@@ -62,7 +62,7 @@ defmodule Exograph.Storage.FactQuery do
        ) do
     DefinitionHit.new(
       definition: Exograph.Storage.DefinitionRecord.to_definition(fact),
-      fragment: Schema.hydrate_fragment(record, source, path, package_version),
+      fragment: Hydration.fragment(record, source, path, package_version),
       score: 1.0
     )
   end
@@ -73,7 +73,7 @@ defmodule Exograph.Storage.FactQuery do
        ) do
     ReferenceHit.new(
       reference: Exograph.Storage.ReferenceRecord.to_reference(fact),
-      fragment: Schema.hydrate_fragment(record, source, path, package_version),
+      fragment: Hydration.fragment(record, source, path, package_version),
       score: 1.0
     )
   end

@@ -24,6 +24,8 @@ defmodule Exograph.Storage.FragmentStore do
     FileRecord,
     FragmentRecord,
     GraphNodeRecord,
+    Config,
+    Hydration,
     Schema,
     PackageRecord,
     PackageVersionRecord,
@@ -66,7 +68,7 @@ defmodule Exograph.Storage.FragmentStore do
           static_atoms: atom()
         }
 
-  def new(opts \\ []), do: {:ok, Schema.store(__MODULE__, opts)}
+  def new(opts \\ []), do: {:ok, Config.store(__MODULE__, opts)}
 
   def put(%__MODULE__{} = store, fragments) when is_list(fragments) do
     if offline_duckdb?(store) do
@@ -175,7 +177,7 @@ defmodule Exograph.Storage.FragmentStore do
 
     case store.repo.one(query) do
       {%FragmentRecord{} = record, source, path} ->
-        {:ok, Schema.hydrate_fragment(record, source, path)}
+        {:ok, Hydration.fragment(record, source, path)}
 
       nil ->
         :error
@@ -192,7 +194,7 @@ defmodule Exograph.Storage.FragmentStore do
       )
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Schema.hydrate_fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path} -> Hydration.fragment(record, source, path) end)
   end
 
   def count(%__MODULE__{} = store) do
@@ -225,7 +227,7 @@ defmodule Exograph.Storage.FragmentStore do
       end
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Schema.hydrate_fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path} -> Hydration.fragment(record, source, path) end)
   end
 
   def term_frequencies(_store, []), do: %{}

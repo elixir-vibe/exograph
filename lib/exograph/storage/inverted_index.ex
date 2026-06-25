@@ -10,7 +10,17 @@ defmodule Exograph.Storage.InvertedIndex do
   import QuackDB.Ecto.Regex, only: [regexp_matches: 2]
 
   alias Exograph.{Hit, Package, PackageVersion}
-  alias Exograph.Storage.{CallEdgeRecord, FactQuery, FragmentRecord, Schema, Scope}
+
+  alias Exograph.Storage.{
+    CallEdgeRecord,
+    Config,
+    FactQuery,
+    FragmentRecord,
+    Hydration,
+    Schema,
+    Scope
+  }
+
   alias Exograph.StructuralQuery
 
   defstruct repo: nil, prefix: "exograph", package: nil, package_version: nil, bm25?: true
@@ -23,7 +33,7 @@ defmodule Exograph.Storage.InvertedIndex do
           bm25?: boolean()
         }
 
-  def new(opts \\ []), do: {:ok, Schema.store(__MODULE__, opts)}
+  def new(opts \\ []), do: {:ok, Config.store(__MODULE__, opts)}
 
   def add(%__MODULE__{} = index, fragments) when is_list(fragments) do
     {:ok, index}
@@ -127,7 +137,7 @@ defmodule Exograph.Storage.InvertedIndex do
       index.repo.all(query, timeout: 30_000)
       |> Enum.map(fn {record, source, path, package_version} ->
         Hit.new(
-          fragment: Schema.hydrate_fragment(record, source, path, package_version),
+          fragment: Hydration.fragment(record, source, path, package_version),
           score: 1.0
         )
       end)
@@ -216,7 +226,7 @@ defmodule Exograph.Storage.InvertedIndex do
          required_id_set,
          optional_id_set
        ) do
-    fragment = Schema.hydrate_fragment(record, source, path, package_version)
+    fragment = Hydration.fragment(record, source, path, package_version)
     required_matches = MapSet.intersection(fragment.terms, required_id_set)
     optional_matches = MapSet.intersection(fragment.terms, optional_id_set)
 
