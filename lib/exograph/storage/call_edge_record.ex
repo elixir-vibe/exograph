@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.CallEdgeRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for persisted call graph edges.
+  """
 
   use Ecto.Schema
 

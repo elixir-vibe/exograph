@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.CommentRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for comments extracted from indexed files.
+  """
 
   use Ecto.Schema
 

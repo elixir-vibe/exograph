@@ -1,7 +1,12 @@
 defmodule Exograph.Storage.Schema do
-  @moduledoc false
+  @moduledoc """
+  Declares Exograph storage tables, Ecto record modules, and index metadata.
 
-  import Exograph.Storage.Schema.DSL
+  Callers use this module for prefixed table names and Ecto source tuples so the
+  physical DuckDB schema has a single naming authority.
+  """
+
+  import Exograph.Storage.Schema.Declaration
 
   alias Exograph.Storage.{
     CallEdgeRecord,

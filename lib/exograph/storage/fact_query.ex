@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.FactQuery do
-  @moduledoc false
+  @moduledoc """
+  Shared Ecto queries for definition and reference fact searches.
+  """
 
   import Ecto.Query
 

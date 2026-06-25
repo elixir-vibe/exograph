@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.Hydration do
-  @moduledoc false
+  @moduledoc """
+  Converts storage records and joined file/version columns back into domain structs.
+  """
 
   def fragment(record, source, path, package_version \\ nil) do
     record

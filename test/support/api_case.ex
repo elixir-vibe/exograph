@@ -1,5 +1,7 @@
 defmodule Exograph.APICase do
-  @moduledoc false
+  @moduledoc """
+  Test case helpers for exercising the JSON API directly.
+  """
   use ExUnit.CaseTemplate
 
   using do

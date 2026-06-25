@@ -1,5 +1,7 @@
 defmodule Exograph.FeatureCase do
-  @moduledoc false
+  @moduledoc """
+  Test case helpers for browser-driven feature tests.
+  """
   use ExUnit.CaseTemplate
 
   using do

@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.Migrations.CreateSchema do
-  @moduledoc false
+  @moduledoc """
+  Ecto migration that creates the DuckDB-backed Exograph storage schema.
+  """
 
   use Ecto.Migration
 

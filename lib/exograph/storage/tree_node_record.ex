@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.TreeNodeRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for AST tree nodes attached to a fragment.
+  """
 
   use Ecto.Schema
 

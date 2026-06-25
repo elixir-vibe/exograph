@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.FragmentRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for persisted structural code fragments.
+  """
 
   use Ecto.Schema
 

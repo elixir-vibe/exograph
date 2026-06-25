@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.PackageRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for indexed packages.
+  """
 
   use Ecto.Schema
 

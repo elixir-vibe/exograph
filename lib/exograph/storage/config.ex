@@ -1,5 +1,10 @@
 defmodule Exograph.Storage.Config do
-  @moduledoc false
+  @moduledoc """
+  Normalizes storage options into store structs.
+
+  This module owns option defaults and migration triggering so schema metadata stays
+  focused on table declarations.
+  """
 
   alias Exograph.{DuckDB, Package, PackageVersion}
 

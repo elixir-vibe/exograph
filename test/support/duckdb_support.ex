@@ -1,5 +1,7 @@
 defmodule Exograph.DuckDBSupport do
-  @moduledoc false
+  @moduledoc """
+  Test helpers for starting temporary QuackDB-backed repos and cleaning Exograph schemas.
+  """
 
   def start_repo! do
     Application.ensure_all_started(:ecto_sql)
@@ -67,12 +69,14 @@ defmodule Exograph.DuckDBSupport do
 
   def drop_prefix(prefix) do
     if Process.whereis(Exograph.DuckDBRepo) do
-      Enum.each(
-        ~w(tree_nodes call_edges graph_nodes references definitions comments fragments fragment_terms terms files package_versions packages schema_migrations),
-        fn suffix ->
-          Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_#{suffix}"|, [])
-        end
-      )
+      Exograph.Storage.Schema.tables()
+      |> Enum.reverse()
+      |> Enum.each(fn table ->
+        Exograph.DuckDBRepo.query!(
+          ["DROP TABLE IF EXISTS ", Exograph.Storage.SQL.table(prefix, table.name)],
+          []
+        )
+      end)
     end
   end
 end

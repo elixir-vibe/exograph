@@ -1,5 +1,7 @@
 defmodule Exograph.DuckDB.OfflineBuild do
-  @moduledoc false
+  @moduledoc """
+  Builds fragment and fact tables through staging tables for bulk DuckDB ingestion.
+  """
 
   import QuackDB.SQL.Fragment
 

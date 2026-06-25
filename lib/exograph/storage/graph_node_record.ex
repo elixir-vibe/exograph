@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.GraphNodeRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for call-graph nodes extracted from source code.
+  """
 
   use Ecto.Schema
 

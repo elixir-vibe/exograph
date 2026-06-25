@@ -1,5 +1,7 @@
-defmodule Exograph.Storage.Schema.DSL do
-  @moduledoc false
+defmodule Exograph.Storage.Schema.Declaration do
+  @moduledoc """
+  Compile-time helpers for declaring storage table and index metadata.
+  """
 
   defmacro table(name, record, do: block) do
     table_ast(name, record, [], block_indexes(block))

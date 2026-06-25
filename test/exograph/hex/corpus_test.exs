@@ -2,6 +2,7 @@ defmodule Exograph.Hex.CorpusTest do
   use ExUnit.Case, async: false
 
   alias Exograph.DuckDBSupport
+  alias Exograph.Storage.{SQL, Schema}
 
   @moduletag :integration
 
@@ -233,7 +234,11 @@ defmodule Exograph.Hex.CorpusTest do
   defp reach_probe(prefix) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT caller_qualified_name, callee_qualified_name FROM "#{prefix}_call_edges" ORDER BY caller_qualified_name, callee_qualified_name LIMIT 1|,
+        [
+          "SELECT caller_qualified_name, callee_qualified_name FROM ",
+          SQL.table(prefix, :call_edges),
+          " ORDER BY caller_qualified_name, callee_qualified_name LIMIT 1"
+        ],
         []
       )
 
@@ -244,7 +249,7 @@ defmodule Exograph.Hex.CorpusTest do
   end
 
   defp fragment_merge_table(prefix) do
-    source = "#{prefix}_fragments"
+    source = Schema.table_name(prefix, :fragments)
     hash = :erlang.phash2(source, 4_294_967_296) |> Integer.to_string(36)
     "exograph_fragment_merge_#{hash}"
   end
@@ -259,7 +264,11 @@ defmodule Exograph.Hex.CorpusTest do
   defp package_version_fact_counts(prefix, suffix) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT count(*) FROM "#{prefix}_#{suffix}" GROUP BY package_version_id ORDER BY package_version_id|,
+        [
+          "SELECT count(*) FROM ",
+          SQL.table(prefix, suffix),
+          " GROUP BY package_version_id ORDER BY package_version_id"
+        ],
         []
       )
 
@@ -268,7 +277,7 @@ defmodule Exograph.Hex.CorpusTest do
 
   defp table_count(prefix, suffix) do
     %{rows: [[count]]} =
-      Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{prefix}_#{suffix}"|, [])
+      Exograph.DuckDBRepo.query!(["SELECT count(*) FROM ", SQL.table(prefix, suffix)], [])
 
     count
   end

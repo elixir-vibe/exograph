@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.FragmentTermRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for fragment-to-term inverted-index rows.
+  """
 
   use Ecto.Schema
 

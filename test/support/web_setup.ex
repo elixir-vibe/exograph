@@ -1,5 +1,7 @@
 defmodule Exograph.Test.WebSetup do
-  @moduledoc false
+  @moduledoc """
+  Starts isolated web endpoints and indexes for API and feature tests.
+  """
 
   @port 4202
 

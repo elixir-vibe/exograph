@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.FileRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for indexed source files.
+  """
 
   use Ecto.Schema
 

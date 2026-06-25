@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.TermRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for normalized structural search terms.
+  """
 
   use Ecto.Schema
 

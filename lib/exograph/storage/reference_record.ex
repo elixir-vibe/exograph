@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.ReferenceRecord do
-  @moduledoc false
+  @moduledoc """
+  Ecto schema for persisted symbol references.
+  """
 
   use Ecto.Schema
 

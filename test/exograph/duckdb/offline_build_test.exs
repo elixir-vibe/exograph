@@ -3,6 +3,7 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
 
   alias Exograph.DuckDB.OfflineBuild
   alias Exograph.DuckDBSupport
+  alias Exograph.Storage.SQL
 
   @moduletag :integration
 
@@ -119,15 +120,24 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
     assert fragment_count(prefix) == 2
 
     DuckDBSupport.drop_prefix(prefix)
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_file_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_definition_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_reference_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_comment_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_term_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_fragment_term_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_graph_node_stage"|, [])
-    Exograph.DuckDBRepo.query!(~s|DROP TABLE IF EXISTS "#{prefix}_call_edge_stage"|, [])
+    drop_stage_tables(prefix)
+  end
+
+  defp drop_stage_tables(prefix) do
+    [
+      OfflineBuild.file_stage_table(prefix),
+      OfflineBuild.stage_table(prefix),
+      OfflineBuild.definition_stage_table(prefix),
+      OfflineBuild.reference_stage_table(prefix),
+      OfflineBuild.comment_stage_table(prefix),
+      OfflineBuild.term_stage_table(prefix),
+      OfflineBuild.fragment_term_stage_table(prefix),
+      OfflineBuild.graph_node_stage_table(prefix),
+      OfflineBuild.call_edge_stage_table(prefix)
+    ]
+    |> Enum.each(fn table ->
+      Exograph.DuckDBRepo.query!(["DROP TABLE IF EXISTS ", SQL.identifier(table)], [])
+    end)
   end
 
   defp term_row(term), do: %{term: term}
@@ -258,7 +268,14 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
   defp facts(prefix, table, field) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT "#{field}", fragment_id FROM "#{prefix}_#{table}" ORDER BY "#{field}"|,
+        [
+          "SELECT ",
+          SQL.identifier(field),
+          ", fragment_id FROM ",
+          SQL.table(prefix, table),
+          " ORDER BY ",
+          SQL.identifier(field)
+        ],
         []
       )
 
@@ -268,7 +285,11 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
   defp fragment_terms(prefix) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT term_id, fragment_id FROM "#{prefix}_fragment_terms" ORDER BY term_id, fragment_id|,
+        [
+          "SELECT term_id, fragment_id FROM ",
+          SQL.table(prefix, :fragment_terms),
+          " ORDER BY term_id, fragment_id"
+        ],
         []
       )
 
@@ -277,7 +298,7 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
 
   defp graph_node_count(prefix) do
     %{rows: [[count]]} =
-      Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{prefix}_graph_nodes"|, [])
+      Exograph.DuckDBRepo.query!(["SELECT count(*) FROM ", SQL.table(prefix, :graph_nodes)], [])
 
     count
   end
@@ -285,7 +306,11 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
   defp call_edges(prefix) do
     %{rows: rows} =
       Exograph.DuckDBRepo.query!(
-        ~s|SELECT caller_qualified_name, callee_qualified_name, call_site_fragment_id FROM "#{prefix}_call_edges" ORDER BY caller_qualified_name, callee_qualified_name|,
+        [
+          "SELECT caller_qualified_name, callee_qualified_name, call_site_fragment_id FROM ",
+          SQL.table(prefix, :call_edges),
+          " ORDER BY caller_qualified_name, callee_qualified_name"
+        ],
         []
       )
 
@@ -294,7 +319,7 @@ defmodule Exograph.DuckDB.OfflineBuildTest do
 
   defp fragment_count(prefix) do
     %{rows: [[count]]} =
-      Exograph.DuckDBRepo.query!(~s|SELECT count(*) FROM "#{prefix}_fragments"|, [])
+      Exograph.DuckDBRepo.query!(["SELECT count(*) FROM ", SQL.table(prefix, :fragments)], [])
 
     count
   end

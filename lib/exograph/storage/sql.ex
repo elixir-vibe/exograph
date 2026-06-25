@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.SQL do
-  @moduledoc false
+  @moduledoc """
+  SQL helpers used by the DuckDB/QuackDB storage layer.
+  """
 
   def bulk_insert_all(repo, source, entries, opts \\ []) do
     chunk_size = Keyword.get(opts, :chunk_size, 1_000)
@@ -11,7 +13,9 @@ defmodule Exograph.Storage.SQL do
     |> insert_chunks(repo, source, insert_opts, max_concurrency)
   end
 
-  def table(prefix, name), do: ~s("#{Exograph.Storage.Schema.table_name(prefix, name)}")
+  def table(prefix, name), do: identifier(Exograph.Storage.Schema.table_name(prefix, name))
+
+  def identifier(name), do: quote_identifier(name)
 
   def copy_integer_rows(_repo, _table, _columns, []), do: :ok
 

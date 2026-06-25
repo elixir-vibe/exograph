@@ -1,5 +1,7 @@
 defmodule Exograph.Storage.Scope do
-  @moduledoc false
+  @moduledoc """
+  Ecto predicates for applying package and package-version scopes to storage queries.
+  """
 
   import Ecto.Query
 
