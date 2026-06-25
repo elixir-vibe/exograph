@@ -26,7 +26,11 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--limit` - maximum findings to print (default: 100)
     * `--candidate-batch-size` - fragment candidate page size (default: 1000)
     * `--max-anchor-candidates` - skip patterns whose best anchor is broader than this (default: 10000)
-    * `--json` - print JSON
+    * `--json` - print compact JSON
+    * `--pretty` - pretty-print JSON (implies `--json`)
+    * `--group-by` - group text output by `kind`, `package`, or `check`
+    * `--sample` - deterministically sample findings after scanning
+    * `--show-skipped` - print skipped-pattern anchor summaries
   """
 
   use Mix.Task
@@ -53,7 +57,11 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
           limit: :integer,
           candidate_batch_size: :integer,
           max_anchor_candidates: :integer,
-          json: :boolean
+          json: :boolean,
+          pretty: :boolean,
+          group_by: :string,
+          sample: :integer,
+          show_skipped: :boolean
         ],
         aliases: [n: :limit]
       )
@@ -76,7 +84,7 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
         max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000)
       )
 
-    print_result(result, opts)
+    print_result(apply_presentation_opts(result, opts), opts)
   end
 
   defp open_index!(opts) do
@@ -85,7 +93,7 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
         Exograph.open_sharded(manifest_path,
           duckdb_threads: Keyword.get(opts, :duckdb_threads),
           duckdb_memory_limit: Keyword.get(opts, :duckdb_memory_limit),
-          pool_size: Keyword.get(opts, :shard_pool_size),
+          pool_size: Keyword.get(opts, :shard_pool_size, 1),
           port_base: Keyword.get(opts, :shard_port_base, 9_700)
         )
 
@@ -101,22 +109,82 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     end
   end
 
+  defp apply_presentation_opts(result, opts) do
+    case Keyword.get(opts, :sample) do
+      nil ->
+        result
+
+      count when is_integer(count) and count >= 0 ->
+        %{result | findings: sample(result.findings, count)}
+    end
+  end
+
+  defp sample(_findings, 0), do: []
+  defp sample(findings, count) when length(findings) <= count, do: findings
+
+  defp sample(findings, count) do
+    last = length(findings) - 1
+
+    0..(count - 1)
+    |> Enum.map(fn index -> Enum.at(findings, round(index * last / max(count - 1, 1))) end)
+  end
+
   defp print_result(result, opts) do
-    if Keyword.get(opts, :json, false) do
-      Mix.shell().info(JSON.encode!(result_json(result)))
+    if Keyword.get(opts, :json, false) or Keyword.get(opts, :pretty, false) do
+      print_json(result, opts)
     else
+      Mix.shell().info(summary_line(result))
+      print_skipped_summary(result, opts)
+      print_text_findings(result, opts)
+    end
+  end
+
+  defp print_json(result, opts) do
+    json = result_json(result)
+
+    if Keyword.get(opts, :pretty, false) do
+      Mix.shell().info(Jason.encode!(json, pretty: true))
+    else
+      Mix.shell().info(Jason.encode!(json))
+    end
+  end
+
+  defp summary_line(result) do
+    "#{length(result.findings)} finding(s), #{result.candidate_count} candidate(s), " <>
+      "#{result.scanned_patterns} pattern(s), #{result.elapsed_ms}ms"
+  end
+
+  defp print_skipped_summary(result, opts) do
+    if result.skipped_patterns != [] do
       Mix.shell().info(
-        "#{length(result.findings)} finding(s), #{result.candidate_count} candidate(s), " <>
-          "#{result.scanned_patterns} pattern(s), #{result.elapsed_ms}ms"
+        "#{length(result.skipped_patterns)} pattern(s) skipped by anchor threshold"
       )
 
-      if result.skipped_patterns != [] do
-        Mix.shell().info(
-          "#{length(result.skipped_patterns)} pattern(s) skipped by anchor threshold"
-        )
+      if Keyword.get(opts, :show_skipped, false) do
+        result.skipped_patterns
+        |> skipped_summaries()
+        |> Enum.each(fn summary ->
+          Mix.shell().info(
+            "  #{inspect(summary.kind)} #{summary.check} anchor=#{summary.anchor_term || "<none>"} count=#{inspect(summary.anchor_count)}"
+          )
+        end)
       end
+    end
+  end
 
-      Enum.each(result.findings, &print_finding/1)
+  defp print_text_findings(result, opts) do
+    case Keyword.get(opts, :group_by) do
+      nil ->
+        Enum.each(result.findings, &print_finding/1)
+
+      group_by ->
+        result.findings
+        |> Enum.group_by(&finding_group(&1, group_by))
+        |> Enum.sort_by(fn {group, findings} -> {to_string(group), length(findings)} end)
+        |> Enum.each(fn {group, findings} ->
+          Mix.shell().info("\n## #{group_by}: #{group} (#{length(findings)})")
+          Enum.each(findings, &print_finding/1)
+        end)
     end
   end
 
@@ -143,7 +211,8 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
       elapsed_ms: result.elapsed_ms,
       candidate_count: result.candidate_count,
       scanned_patterns: result.scanned_patterns,
-      skipped_patterns: length(result.skipped_patterns),
+      skipped_patterns: skipped_summaries(result.skipped_patterns),
+      groups: group_counts(result.findings),
       findings: Enum.map(result.findings, &finding_json/1)
     }
   end
@@ -153,12 +222,56 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
       check: inspect(finding.check),
       kind: finding.kind,
       message: finding.message,
+      package: finding.package,
       package_version: finding.package_version,
       file: finding.file,
       line: finding.line,
       snippet: finding.snippet,
       anchor_term: finding.anchor_term
     }
+  end
+
+  defp skipped_summaries(patterns) do
+    patterns
+    |> Enum.map(fn pattern ->
+      %{
+        check: inspect(pattern.module),
+        kind: pattern.kind,
+        message: pattern.message,
+        anchor_term: pattern.anchor_term,
+        anchor_count: pattern.anchor_count,
+        missing_terms: pattern.missing_terms
+      }
+    end)
+    |> Enum.sort_by(fn summary ->
+      {summary.check, to_string(summary.kind), anchor_count_sort(summary.anchor_count)}
+    end)
+  end
+
+  defp anchor_count_sort(count) when is_integer(count), do: count
+  defp anchor_count_sort(_count), do: 9_999_999_999
+
+  defp group_counts(findings) do
+    %{
+      by_kind: count_by(findings, & &1.kind),
+      by_check: count_by(findings, &inspect(&1.check)),
+      by_package: count_by(findings, &(&1.package || "<unknown>"))
+    }
+  end
+
+  defp count_by(values, fun) do
+    values
+    |> Enum.frequencies_by(fun)
+    |> Enum.map(fn {value, count} -> %{value: value, count: count} end)
+    |> Enum.sort_by(fn %{value: value, count: count} -> {-count, to_string(value)} end)
+  end
+
+  defp finding_group(finding, "kind"), do: finding.kind
+  defp finding_group(finding, "check"), do: inspect(finding.check)
+  defp finding_group(finding, "package"), do: finding.package || "<unknown>"
+
+  defp finding_group(_finding, group_by) do
+    Mix.raise("Unsupported --group-by #{inspect(group_by)}. Use kind, package, or check.")
   end
 
   defp indent(text) do

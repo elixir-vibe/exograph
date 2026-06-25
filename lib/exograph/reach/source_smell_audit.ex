@@ -93,30 +93,37 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp scan_sharded(shards, patterns, opts) do
-    {results, elapsed_us} =
+    limit = Keyword.get(opts, :limit, @default_limit)
+
+    {elapsed_us, result} =
       :timer.tc(fn ->
         shards
-        |> Enum.reduce_while([], fn shard, acc ->
-          result =
+        |> Enum.reduce_while(%Result{scanned_patterns: length(patterns)}, fn shard, acc ->
+          shard_result =
             DuckDBShards.with_repo(shard, fn -> scan_index(shard.index, patterns, opts) end)
 
-          findings = acc ++ result.findings
+          findings = Enum.take(acc.findings ++ shard_result.findings, limit)
 
-          if length(findings) >= Keyword.get(opts, :limit, @default_limit) do
-            {:halt, findings}
-          else
-            {:cont, findings}
-          end
+          next = %{
+            acc
+            | findings: findings,
+              candidate_count: acc.candidate_count + shard_result.candidate_count,
+              skipped_patterns:
+                merge_skipped_patterns(acc.skipped_patterns, shard_result.skipped_patterns)
+          }
+
+          if length(findings) >= limit, do: {:halt, next}, else: {:cont, next}
         end)
       end)
 
-    {:ok,
-     %Result{
-       findings: Enum.take(results, Keyword.get(opts, :limit, @default_limit)),
-       elapsed_ms: Float.round(elapsed_us / 1000, 1),
-       scanned_patterns: length(patterns)
-     }}
+    {:ok, %{result | elapsed_ms: Float.round(elapsed_us / 1000, 1)}}
   end
+
+  defp merge_skipped_patterns(left, right),
+    do: Enum.uniq_by(left ++ right, &skipped_pattern_key/1)
+
+  defp skipped_pattern_key(%Pattern{} = pattern),
+    do: {pattern.module, pattern.kind, pattern.message, pattern.anchor_term, pattern.anchor_count}
 
   defp scan_index(%Index{} = index, patterns, opts) do
     {planned_patterns, skipped_patterns} = plan_patterns(index, patterns, opts)
@@ -223,12 +230,13 @@ defmodule Exograph.Reach.SourceSmellAudit do
       end,
       fn _cursor -> :ok end
     )
-    |> Enum.reduce_while({[], MapSet.new(), 0}, fn {record, source, path, package_version},
+    |> Enum.reduce_while({[], MapSet.new(), 0}, fn {record, source, path, package_version,
+                                                    package},
                                                    {findings, seen, count} ->
       fragment = Hydration.fragment(record, source, path, package_version)
 
       {next_findings, next_seen} =
-        add_findings(findings, seen, fragment_findings(fragment, patterns))
+        add_findings(findings, seen, fragment_findings(fragment, package, patterns))
 
       next_findings = Enum.take(next_findings, limit)
 
@@ -271,9 +279,11 @@ defmodule Exograph.Reach.SourceSmellAudit do
         on: file.id == fragment.file_id,
         left_join: version in ^Schema.package_versions_source(index.inverted.prefix),
         on: version.id == fragment.package_version_id,
+        left_join: package in ^Schema.packages_source(index.inverted.prefix),
+        on: package.id == fragment.package_id,
         where: fragment.id in ^ids,
         order_by: [asc: fragment.id],
-        select: {fragment, file.source, file.path, version.version}
+        select: {fragment, file.source, file.path, version.version, package.name}
       )
       |> index.inverted.repo.all()
     end
@@ -295,7 +305,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
     index.inverted.repo.all(query)
   end
 
-  defp fragment_findings(fragment, patterns) do
+  defp fragment_findings(fragment, package, patterns) do
     fragment_terms = MapSet.new(fragment.terms || [])
 
     applicable =
@@ -312,19 +322,20 @@ defmodule Exograph.Reach.SourceSmellAudit do
 
       fragment.ast
       |> ExAST.Patcher.find_many(named)
-      |> Enum.map(&finding(fragment, Map.fetch!(by_id, &1.pattern), &1))
+      |> Enum.map(&finding(fragment, package, Map.fetch!(by_id, &1.pattern), &1))
     end
   rescue
     _error -> []
   end
 
-  defp finding(fragment, %Pattern{} = pattern, match) do
+  defp finding(fragment, package, %Pattern{} = pattern, match) do
     line = match_line(match) || fragment.line
 
     %Finding{
       check: pattern.module,
       kind: pattern.kind,
       message: pattern.message,
+      package: package,
       package_version: fragment.package_version,
       file: fragment.file,
       line: line,
