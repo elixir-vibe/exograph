@@ -12,7 +12,7 @@
 - Updated ReleaseKit configuration to `release_kit 0.2.1` and the `assets: [volt: ...]` pipeline.
 - `POST /api/search` now accepts structural predicate shorthand such as `contains(f, def handle_event(_, _, _))`.
 - Mirrored Exograph test paths under `test/exograph/` and documented the layout in `AGENTS.md`.
-- Removed Exograph-owned raw DuckDB SQL assembly from text search, fragment append, migration backfill, and offline staging paths; compatibility flags now use the Ecto/QuackDB path.
+- Removed Exograph-owned raw DuckDB SQL assembly from text search, fragment append, migration backfill, and offline staging paths.
 
 ## 0.9.0 - 2026-06-20
 

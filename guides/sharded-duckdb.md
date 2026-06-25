@@ -1,6 +1,6 @@
 # Sharded DuckDB semantics
 
-Sharded DuckDB indexes split a corpus across multiple independent DuckDB databases and query them through `Exograph.ShardedIndex`. This is useful for large local corpora because it reduces single-file write/MERGE contention during ingestion.
+Sharded DuckDB indexes split a corpus across multiple independent DuckDB databases and query them through `Exograph.ShardedIndex`. This is useful for large local corpora because it reduces single-file write contention during ingestion.
 
 Sharding is currently an opt-in architecture, not the default single-file DuckDB mode.
 
@@ -72,4 +72,4 @@ A sharded read architecture needs explicit product semantics for global queries.
 2. Add a global result identity/ranking model for fanout search.
 3. Use sharding only as a build/staging strategy, then finalize into one logical global index.
 
-Until one of those is chosen, single-DuckDB online MERGE remains the default correctness baseline.
+Until one of those is chosen, single-DuckDB online Ecto/QuackDB append remains the default correctness baseline.
