@@ -4,6 +4,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
   import QuackDB.SQL.Fragment
 
   alias Exograph.DuckDB.FragmentSchema
+  alias Exograph.Storage.Schema
 
   @columns FragmentSchema.columns()
   @append_types FragmentSchema.append_types()
@@ -225,7 +226,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_files_sql(prefix) do
-    target = table("#{prefix}_files")
+    target = table_name(prefix, :files)
     stage = table(file_stage_table(prefix))
 
     [
@@ -265,7 +266,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
       stage,
       " AS ",
       alias_name(:s),
-      join(:inner, "#{prefix}_files",
+      join(:inner, schema_table(prefix, :files),
         as: :f,
         on: [
           qualified_equality(:f, :sha256, :s, :sha256),
@@ -281,7 +282,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_sql(prefix) do
-    target = table("#{prefix}_fragments")
+    target = table_name(prefix, :fragments)
     stage = table(stage_table(prefix))
 
     [
@@ -341,7 +342,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
 
     [
       "INSERT INTO ",
-      table("#{prefix}_#{fact_target_suffix(kind)}"),
+      table_name(prefix, fact_target_table(kind)),
       insert_columns(columns),
       " SELECT ",
       qualified_column_list(select_columns, :s),
@@ -353,7 +354,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
       table(fact_stage_table(prefix, kind)),
       " AS ",
       alias_name(:s),
-      join(:inner, "#{prefix}_fragments",
+      join(:inner, schema_table(prefix, :fragments),
         as: :f,
         on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
       )
@@ -363,7 +364,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
   defp finalize_terms_sql(prefix) do
     [
       "INSERT INTO ",
-      table("#{prefix}_terms"),
+      table_name(prefix, :terms),
       insert_columns([:term]),
       " SELECT DISTINCT ",
       qualified_column(:s, :term),
@@ -385,14 +386,17 @@ defmodule Exograph.DuckDB.OfflineBuild do
       table(term_stage_table(prefix)),
       " AS ",
       alias_name(:s),
-      join(:inner, "#{prefix}_terms", as: :t, on: qualified_equality(:t, :term, :s, :term))
+      join(:inner, schema_table(prefix, :terms),
+        as: :t,
+        on: qualified_equality(:t, :term, :s, :term)
+      )
     ]
   end
 
   defp finalize_fragment_terms_sql(prefix) do
     [
       "INSERT INTO ",
-      table("#{prefix}_fragment_terms"),
+      table_name(prefix, :fragment_terms),
       insert_columns([:term_id, :fragment_id]),
       " SELECT DISTINCT ",
       qualified_column(:s, :term_id),
@@ -402,7 +406,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
       table(fragment_term_stage_table(prefix)),
       " AS ",
       alias_name(:s),
-      join(:inner, "#{prefix}_fragments",
+      join(:inner, schema_table(prefix, :fragments),
         as: :f,
         on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
       )
@@ -417,7 +421,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
 
     [
       "INSERT INTO ",
-      table("#{prefix}_graph_nodes"),
+      table_name(prefix, :graph_nodes),
       insert_columns(graph_node_columns()),
       " SELECT ",
       select_columns,
@@ -429,7 +433,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
       table(graph_node_stage_table(prefix)),
       " AS ",
       alias_name(:s),
-      join(:left, "#{prefix}_fragments",
+      join(:left, schema_table(prefix, :fragments),
         as: :f,
         on: qualified_equality(:f, :content_hash, :s, :fragment_content_hash)
       )
@@ -437,11 +441,11 @@ defmodule Exograph.DuckDB.OfflineBuild do
   end
 
   defp finalize_call_edges_sql(prefix) do
-    target = quote_name("#{prefix}_call_edges")
+    target = table_name(prefix, :call_edges)
     stage = quote_name(call_edge_stage_table(prefix))
     node_stage = quote_name(graph_node_stage_table(prefix))
-    graph_nodes = quote_name("#{prefix}_graph_nodes")
-    fragments = quote_name("#{prefix}_fragments")
+    graph_nodes = table_name(prefix, :graph_nodes)
+    fragments = table_name(prefix, :fragments)
 
     columns = call_edge_columns() |> Enum.map_join(", ", &quote_name/1)
 
@@ -517,7 +521,7 @@ defmodule Exograph.DuckDB.OfflineBuild do
       table(stage_table(prefix)),
       " AS ",
       alias_name(:s),
-      join(:inner, "#{prefix}_fragments",
+      join(:inner, schema_table(prefix, :fragments),
         as: :f,
         on: qualified_equality(:f, :content_hash, :s, :content_hash)
       ),
@@ -555,9 +559,9 @@ defmodule Exograph.DuckDB.OfflineBuild do
   defp fact_stage_table(prefix, :reference), do: "#{prefix}_reference_stage"
   defp fact_stage_table(prefix, :comment), do: "#{prefix}_comment_stage"
 
-  defp fact_target_suffix(:definition), do: "definitions"
-  defp fact_target_suffix(:reference), do: "references"
-  defp fact_target_suffix(:comment), do: "comments"
+  defp fact_target_table(:definition), do: :definitions
+  defp fact_target_table(:reference), do: :references
+  defp fact_target_table(:comment), do: :comments
 
   defp fact_columns(kind) when kind in [:definition, :reference] do
     [
@@ -773,6 +777,9 @@ defmodule Exograph.DuckDB.OfflineBuild do
   defp stage_lock(repo, prefix, name, fun) do
     :global.trans({{__MODULE__, repo, prefix, name}, self()}, fun, [node()], 1_000_000)
   end
+
+  defp schema_table(prefix, name), do: Schema.table_name(prefix, name)
+  defp table_name(prefix, name), do: table(schema_table(prefix, name))
 
   defp quote_name(name), do: QuackDB.Type.quote_identifier(to_string(name))
 end
