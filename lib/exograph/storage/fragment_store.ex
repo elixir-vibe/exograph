@@ -49,9 +49,6 @@ defmodule Exograph.Storage.FragmentStore do
             extractors: [:ex_ast, :reach],
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
-            duckdb_build_mode: :online,
-            duckdb_fragment_append: :merge,
-            duckdb_fragment_payload_metrics?: false,
             static_atoms: :existing
 
   @type t :: %__MODULE__{
@@ -62,20 +59,13 @@ defmodule Exograph.Storage.FragmentStore do
           extractors: keyword() | [atom()],
           defer_fragment_terms?: boolean(),
           duckdb_insert_buffer: pid() | nil,
-          duckdb_build_mode: :online | :offline,
-          duckdb_fragment_append: :ecto | :merge,
-          duckdb_fragment_payload_metrics?: boolean(),
           static_atoms: atom()
         }
 
   def new(opts \\ []), do: {:ok, Config.store(__MODULE__, opts)}
 
   def put(%__MODULE__{} = store, fragments) when is_list(fragments) do
-    if offline_duckdb?(store) do
-      put_offline(store, fragments)
-    else
-      put_online(store, fragments)
-    end
+    put_online(store, fragments)
   end
 
   defp put_online(%__MODULE__{} = store, fragments) do
@@ -117,50 +107,6 @@ defmodule Exograph.Storage.FragmentStore do
 
     Exograph.Hex.StageTimings.measure(:fragment_store_code_facts, fn ->
       upsert_code_facts(store, files, resolved_fragments, now)
-    end)
-
-    {:ok, store}
-  end
-
-  defp put_offline(%__MODULE__{} = store, fragments) do
-    now = DateTime.utc_now(:microsecond)
-    Exograph.DuckDB.OfflineBuild.create_stages!(store.repo, store.prefix)
-
-    store =
-      Exograph.Hex.StageTimings.measure(:fragment_store_package_context, fn ->
-        ensure_package_context(store, now)
-      end)
-
-    files =
-      Exograph.Hex.StageTimings.measure(:offline_build_stage_files, fn ->
-        stage_and_finalize_files(store, fragments, now)
-      end)
-
-    files_by_path = Map.new(files, &{&1.path, &1})
-    package_id = store.package && store.package.id
-    package_version_id = store.package_version && store.package_version.id
-
-    resolved_fragments =
-      Enum.map(fragments, fn fragment ->
-        file = files_by_path[fragment.file]
-        file_id = if file, do: file.id, else: fragment.file_id
-
-        %{
-          fragment
-          | id: fragment.content_hash,
-            file_id: file_id,
-            package_id: package_id || fragment.package_id,
-            package_version_id: package_version_id || fragment.package_version_id
-        }
-      end)
-
-    resolved_fragments =
-      Exograph.Hex.StageTimings.measure(:offline_build_stage_fragments, fn ->
-        stage_fragments(store, resolved_fragments, now)
-      end)
-
-    Exograph.Hex.StageTimings.measure(:offline_build_stage_code_facts, fn ->
-      stage_code_facts(store, files, resolved_fragments, now)
     end)
 
     {:ok, store}
@@ -377,29 +323,6 @@ defmodule Exograph.Storage.FragmentStore do
     end)
   end
 
-  defp stage_and_finalize_files(store, fragments, now) do
-    raw_files = raw_files_for_fragments(store, fragments)
-
-    if raw_files == [] do
-      []
-    else
-      entries =
-        Enum.map(raw_files, fn file ->
-          file
-          |> FileRecord.from_file()
-          |> Map.merge(%{inserted_at: now, updated_at: now})
-        end)
-
-      Exograph.DuckDB.OfflineBuild.append_file_stage!(store.repo, store.prefix, entries)
-      ids = Exograph.DuckDB.OfflineBuild.finalize_files!(store.repo, store.prefix)
-
-      Enum.map(raw_files, fn file ->
-        id = Map.fetch!(ids, {file.package_version_id, file.sha256})
-        %{file | id: id}
-      end)
-    end
-  end
-
   defp raw_files_for_fragments(store, fragments) do
     package_id = store.package && store.package.id
     package_version_id = store.package_version && store.package_version.id
@@ -490,44 +413,6 @@ defmodule Exograph.Storage.FragmentStore do
     resolved
   end
 
-  defp stage_fragments(store, fragments, now) do
-    fragments_with_term_ids = offline_normalize_terms(store, fragments)
-
-    entries =
-      fragments_with_term_ids
-      |> Enum.map(fn fragment ->
-        fragment
-        |> FragmentRecord.from_fragment()
-        |> Map.merge(%{inserted_at: now, updated_at: now})
-      end)
-
-    Exograph.DuckDB.OfflineBuild.append_stage!(store.repo, store.prefix, entries)
-
-    fragment_term_entries =
-      fragments_with_term_ids
-      |> Enum.flat_map(fn fragment ->
-        if is_binary(fragment.content_hash) do
-          fragment.terms
-          |> MapSet.to_list()
-          |> Enum.filter(&is_integer/1)
-          |> Enum.map(&%{fragment_content_hash: fragment.content_hash, term_id: &1})
-        else
-          []
-        end
-      end)
-      |> Enum.uniq()
-
-    if fragment_term_entries != [] do
-      Exograph.DuckDB.OfflineBuild.append_fragment_term_stage!(
-        store.repo,
-        store.prefix,
-        fragment_term_entries
-      )
-    end
-
-    fragments_with_term_ids
-  end
-
   defp resolve_fragment_ids_by_hash(store, entries, hashed_unique) do
     inserted_by_hash =
       Exograph.Hex.StageTimings.measure(:fragment_store_insert_fragments_by_hash, fn ->
@@ -569,10 +454,7 @@ defmodule Exograph.Storage.FragmentStore do
   end
 
   defp insert_fragments_by_hash(%{repo: repo} = store, entries) do
-    Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries,
-      mode: store.duckdb_fragment_append,
-      payload_metrics?: store.duckdb_fragment_payload_metrics?
-    )
+    Exograph.DuckDB.FragmentAppend.insert_by_hash(repo, source(store), FragmentRecord, entries)
   end
 
   defp fragment_ids_by_hash(repo, target_table, hashes) do
@@ -582,26 +464,6 @@ defmodule Exograph.Storage.FragmentStore do
     )
     |> repo.all(timeout: :infinity)
     |> Map.new()
-  end
-
-  defp offline_normalize_terms(store, fragments) do
-    all_terms =
-      fragments
-      |> Enum.flat_map(fn f -> MapSet.to_list(f.terms) end)
-      |> Enum.filter(&is_binary/1)
-      |> Enum.uniq()
-
-    if all_terms == [] do
-      fragments
-    else
-      all_terms
-      |> Enum.map(&%{term: &1})
-      |> then(&Exograph.DuckDB.OfflineBuild.append_term_stage!(store.repo, store.prefix, &1))
-
-      term_to_id = Exograph.DuckDB.OfflineBuild.finalize_terms!(store.repo, store.prefix)
-
-      replace_fragment_terms(fragments, term_to_id)
-    end
   end
 
   defp normalize_terms(store, fragments) do
@@ -729,30 +591,6 @@ defmodule Exograph.Storage.FragmentStore do
     from(t in terms_source(store), where: t.term in ^terms, select: {t.term, t.id})
     |> store.repo.all(timeout: :infinity)
     |> Map.new()
-  end
-
-  defp stage_code_facts(_store, [], _fragments, _now), do: :ok
-
-  defp stage_code_facts(store, files, fragments, now) do
-    %{comments: comments, definitions: definitions, references: references} =
-      extract_code_facts(store, files, fragments)
-
-    stage_offline_facts(store, comments, CommentRecord, :from_comment, now)
-    stage_offline_facts(store, definitions, DefinitionRecord, :from_definition, now)
-    stage_offline_facts(store, references, ReferenceRecord, :from_reference, now)
-
-    if extractor_enabled?(store, :reach) do
-      fragments_by_file_id = Enum.group_by(fragments, & &1.file_id)
-
-      %{graph_nodes: graph_nodes, call_edges: call_edges} =
-        Exograph.Hex.StageTimings.measure(:code_facts_extract_reach, fn ->
-          ReachExtractor.extract_files(files, fragments_by_file_id)
-        end)
-
-      Exograph.Hex.StageTimings.measure(:code_facts_stage_reach, fn ->
-        stage_graph_nodes_and_edges(store, graph_nodes, call_edges, now)
-      end)
-    end
   end
 
   defp upsert_code_facts(_store, [], _fragments, _now), do: :ok
@@ -886,41 +724,6 @@ defmodule Exograph.Storage.FragmentStore do
     %{comments: comments, definitions: definitions, references: references}
   end
 
-  defp stage_graph_nodes_and_edges(_store, [], _call_edges, _now), do: :ok
-
-  defp stage_graph_nodes_and_edges(store, graph_nodes, call_edges, now) do
-    node_entries =
-      Enum.map(graph_nodes, fn node ->
-        node
-        |> GraphNodeRecord.from_graph_node()
-        |> Map.put(:original_node_id, node.id)
-        |> Map.put(:fragment_content_hash, node.fragment_id)
-        |> Map.update(:metadata, "{}", &Jason.encode!/1)
-        |> Map.delete(:fragment_id)
-        |> Map.merge(%{inserted_at: now, updated_at: now})
-      end)
-
-    Exograph.DuckDB.OfflineBuild.append_graph_node_stage!(store.repo, store.prefix, node_entries)
-
-    if call_edges != [] do
-      edge_entries =
-        Enum.map(call_edges, fn edge ->
-          edge
-          |> CallEdgeRecord.from_call_edge()
-          |> Map.put(:caller_original_node_id, edge.caller_node_id)
-          |> Map.put(:callee_original_node_id, edge.callee_node_id)
-          |> Map.put(:call_site_fragment_content_hash, edge.call_site_fragment_id)
-          |> Map.update(:metadata, "{}", &Jason.encode!/1)
-          |> Map.delete(:caller_node_id)
-          |> Map.delete(:callee_node_id)
-          |> Map.delete(:call_site_fragment_id)
-          |> Map.merge(%{inserted_at: now, updated_at: now})
-        end)
-
-      Exograph.DuckDB.OfflineBuild.append_call_edge_stage!(store.repo, store.prefix, edge_entries)
-    end
-  end
-
   defp insert_graph_nodes_and_edges(store, graph_nodes, call_edges, now) do
     if graph_nodes != [] do
       entries =
@@ -1029,33 +832,6 @@ defmodule Exograph.Storage.FragmentStore do
     FragmentLocator.containing_fragment_ids(fragments, lines)
   end
 
-  defp stage_offline_facts(_store, [], _record, _mapper, _now), do: :ok
-
-  defp stage_offline_facts(store, facts, record, mapper, now) do
-    entries =
-      Enum.map(facts, fn fact ->
-        fact
-        |> then(&apply(record, mapper, [&1]))
-        |> Map.put(:fragment_content_hash, fact.fragment_id)
-        |> Map.delete(:fragment_id)
-        |> Map.merge(%{inserted_at: now, updated_at: now})
-      end)
-      |> Enum.reject(&is_nil(&1.fragment_content_hash))
-
-    if entries != [] do
-      case mapper do
-        :from_comment ->
-          Exograph.DuckDB.OfflineBuild.append_comment_stage!(store.repo, store.prefix, entries)
-
-        :from_definition ->
-          Exograph.DuckDB.OfflineBuild.append_definition_stage!(store.repo, store.prefix, entries)
-
-        :from_reference ->
-          Exograph.DuckDB.OfflineBuild.append_reference_stage!(store.repo, store.prefix, entries)
-      end
-    end
-  end
-
   defp insert_code_facts(_store, _source, [], _record, _mapper, _now), do: :ok
 
   defp insert_code_facts(store, source, facts, record, mapper, now) do
@@ -1101,12 +877,6 @@ defmodule Exograph.Storage.FragmentStore do
 
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
-
-  defp offline_duckdb?(%{duckdb_build_mode: :offline}) do
-    Application.get_env(:exograph, :offline_build_enabled?, false)
-  end
-
-  defp offline_duckdb?(_store), do: false
 
   defp package_from_version(%PackageVersion{} = version) do
     %Package{

@@ -363,8 +363,6 @@ defmodule Exograph do
       :extractors,
       :defer_fragment_terms?,
       :duckdb_insert_buffer,
-      :duckdb_build_mode,
-      :duckdb_fragment_append,
       :static_atoms
     ])
   end

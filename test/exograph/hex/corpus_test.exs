@@ -6,53 +6,6 @@ defmodule Exograph.Hex.CorpusTest do
 
   @moduletag :integration
 
-  test "duckdb offline build mode matches online counts for a top package" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
-    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
-
-    online_prefix = "exograph_duckdb_hex_online_#{System.unique_integer([:positive])}"
-    offline_prefix = "exograph_duckdb_hex_offline_#{System.unique_integer([:positive])}"
-
-    online_results = index_top_package!(online_prefix, duckdb_build_mode: :online)
-    offline_results = index_top_package!(offline_prefix, duckdb_build_mode: :offline)
-
-    assert online_results.ok == offline_results.ok
-    assert online_results.skipped == offline_results.skipped
-    assert corpus_summary(offline_prefix) == corpus_summary(online_prefix)
-  end
-
-  test "duckdb offline build mode matches online Reach counts for a top package" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
-    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
-
-    online_prefix = "exograph_duckdb_reach_online_#{System.unique_integer([:positive])}"
-    offline_prefix = "exograph_duckdb_reach_offline_#{System.unique_integer([:positive])}"
-    opts = [extractors: [:ex_ast, :reach]]
-
-    online_results =
-      index_top_package!(online_prefix, Keyword.put(opts, :duckdb_build_mode, :online))
-
-    offline_results =
-      index_top_package!(offline_prefix, Keyword.put(opts, :duckdb_build_mode, :offline))
-
-    assert online_results.ok == offline_results.ok
-    assert online_results.skipped == offline_results.skipped
-
-    assert reach_summary(offline_prefix, reach_probe(online_prefix)) ==
-             reach_summary(online_prefix)
-  end
-
-  test "duckdb fragment append merge compatibility uses Ecto append path" do
-    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
-    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
-    prefix = "exograph_duckdb_append_mode_#{System.unique_integer([:positive])}"
-
-    results =
-      index_top_package!(prefix, duckdb_build_mode: :online, duckdb_fragment_append: :merge)
-
-    assert results.ok == 1
-  end
-
   test "duckdb duplicate source paths are indexed once per package version" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
@@ -170,81 +123,6 @@ defmodule Exograph.Hex.CorpusTest do
       version: "1.0.0",
       source_ref: "hex:duplicate_source:1.0.0"
     ]
-  end
-
-  defp index_top_package!(prefix, opts) do
-    prefix
-    |> DuckDBSupport.opts(Keyword.merge([extractors: [:ex_ast]], opts))
-    |> Keyword.merge(
-      mode: :top,
-      limit: 1,
-      concurrency: 1,
-      min_mass: 4,
-      resume: false,
-      bm25?: true,
-      timeout: 120_000
-    )
-    |> Exograph.Hex.Corpus.index()
-  end
-
-  defp corpus_summary(prefix) do
-    index = index!(prefix)
-    {:ok, text_hits} = Exograph.search_text(index, "defmodule")
-    {:ok, definition_hits} = Exograph.search_definitions(index, "Jason")
-    {:ok, reference_hits} = Exograph.search_references(index, "Jason")
-
-    %{
-      files: table_count(prefix, "files"),
-      fragments: table_count(prefix, "fragments"),
-      terms: table_count(prefix, "terms"),
-      fragment_terms: table_count(prefix, "fragment_terms"),
-      definitions: table_count(prefix, "definitions"),
-      references: table_count(prefix, "references"),
-      comments: table_count(prefix, "comments"),
-      defmodule_text_hits: length(text_hits),
-      jason_definition_hits: length(definition_hits),
-      jason_reference_hits: length(reference_hits)
-    }
-  end
-
-  defp reach_summary(prefix, probe \\ nil) do
-    index = index!(prefix)
-    probe = probe || reach_probe(prefix)
-
-    summary = %{
-      graph_nodes: table_count(prefix, "graph_nodes"),
-      call_edges: table_count(prefix, "call_edges")
-    }
-
-    case probe do
-      %{caller: caller, callee: callee} ->
-        {:ok, caller_hits} = Exograph.search_callers(index, callee)
-        {:ok, callee_hits} = Exograph.search_callees(index, caller)
-
-        summary
-        |> Map.put(:caller_hits, length(caller_hits))
-        |> Map.put(:callee_hits, length(callee_hits))
-
-      nil ->
-        summary
-    end
-  end
-
-  defp reach_probe(prefix) do
-    %{rows: rows} =
-      Exograph.DuckDBRepo.query!(
-        [
-          "SELECT caller_qualified_name, callee_qualified_name FROM ",
-          SQL.table(prefix, :call_edges),
-          " ORDER BY caller_qualified_name, callee_qualified_name LIMIT 1"
-        ],
-        []
-      )
-
-    case rows do
-      [[caller, callee] | _] -> %{caller: caller, callee: callee}
-      [] -> nil
-    end
   end
 
   defp package_version_fact_counts(prefix, suffix) do

@@ -36,8 +36,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-queue-target` - DBConnection queue target in milliseconds for DuckDB shard repos (default: `60000`)
     * `--duckdb-queue-interval` - DBConnection queue interval in milliseconds for DuckDB shard repos (default: `120000`)
     * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
-    * `--duckdb-build-mode` - DuckDB corpus build strategy. `offline` is accepted for compatibility and uses the online Ecto/QuackDB path.
-    * `--duckdb-fragment-append` - DuckDB fragment insert strategy. `merge` is accepted for compatibility and uses the Ecto/QuackDB path.
     * `--duckdb-insert-buffer-size` - buffered DuckDB fact rows per table before flushing (default: `50000`)
     * `--manifest-path` - write a sharded DuckDB manifest to this path for `mix exograph.web --manifest-path ...`
     * `--report-path` - write indexing totals and failures as JSON
@@ -61,7 +59,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-database` - managed DuckDB database path when `--quackdb-uri` is omitted
     * `--repo` - Ecto repo module (uses built-in if omitted)
     * `--timeout` - per-package timeout in seconds (default: `300`)
-    * `--duckdb-fragment-payload-metrics` - record approximate per-column fragment append payload metrics
     * `--web` - start web UI with live progress dashboard
     * `--port` - web UI port (default: `4200`, requires `--web`)
   """
@@ -90,9 +87,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           duckdb_queue_target: :integer,
           duckdb_queue_interval: :integer,
           duckdb_recovery_mode: :string,
-          duckdb_build_mode: :string,
-          duckdb_fragment_append: :string,
-          duckdb_fragment_payload_metrics: :boolean,
           duckdb_insert_buffer_size: :integer,
           manifest_path: :string,
           report_path: :string,
@@ -155,10 +149,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       duckdb_queue_target: Keyword.get(opts, :duckdb_queue_target, 60_000),
       duckdb_queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000),
       recovery_mode: recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)),
-      duckdb_build_mode: duckdb_build_mode(Keyword.get(opts, :duckdb_build_mode)),
-      duckdb_fragment_append: duckdb_fragment_append(Keyword.get(opts, :duckdb_fragment_append)),
-      duckdb_fragment_payload_metrics?:
-        Keyword.get(opts, :duckdb_fragment_payload_metrics, false),
       duckdb_insert_buffer_size: Keyword.get(opts, :duckdb_insert_buffer_size, 50_000),
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),
@@ -242,22 +232,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
   defp recovery_mode(nil), do: nil
   defp recovery_mode("no_wal_writes"), do: :no_wal_writes
   defp recovery_mode(value), do: Mix.raise("Unknown DuckDB recovery mode #{inspect(value)}")
-
-  defp duckdb_build_mode(nil), do: :online
-  defp duckdb_build_mode("online"), do: :online
-  defp duckdb_build_mode("offline"), do: :online
-
-  defp duckdb_build_mode(value) do
-    Mix.raise("Unknown DuckDB build mode #{inspect(value)}; use online")
-  end
-
-  defp duckdb_fragment_append(nil), do: :ecto
-  defp duckdb_fragment_append("ecto"), do: :ecto
-  defp duckdb_fragment_append("merge"), do: :ecto
-
-  defp duckdb_fragment_append(value) do
-    Mix.raise("Unknown DuckDB fragment append mode #{inspect(value)}; use ecto")
-  end
 
   defp resolve_repo(opts) do
     case Keyword.get(opts, :repo) do

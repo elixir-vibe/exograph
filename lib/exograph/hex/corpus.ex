@@ -541,8 +541,7 @@ defmodule Exograph.Hex.Corpus do
       migrate?: false,
       extractors: extractors,
       defer_fragment_terms?: true,
-      duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
-      duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online)
+      duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer)
     ]
 
     case Exograph.Hex.StageTimings.measure(:index_sources, fn ->
@@ -723,12 +722,7 @@ defmodule Exograph.Hex.Corpus do
     File.write!(path, Jason.encode!(JSONCodec.dump(report), pretty: true))
   end
 
-  defp report_options(opts) do
-    %{
-      duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
-      duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :merge)
-    }
-  end
+  defp report_options(_opts), do: %{}
 
   defp index_report_failure(%{name: name, version: version, reason: reason}) do
     %Exograph.Hex.IndexReport.Failure{name: name, version: version, reason: reason}
@@ -808,10 +802,6 @@ defmodule Exograph.Hex.Corpus do
         extractors: extractors,
         defer_fragment_terms?: true,
         duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
-        duckdb_build_mode: Keyword.get(opts, :duckdb_build_mode, :online),
-        duckdb_fragment_append: Keyword.get(opts, :duckdb_fragment_append, :merge),
-        duckdb_fragment_payload_metrics?:
-          Keyword.get(opts, :duckdb_fragment_payload_metrics?, false),
         package_version: [
           ecosystem: :hex,
           name: entry.name,
