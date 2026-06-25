@@ -31,6 +31,8 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--group-by` - group text output by `kind`, `package`, or `check`
     * `--sample` - deterministically sample findings after scanning
     * `--show-skipped` - print skipped-pattern anchor summaries
+    * `--save` - write the current audit JSON to a file
+    * `--diff` - compare current findings against a previously saved audit JSON
   """
 
   use Mix.Task
@@ -61,7 +63,9 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
           pretty: :boolean,
           group_by: :string,
           sample: :integer,
-          show_skipped: :boolean
+          show_skipped: :boolean,
+          save: :string,
+          diff: :string
         ],
         aliases: [n: :limit]
       )
@@ -84,7 +88,13 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
         max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000)
       )
 
-    print_result(apply_presentation_opts(result, opts), opts)
+    result = apply_presentation_opts(result, opts)
+    maybe_save_result!(result, opts)
+
+    case Keyword.get(opts, :diff) do
+      nil -> print_result(result, opts)
+      path -> print_diff!(path, result, opts)
+    end
   end
 
   defp open_index!(opts) do
@@ -129,6 +139,17 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     |> Enum.map(fn index -> Enum.at(findings, round(index * last / max(count - 1, 1))) end)
   end
 
+  defp maybe_save_result!(result, opts) do
+    case Keyword.get(opts, :save) do
+      nil ->
+        :ok
+
+      path ->
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, Jason.encode!(result_json(result), pretty: true))
+    end
+  end
+
   defp print_result(result, opts) do
     if Keyword.get(opts, :json, false) or Keyword.get(opts, :pretty, false) do
       print_json(result, opts)
@@ -139,13 +160,139 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     end
   end
 
-  defp print_json(result, opts) do
-    json = result_json(result)
+  defp print_diff!(baseline_path, result, opts) do
+    baseline = baseline_path |> File.read!() |> Jason.decode!()
+    diff = diff_json(baseline, result_json(result))
 
-    if Keyword.get(opts, :pretty, false) do
-      Mix.shell().info(Jason.encode!(json, pretty: true))
+    if Keyword.get(opts, :json, false) or Keyword.get(opts, :pretty, false) do
+      print_json_value(diff, opts)
     else
-      Mix.shell().info(Jason.encode!(json))
+      print_text_diff(diff, opts)
+    end
+  end
+
+  defp diff_json(baseline, current) do
+    baseline_findings = Map.get(baseline, "findings", [])
+    current_findings = Map.get(current, :findings, [])
+
+    baseline_by_key = Map.new(baseline_findings, &{finding_identity(&1), &1})
+    current_by_key = Map.new(current_findings, &{finding_identity(&1), &1})
+
+    baseline_keys = baseline_by_key |> Map.keys() |> MapSet.new()
+    current_keys = current_by_key |> Map.keys() |> MapSet.new()
+
+    new_keys = current_keys |> MapSet.difference(baseline_keys) |> Enum.sort()
+    removed_keys = baseline_keys |> MapSet.difference(current_keys) |> Enum.sort()
+    unchanged_count = current_keys |> MapSet.intersection(baseline_keys) |> MapSet.size()
+
+    new_findings = Enum.map(new_keys, &Map.fetch!(current_by_key, &1))
+    removed_findings = Enum.map(removed_keys, &Map.fetch!(baseline_by_key, &1))
+
+    %{
+      summary: %{
+        baseline_count: map_size(baseline_by_key),
+        current_count: map_size(current_by_key),
+        new_count: length(new_findings),
+        removed_count: length(removed_findings),
+        unchanged_count: unchanged_count
+      },
+      new_findings: new_findings,
+      removed_findings: removed_findings,
+      groups: %{
+        new: group_counts_from_json(new_findings),
+        removed: group_counts_from_json(removed_findings)
+      }
+    }
+  end
+
+  defp finding_identity(finding) do
+    {:finding, comparable_field(finding, :check), comparable_field(finding, :kind),
+     comparable_field(finding, :package), comparable_field(finding, :package_version),
+     comparable_field(finding, :file), comparable_field(finding, :line),
+     comparable_field(finding, :message)}
+  end
+
+  defp comparable_field(finding, :line), do: field(finding, :line)
+  defp comparable_field(finding, key), do: finding |> field(key) |> comparable_string()
+
+  defp comparable_string(nil), do: nil
+  defp comparable_string(value), do: to_string(value)
+
+  defp field(map, key) when is_map(map),
+    do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
+
+  defp print_text_diff(diff, opts) do
+    summary = diff.summary
+
+    Mix.shell().info(
+      "Diff: #{summary.new_count} new, #{summary.removed_count} removed, " <>
+        "#{summary.unchanged_count} unchanged " <>
+        "(baseline #{summary.baseline_count}, current #{summary.current_count})"
+    )
+
+    print_json_finding_group("new", diff.new_findings, opts)
+    print_json_finding_group("removed", diff.removed_findings, opts)
+  end
+
+  defp print_json_finding_group(_label, [], _opts), do: :ok
+
+  defp print_json_finding_group(label, findings, opts) do
+    Mix.shell().info("\n## #{label} findings")
+
+    findings
+    |> maybe_group_json_findings(Keyword.get(opts, :group_by))
+    |> Enum.each(fn {group, group_findings} ->
+      if group do
+        Mix.shell().info("\n### #{group} (#{length(group_findings)})")
+      end
+
+      Enum.each(group_findings, &print_json_finding/1)
+    end)
+  end
+
+  defp maybe_group_json_findings(findings, nil), do: [{nil, findings}]
+
+  defp maybe_group_json_findings(findings, group_by) do
+    findings
+    |> Enum.group_by(&json_finding_group(&1, group_by))
+    |> Enum.sort_by(fn {group, group_findings} -> {to_string(group), length(group_findings)} end)
+  end
+
+  defp json_finding_group(finding, "kind"), do: field(finding, :kind)
+  defp json_finding_group(finding, "check"), do: field(finding, :check)
+  defp json_finding_group(finding, "package"), do: field(finding, :package) || "<unknown>"
+
+  defp json_finding_group(_finding, group_by) do
+    Mix.raise("Unsupported --group-by #{inspect(group_by)}. Use kind, package, or check.")
+  end
+
+  defp print_json_finding(finding) do
+    Mix.shell().info([
+      to_string(field(finding, :kind)),
+      " ",
+      to_string(field(finding, :package) || "<unknown>"),
+      " ",
+      to_string(field(finding, :file) || "<unknown>"),
+      ":",
+      to_string(field(finding, :line) || 0),
+      " ",
+      to_string(field(finding, :check)),
+      "\n  ",
+      to_string(field(finding, :message))
+    ])
+
+    if snippet = field(finding, :snippet) do
+      Mix.shell().info("\n" <> indent(snippet) <> "\n")
+    end
+  end
+
+  defp print_json(result, opts), do: print_json_value(result_json(result), opts)
+
+  defp print_json_value(value, opts) do
+    if Keyword.get(opts, :pretty, false) do
+      Mix.shell().info(Jason.encode!(value, pretty: true))
+    else
+      Mix.shell().info(Jason.encode!(value))
     end
   end
 
@@ -256,6 +403,14 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
       by_kind: count_by(findings, & &1.kind),
       by_check: count_by(findings, &inspect(&1.check)),
       by_package: count_by(findings, &(&1.package || "<unknown>"))
+    }
+  end
+
+  defp group_counts_from_json(findings) do
+    %{
+      by_kind: count_by(findings, &field(&1, :kind)),
+      by_check: count_by(findings, &field(&1, :check)),
+      by_package: count_by(findings, &(field(&1, :package) || "<unknown>"))
     }
   end
 
