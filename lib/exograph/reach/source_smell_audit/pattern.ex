@@ -25,7 +25,7 @@ defmodule Exograph.Reach.SourceSmellAudit.Pattern do
           kind: atom(),
           message: String.t(),
           prefilter: term(),
-          pattern: term(),
+          pattern: ExAST.Pattern.pattern() | ExAST.CompiledPattern.t() | ExAST.Selector.t(),
           required_terms: MapSet.t(String.t()),
           required_term_ids: MapSet.t(integer()),
           missing_terms: [String.t()],

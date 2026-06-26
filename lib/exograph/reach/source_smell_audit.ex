@@ -30,6 +30,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
       in more fragments than this, default `#{@default_max_anchor_candidates}`.
     * `:candidate_mode` - `:anchor` for fast first results or `:exact` to
       precompute candidates matching each pattern's full required term set.
+    * `:verify_concurrency` - maximum concurrent AST verification tasks,
+      default `System.schedulers_online/0`.
   """
   @spec scan(Index.t() | ShardedIndex.t(), [module()], keyword()) :: {:ok, Result.t()}
   def scan(index, modules, opts \\ []) when is_list(modules) do
@@ -88,10 +90,20 @@ defmodule Exograph.Reach.SourceSmellAudit do
         kind: kind,
         message: message,
         prefilter: prefilter,
-        pattern: pattern,
+        pattern: compile_verifier_pattern(pattern),
         required_terms: required_terms
       }
     end)
+  end
+
+  defp compile_verifier_pattern(%ExAST.Selector{} = pattern), do: pattern
+
+  defp compile_verifier_pattern(pattern) do
+    if ExAST.Pattern.multi_node?(pattern) do
+      pattern
+    else
+      ExAST.Pattern.compile(pattern)
+    end
   end
 
   defp scan_sharded(shards, patterns, opts) do
@@ -221,20 +233,22 @@ defmodule Exograph.Reach.SourceSmellAudit do
   defp collect_findings(index, patterns, opts, limit) do
     batch_size = Keyword.get(opts, :candidate_batch_size, @default_candidate_batch_size)
 
-    candidate_stream(index, patterns, opts, batch_size)
-    |> Enum.reduce_while({[], MapSet.new(), 0}, fn {record, path, package_version, package},
-                                                   {findings, seen, count} ->
-      fragment = Hydration.fragment(record, nil, path, package_version)
+    candidate_batches(index, patterns, opts, batch_size)
+    |> Enum.reduce_while({[], MapSet.new(), 0}, fn rows, {findings, seen, count} ->
+      verified = verify_candidate_batch(rows, patterns, verify_concurrency(opts))
 
       {next_findings, next_seen} =
-        add_findings(findings, seen, fragment_findings(fragment, package, patterns))
+        Enum.reduce(verified, {findings, seen}, fn new_findings, {findings, seen} ->
+          add_findings(findings, seen, new_findings)
+        end)
 
       next_findings = Enum.take(next_findings, limit)
+      next_count = count + length(rows)
 
       if length(next_findings) >= limit do
-        {:halt, {next_findings, count + 1}}
+        {:halt, {next_findings, next_count}}
       else
-        {:cont, {next_findings, next_seen, count + 1}}
+        {:cont, {next_findings, next_seen, next_count}}
       end
     end)
     |> then(fn
@@ -259,15 +273,33 @@ defmodule Exograph.Reach.SourceSmellAudit do
     {finding.check, finding.kind, finding.file, finding.line, finding.message}
   end
 
-  defp candidate_stream(index, patterns, opts, batch_size) do
+  defp verify_concurrency(opts) do
+    Keyword.get_lazy(opts, :verify_concurrency, &System.schedulers_online/0)
+  end
+
+  defp verify_candidate_batch(rows, patterns, concurrency) do
+    rows
+    |> Task.async_stream(
+      fn {record, path, package_version, package} ->
+        fragment = Hydration.fragment(record, nil, path, package_version)
+        fragment_findings(fragment, package, patterns)
+      end,
+      max_concurrency: concurrency,
+      ordered: true,
+      timeout: :infinity
+    )
+    |> Enum.map(fn {:ok, findings} -> findings end)
+  end
+
+  defp candidate_batches(index, patterns, opts, batch_size) do
     case Keyword.get(opts, :candidate_mode, :anchor) do
-      :exact -> exact_candidate_stream(index, patterns, batch_size)
-      "exact" -> exact_candidate_stream(index, patterns, batch_size)
-      _mode -> anchor_candidate_stream(index, patterns, batch_size)
+      :exact -> exact_candidate_batches(index, patterns, batch_size)
+      "exact" -> exact_candidate_batches(index, patterns, batch_size)
+      _mode -> anchor_candidate_batches(index, patterns, batch_size)
     end
   end
 
-  defp anchor_candidate_stream(index, patterns, batch_size) do
+  defp anchor_candidate_batches(index, patterns, batch_size) do
     anchor_ids = patterns |> Enum.map(& &1.anchor_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     Stream.resource(
@@ -277,19 +309,19 @@ defmodule Exograph.Reach.SourceSmellAudit do
 
         case batch do
           [] -> {:halt, cursor}
-          rows -> {rows, List.last(rows) |> elem(0) |> Map.fetch!(:id)}
+          rows -> {[rows], List.last(rows) |> elem(0) |> Map.fetch!(:id)}
         end
       end,
       fn _cursor -> :ok end
     )
   end
 
-  defp exact_candidate_stream(index, patterns, batch_size) do
+  defp exact_candidate_batches(index, patterns, batch_size) do
     ids = exact_candidate_ids(index, patterns)
 
     ids
     |> Stream.chunk_every(batch_size)
-    |> Stream.flat_map(&candidate_rows(&1, index))
+    |> Stream.map(&candidate_rows(&1, index))
   end
 
   defp anchor_candidate_batch(index, anchor_ids, cursor, batch_size) do

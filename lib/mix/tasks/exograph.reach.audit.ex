@@ -27,6 +27,7 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--candidate-batch-size` - fragment candidate page size (default: 1000)
     * `--max-anchor-candidates` - skip patterns whose best anchor is broader than this (default: 10000)
     * `--candidate-mode` - `anchor` for quick samples or `exact` for deeper full scans
+    * `--verify-concurrency` - concurrent AST verifier tasks (default: scheduler count)
     * `--json` - print compact JSON
     * `--pretty` - pretty-print JSON (implies `--json`)
     * `--group-by` - group text output by `kind`, `package`, or `check`
@@ -61,6 +62,7 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
           candidate_batch_size: :integer,
           max_anchor_candidates: :integer,
           candidate_mode: :string,
+          verify_concurrency: :integer,
           json: :boolean,
           pretty: :boolean,
           group_by: :string,
@@ -88,7 +90,8 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
         limit: Keyword.get(opts, :limit, 100),
         candidate_batch_size: Keyword.get(opts, :candidate_batch_size, 1_000),
         max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000),
-        candidate_mode: Keyword.get(opts, :candidate_mode, "anchor")
+        candidate_mode: Keyword.get(opts, :candidate_mode, "anchor"),
+        verify_concurrency: Keyword.get(opts, :verify_concurrency, System.schedulers_online())
       )
 
     result = apply_presentation_opts(result, opts)
