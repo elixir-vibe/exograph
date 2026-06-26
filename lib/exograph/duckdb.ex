@@ -3,8 +3,10 @@ defmodule Exograph.DuckDB do
   DuckDB schema helpers for QuackDB-backed Exograph storage.
   """
 
+  import Ecto.Query
+
   alias Ecto.Migration.Runner
-  alias Exograph.Storage.Schema
+  alias Exograph.Storage.{FragmentTermRecord, Schema}
   alias Exograph.Storage.Migrations.CreateSchema
 
   @doc "Configures DuckDB execution threads for the current connection."
@@ -59,6 +61,25 @@ defmodule Exograph.DuckDB do
   @doc "Ensures structural lookup tables are ready for term-based queries."
   def optimize_structural_indexes!(opts) do
     migrate!(opts)
+    cluster_fragment_terms!(opts)
+  end
+
+  defp cluster_fragment_terms!(opts) do
+    repo = Keyword.fetch!(opts, :repo)
+    prefix = Keyword.get(opts, :prefix, "exograph")
+    source = Schema.table_name(prefix, :fragment_terms)
+
+    query =
+      from(fragment_term in {source, FragmentTermRecord},
+        order_by: [asc: fragment_term.term_id, asc: fragment_term.fragment_id],
+        select: %{term_id: fragment_term.term_id, fragment_id: fragment_term.fragment_id}
+      )
+
+    repo.query!(QuackDB.DDL.create_table(source, as: query, or_replace: true), [],
+      timeout: :infinity
+    )
+
+    :ok
   end
 
   defp create_fts_index!(repo, prefix, table, id_column, columns) do
