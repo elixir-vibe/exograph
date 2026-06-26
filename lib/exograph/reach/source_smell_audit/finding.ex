@@ -9,6 +9,8 @@ defmodule Exograph.Reach.SourceSmellAudit.Finding do
     :package,
     :package_version,
     :file,
+    :file_id,
+    :fragment_id,
     :line,
     :snippet,
     :anchor_term
@@ -21,6 +23,8 @@ defmodule Exograph.Reach.SourceSmellAudit.Finding do
           package: String.t() | nil,
           package_version: String.t() | nil,
           file: String.t(),
+          file_id: integer() | nil,
+          fragment_id: integer() | nil,
           line: pos_integer() | non_neg_integer(),
           snippet: String.t() | nil,
           anchor_term: String.t() | nil

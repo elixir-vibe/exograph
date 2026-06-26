@@ -28,6 +28,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
     * `:candidate_batch_size` - fragment candidate page size, default `#{@default_candidate_batch_size}`.
     * `:max_anchor_candidates` - skip patterns whose best indexed anchor appears
       in more fragments than this, default `#{@default_max_anchor_candidates}`.
+    * `:candidate_mode` - `:anchor` for fast first results or `:exact` to
+      precompute candidates matching each pattern's full required term set.
   """
   @spec scan(Index.t() | ShardedIndex.t(), [module()], keyword()) :: {:ok, Result.t()}
   def scan(index, modules, opts \\ []) when is_list(modules) do
@@ -132,6 +134,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
     {elapsed_us, {findings, candidate_count}} =
       :timer.tc(fn -> collect_findings(index, planned_patterns, opts, limit) end)
 
+    findings = hydrate_finding_snippets(index, findings)
+
     %Result{
       findings: findings,
       elapsed_ms: Float.round(elapsed_us / 1000, 1),
@@ -215,25 +219,12 @@ defmodule Exograph.Reach.SourceSmellAudit do
   defp collect_findings(_index, [], _opts, _limit), do: {[], 0}
 
   defp collect_findings(index, patterns, opts, limit) do
-    anchor_ids = patterns |> Enum.map(& &1.anchor_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
     batch_size = Keyword.get(opts, :candidate_batch_size, @default_candidate_batch_size)
 
-    Stream.resource(
-      fn -> nil end,
-      fn cursor ->
-        batch = candidate_batch(index, anchor_ids, cursor, batch_size)
-
-        case batch do
-          [] -> {:halt, cursor}
-          rows -> {rows, List.last(rows) |> elem(0) |> Map.fetch!(:id)}
-        end
-      end,
-      fn _cursor -> :ok end
-    )
-    |> Enum.reduce_while({[], MapSet.new(), 0}, fn {record, source, path, package_version,
-                                                    package},
+    candidate_stream(index, patterns, opts, batch_size)
+    |> Enum.reduce_while({[], MapSet.new(), 0}, fn {record, path, package_version, package},
                                                    {findings, seen, count} ->
-      fragment = Hydration.fragment(record, source, path, package_version)
+      fragment = Hydration.fragment(record, nil, path, package_version)
 
       {next_findings, next_seen} =
         add_findings(findings, seen, fragment_findings(fragment, package, patterns))
@@ -268,28 +259,63 @@ defmodule Exograph.Reach.SourceSmellAudit do
     {finding.check, finding.kind, finding.file, finding.line, finding.message}
   end
 
-  defp candidate_batch(index, anchor_ids, cursor, batch_size) do
-    ids = candidate_ids(index, anchor_ids, cursor, batch_size)
-
-    if ids == [] do
-      []
-    else
-      from(fragment in {Schema.fragments_source(index.inverted.prefix), FragmentRecord},
-        left_join: file in ^Schema.files_source(index.inverted.prefix),
-        on: file.id == fragment.file_id,
-        left_join: version in ^Schema.package_versions_source(index.inverted.prefix),
-        on: version.id == fragment.package_version_id,
-        left_join: package in ^Schema.packages_source(index.inverted.prefix),
-        on: package.id == fragment.package_id,
-        where: fragment.id in ^ids,
-        order_by: [asc: fragment.id],
-        select: {fragment, file.source, file.path, version.version, package.name}
-      )
-      |> index.inverted.repo.all()
+  defp candidate_stream(index, patterns, opts, batch_size) do
+    case Keyword.get(opts, :candidate_mode, :anchor) do
+      :exact -> exact_candidate_stream(index, patterns, batch_size)
+      "exact" -> exact_candidate_stream(index, patterns, batch_size)
+      _mode -> anchor_candidate_stream(index, patterns, batch_size)
     end
   end
 
-  defp candidate_ids(index, anchor_ids, cursor, batch_size) do
+  defp anchor_candidate_stream(index, patterns, batch_size) do
+    anchor_ids = patterns |> Enum.map(& &1.anchor_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    Stream.resource(
+      fn -> nil end,
+      fn cursor ->
+        batch = anchor_candidate_batch(index, anchor_ids, cursor, batch_size)
+
+        case batch do
+          [] -> {:halt, cursor}
+          rows -> {rows, List.last(rows) |> elem(0) |> Map.fetch!(:id)}
+        end
+      end,
+      fn _cursor -> :ok end
+    )
+  end
+
+  defp exact_candidate_stream(index, patterns, batch_size) do
+    ids = exact_candidate_ids(index, patterns)
+
+    ids
+    |> Stream.chunk_every(batch_size)
+    |> Stream.flat_map(&candidate_rows(&1, index))
+  end
+
+  defp anchor_candidate_batch(index, anchor_ids, cursor, batch_size) do
+    index
+    |> anchor_candidate_ids(anchor_ids, cursor, batch_size)
+    |> candidate_rows(index)
+  end
+
+  defp candidate_rows([], _index), do: []
+
+  defp candidate_rows(ids, index) when is_list(ids) do
+    from(fragment in {Schema.fragments_source(index.inverted.prefix), FragmentRecord},
+      left_join: file in ^Schema.files_source(index.inverted.prefix),
+      on: file.id == fragment.file_id,
+      left_join: version in ^Schema.package_versions_source(index.inverted.prefix),
+      on: version.id == fragment.package_version_id,
+      left_join: package in ^Schema.packages_source(index.inverted.prefix),
+      on: package.id == fragment.package_id,
+      where: fragment.id in ^ids,
+      order_by: [asc: fragment.id],
+      select: {fragment, file.path, version.version, package.name}
+    )
+    |> index.inverted.repo.all()
+  end
+
+  defp anchor_candidate_ids(index, anchor_ids, cursor, batch_size) do
     base =
       from(fragment_term in Schema.fragment_terms_source(index.inverted.prefix),
         where: fragment_term.term_id in ^anchor_ids,
@@ -305,13 +331,39 @@ defmodule Exograph.Reach.SourceSmellAudit do
     index.inverted.repo.all(query)
   end
 
+  defp exact_candidate_ids(index, patterns) do
+    patterns
+    |> Enum.map(&MapSet.to_list(&1.required_term_ids))
+    |> Enum.uniq()
+    |> Enum.reduce(MapSet.new(), fn ids, acc ->
+      ids
+      |> exact_candidate_ids_for_group(index)
+      |> Enum.reduce(acc, &MapSet.put(&2, &1))
+    end)
+    |> MapSet.to_list()
+    |> Enum.sort()
+  end
+
+  defp exact_candidate_ids_for_group([], _index), do: []
+
+  defp exact_candidate_ids_for_group(ids, index) do
+    required_count = length(ids)
+
+    from(fragment_term in Schema.fragment_terms_source(index.inverted.prefix),
+      where: fragment_term.term_id in ^ids,
+      group_by: fragment_term.fragment_id,
+      having: count(fragment_term.term_id, :distinct) == ^required_count,
+      select: fragment_term.fragment_id
+    )
+    |> index.inverted.repo.all()
+  end
+
   defp fragment_findings(fragment, package, patterns) do
     fragment_terms = MapSet.new(fragment.terms || [])
 
     applicable =
       Enum.filter(patterns, fn pattern ->
-        MapSet.subset?(pattern.required_term_ids, fragment_terms) and
-          source_matches?(fragment.source, pattern.prefilter)
+        MapSet.subset?(pattern.required_term_ids, fragment_terms)
       end)
 
     if applicable == [] do
@@ -338,28 +390,44 @@ defmodule Exograph.Reach.SourceSmellAudit do
       package: package,
       package_version: fragment.package_version,
       file: fragment.file,
+      file_id: fragment.file_id,
+      fragment_id: fragment.id,
       line: line,
-      snippet: snippet(fragment, line),
+      snippet: nil,
       anchor_term: pattern.anchor_term
     }
+  end
+
+  defp hydrate_finding_snippets(_index, []), do: []
+
+  defp hydrate_finding_snippets(index, findings) do
+    sources = file_sources(index, findings)
+
+    Enum.map(findings, fn %Finding{file_id: file_id, line: line} = finding ->
+      source = Map.get(sources, file_id)
+      %{finding | snippet: snippet(source, line)}
+    end)
+  end
+
+  defp file_sources(index, findings) do
+    ids = findings |> Enum.map(& &1.file_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      from(file in Schema.files_source(index.inverted.prefix),
+        where: file.id in ^ids,
+        select: {file.id, file.source}
+      )
+      |> index.inverted.repo.all()
+      |> Map.new()
+    end
   end
 
   defp match_line(%{range: %{start: start}}) when is_list(start), do: Keyword.get(start, :line)
   defp match_line(_match), do: nil
 
-  defp source_matches?(_source, []), do: true
-  defp source_matches?(nil, _prefilter), do: true
-
-  defp source_matches?(source, {:all, tokens}) when is_list(tokens),
-    do: Enum.all?(tokens, &String.contains?(source, &1))
-
-  defp source_matches?(source, tokens) when is_list(tokens),
-    do: Enum.any?(tokens, &String.contains?(source, &1))
-
-  defp source_matches?(source, token) when is_binary(token), do: String.contains?(source, token)
-  defp source_matches?(_source, _prefilter), do: true
-
-  defp snippet(%{source: source}, line) when is_binary(source) and is_integer(line) do
+  defp snippet(source, line) when is_binary(source) and is_integer(line) do
     source
     |> String.split("\n", trim: false)
     |> Enum.slice(max(line - 3, 0), 5)
