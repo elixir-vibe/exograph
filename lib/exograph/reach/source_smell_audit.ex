@@ -13,12 +13,13 @@ defmodule Exograph.Reach.SourceSmellAudit do
 
   alias Exograph.{DuckDBShards, Index, ShardedIndex}
   alias Exograph.Reach.SourceSmellAudit.{Finding, Pattern, Result}
-  alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
+  alias Exograph.Storage.{FragmentRecord, Schema}
 
   @default_limit 100
   @default_anchor_candidate_batch_size 1_000
   @default_exact_candidate_batch_size 8_000
   @default_max_anchor_candidates 10_000
+  @candidate_fragment_fields [:id, :file_id, :ast, :line, :terms]
 
   @doc """
   Scans `index` with source-pattern Reach smell `modules`.
@@ -301,7 +302,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
     rows
     |> Task.async_stream(
       fn {record, path, package_version, package} ->
-        fragment = Hydration.fragment(record, nil, path, package_version)
+        fragment = candidate_fragment(record, path, package_version)
         fragment_findings(fragment, package, patterns)
       end,
       max_concurrency: concurrency,
@@ -362,9 +363,22 @@ defmodule Exograph.Reach.SourceSmellAudit do
       on: package.id == fragment.package_id,
       where: fragment.id in ^ids,
       order_by: [asc: fragment.id],
-      select: {fragment, file.path, version.version, package.name}
+      select:
+        {map(fragment, ^@candidate_fragment_fields), file.path, version.version, package.name}
     )
     |> index.inverted.repo.all()
+  end
+
+  defp candidate_fragment(record, path, package_version) do
+    %{
+      id: record.id,
+      file_id: record.file_id,
+      file: path,
+      package_version: package_version,
+      ast: :erlang.binary_to_term(record.ast),
+      line: record.line,
+      terms: MapSet.new(record.terms || [])
+    }
   end
 
   defp anchor_candidate_ids(index, anchor_ids, cursor, batch_size) do
@@ -387,6 +401,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
     patterns
     |> Enum.map(&MapSet.to_list(&1.required_term_ids))
     |> Enum.uniq()
+    |> minimal_required_term_groups()
     |> Enum.reduce(MapSet.new(), fn ids, acc ->
       ids
       |> exact_candidate_ids_for_group(index)
@@ -394,6 +409,18 @@ defmodule Exograph.Reach.SourceSmellAudit do
     end)
     |> MapSet.to_list()
     |> Enum.sort()
+  end
+
+  defp minimal_required_term_groups(groups) do
+    group_sets = Enum.map(groups, &MapSet.new/1)
+
+    Enum.reject(groups, fn group ->
+      group_set = MapSet.new(group)
+
+      Enum.any?(group_sets, fn other ->
+        MapSet.size(other) < MapSet.size(group_set) and MapSet.subset?(other, group_set)
+      end)
+    end)
   end
 
   defp exact_candidate_ids_for_group([], _index), do: []
@@ -411,11 +438,9 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp fragment_findings(fragment, package, patterns) do
-    fragment_terms = MapSet.new(fragment.terms || [])
-
     applicable =
       Enum.filter(patterns, fn pattern ->
-        MapSet.subset?(pattern.required_term_ids, fragment_terms)
+        MapSet.subset?(pattern.required_term_ids, fragment.terms)
       end)
 
     if applicable == [] do
