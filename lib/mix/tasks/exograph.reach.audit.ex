@@ -24,10 +24,10 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--shard-pool-size` - DB connections per shard when opening a manifest
     * `--shard-port-base` - first local QuackDB port when opening a sharded manifest
     * `--limit` - maximum findings to print (default: 100)
-    * `--candidate-batch-size` - fragment candidate page size (default: 1000)
+    * `--candidate-batch-size` - fragment candidate page size (defaults to 1000 in anchor mode and 8000 in exact mode)
     * `--max-anchor-candidates` - skip patterns whose best anchor is broader than this (default: 10000)
     * `--candidate-mode` - `anchor` for quick samples or `exact` for deeper full scans
-    * `--verify-concurrency` - concurrent AST verifier tasks (default: scheduler count)
+    * `--verify-concurrency` - concurrent AST verifier tasks (default: min(scheduler count, 8))
     * `--json` - print compact JSON
     * `--pretty` - pretty-print JSON (implies `--json`)
     * `--group-by` - group text output by `kind`, `package`, or `check`
@@ -88,10 +88,10 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     {:ok, result} =
       Exograph.Reach.SourceSmellAudit.scan(index, smell_modules,
         limit: Keyword.get(opts, :limit, 100),
-        candidate_batch_size: Keyword.get(opts, :candidate_batch_size, 1_000),
+        candidate_batch_size: Keyword.get(opts, :candidate_batch_size),
         max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000),
         candidate_mode: Keyword.get(opts, :candidate_mode, "anchor"),
-        verify_concurrency: Keyword.get(opts, :verify_concurrency, System.schedulers_online())
+        verify_concurrency: Keyword.get(opts, :verify_concurrency)
       )
 
     result = apply_presentation_opts(result, opts)

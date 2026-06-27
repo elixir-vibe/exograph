@@ -16,7 +16,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
   alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
 
   @default_limit 100
-  @default_candidate_batch_size 1_000
+  @default_anchor_candidate_batch_size 1_000
+  @default_exact_candidate_batch_size 8_000
   @default_max_anchor_candidates 10_000
 
   @doc """
@@ -25,13 +26,15 @@ defmodule Exograph.Reach.SourceSmellAudit do
   Options:
 
     * `:limit` - maximum findings returned, default `#{@default_limit}`.
-    * `:candidate_batch_size` - fragment candidate page size, default `#{@default_candidate_batch_size}`.
+    * `:candidate_batch_size` - fragment candidate page size. Defaults to
+      `#{@default_anchor_candidate_batch_size}` for anchor mode and
+      `#{@default_exact_candidate_batch_size}` for exact mode.
     * `:max_anchor_candidates` - skip patterns whose best indexed anchor appears
       in more fragments than this, default `#{@default_max_anchor_candidates}`.
     * `:candidate_mode` - `:anchor` for fast first results or `:exact` to
       precompute candidates matching each pattern's full required term set.
     * `:verify_concurrency` - maximum concurrent AST verification tasks,
-      default `System.schedulers_online/0`.
+      default `min(System.schedulers_online(), 8)`.
   """
   @spec scan(Index.t() | ShardedIndex.t(), [module()], keyword()) :: {:ok, Result.t()}
   def scan(index, modules, opts \\ []) when is_list(modules) do
@@ -231,7 +234,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
   defp collect_findings(_index, [], _opts, _limit), do: {[], 0}
 
   defp collect_findings(index, patterns, opts, limit) do
-    batch_size = Keyword.get(opts, :candidate_batch_size, @default_candidate_batch_size)
+    batch_size = candidate_batch_size(opts)
 
     candidate_batches(index, patterns, opts, batch_size)
     |> Enum.reduce_while({[], MapSet.new(), 0}, fn rows, {findings, seen, count} ->
@@ -273,8 +276,25 @@ defmodule Exograph.Reach.SourceSmellAudit do
     {finding.check, finding.kind, finding.file, finding.line, finding.message}
   end
 
+  defp candidate_batch_size(opts) do
+    case Keyword.get(opts, :candidate_batch_size) do
+      batch_size when is_integer(batch_size) and batch_size > 0 ->
+        batch_size
+
+      _default ->
+        case Keyword.get(opts, :candidate_mode, :anchor) do
+          :exact -> @default_exact_candidate_batch_size
+          "exact" -> @default_exact_candidate_batch_size
+          _mode -> @default_anchor_candidate_batch_size
+        end
+    end
+  end
+
   defp verify_concurrency(opts) do
-    Keyword.get_lazy(opts, :verify_concurrency, &System.schedulers_online/0)
+    case Keyword.get(opts, :verify_concurrency) do
+      concurrency when is_integer(concurrency) and concurrency > 0 -> concurrency
+      _default -> min(System.schedulers_online(), 8)
+    end
   end
 
   defp verify_candidate_batch(rows, patterns, concurrency) do
