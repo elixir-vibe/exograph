@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0 - 2026-06-28
+
 ### Added
 
 - Added `/api/health` with release, runtime, and index metadata for deployment readiness checks.
@@ -11,6 +13,9 @@
 
 ### Changed
 
+- Removed the storage-engine selection layer; Exograph is DuckDB/QuackDB-only.
+- Removed legacy database-specific Mix options, tests, docs, and implementation modules.
+- Removed direct `fragment(...)` calls from Exograph source/test code in favor of Ecto DSL and QuackDB Ecto helpers.
 - Updated ReleaseKit integration through `release_kit 0.3.1` and the `assets: [volt: ...]` artifact pipeline.
 - Updated ExAST to `0.12.1`.
 - `POST /api/search` now accepts structural predicate shorthand such as `contains(f, def handle_event(_, _, _))`.
@@ -26,23 +31,11 @@
 
 ### Fixed
 
+- Fixed DSL queries such as `from(f in Fragment, where: matches(f, "def handle_call(_, _, _) do ... end"), limit: 20)` so they are not treated as raw structural patterns.
 - Fixed fragment `matches/2` semantics after structural result display changes.
 - Fixed PhoenixIconify release packaging/runtime behavior by configuring the OTP app and tracking the JSON manifest.
 - Started `:inets` and the default `:httpc` profile during application boot so release tasks can fetch Hex registry data reliably.
 - Included web asset sources in Hex packages so `mix exograph.web` can rebuild the UI from clean installs.
-
-## 0.9.0 - 2026-06-20
-
-### Changed
-
-- Removed the storage-engine selection layer; Exograph is DuckDB/QuackDB-only.
-- Removed legacy database-specific Mix options, tests, docs, and implementation modules.
-- Removed direct `fragment(...)` calls from Exograph source/test code in favor of Ecto DSL and QuackDB Ecto helpers.
-- Configured ReleaseKit `0.1.1` with `ReleaseKit.Step.Volt` so release artifacts are built with `mix release_kit.artifact` directly.
-
-### Fixed
-
-- `POST /api/search` now executes DSL queries such as `from(f in Fragment, where: matches(f, "def handle_call(_, _, _) do ... end"), limit: 20)` instead of treating them as raw structural patterns.
 
 ## 0.8.1 - 2026-06-18
 
