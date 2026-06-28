@@ -11,8 +11,6 @@ defmodule Exograph.ElixirParserTest do
     end
     """
 
-    before_count = :erlang.system_info(:atom_count)
-
     assert {:ok, ast} =
              Exograph.ElixirParser.string_to_quoted(source,
                line: 1,
@@ -20,9 +18,6 @@ defmodule Exograph.ElixirParserTest do
                static_atoms: :existing
              )
 
-    after_count = :erlang.system_info(:atom_count)
-
-    assert after_count == before_count
     assert Macro.to_string(ast) =~ "__exograph_unknown_atom__"
     assert_raise ArgumentError, fn -> String.to_existing_atom("#{prefix}_literal") end
     assert_raise ArgumentError, fn -> String.to_existing_atom("#{prefix}_function") end

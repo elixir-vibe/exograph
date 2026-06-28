@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.1 - 2026-06-28
+
 ### Changed
 
 - Hex corpus indexing now parses package source with existing-only static atoms by default to avoid unbounded atom table growth from arbitrary source literals.
