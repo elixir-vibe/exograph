@@ -6,16 +6,29 @@
 
 - Added `/api/health` with release, runtime, and index metadata for deployment readiness checks.
 - Added web query and per-shard query telemetry with slow-query warnings.
+- Added Reach source-smell audit tooling, including reporting summaries, comparison mode, configurable candidate selection, and examples.
+- Added search execution metadata and lower-bound total reporting for broad DSL queries.
 
 ### Changed
 
-- Updated ReleaseKit configuration to `release_kit 0.2.1` and the `assets: [volt: ...]` pipeline.
+- Updated ReleaseKit integration through `release_kit 0.3.1` and the `assets: [volt: ...]` artifact pipeline.
+- Updated ExAST to `0.12.1`.
 - `POST /api/search` now accepts structural predicate shorthand such as `contains(f, def handle_event(_, _, _))`.
+- Improved web search result rendering with package-version hydration, named structural query totals, URL-persisted pagination, cleaner notices, and mobile layout refinements.
+- Improved simple text search by using BM25 where available and pushing down text `contains` filters.
+- Improved Reach audit performance with tuned defaults, parallel verification, lightweight candidate hydration, and skipped redundant exact candidate groups.
+- Optimized structural term lookup by clustering the `fragment_terms` table and always optimizing structural indexes after corpus indexing.
+- Reworked release reindexing to stage fresh shard builds before publishing manifests and reports.
+- Renamed and centralized storage schema/table configuration, declared storage tables and indexes in schema modules, and split storage config from hydration.
 - Mirrored Exograph test paths under `test/exograph/` and documented the layout in `AGENTS.md`.
 - Removed Exograph-owned raw DuckDB SQL assembly from text search, fragment append, migration backfill, and offline staging paths.
+- Removed stale DuckDB compatibility paths and updated DuckDB ingestion/deployment documentation.
 
 ### Fixed
 
+- Fixed fragment `matches/2` semantics after structural result display changes.
+- Fixed PhoenixIconify release packaging/runtime behavior by configuring the OTP app and tracking the JSON manifest.
+- Started `:inets` and the default `:httpc` profile during application boot so release tasks can fetch Hex registry data reliably.
 - Included web asset sources in Hex packages so `mix exograph.web` can rebuild the UI from clean installs.
 
 ## 0.9.0 - 2026-06-20
