@@ -738,10 +738,10 @@ defmodule Exograph.Hex.Corpus do
   defp prepare_backend!(_repo, _prefix, _opts), do: :ok
 
   defp finalize_backend!(repo, prefix, opts) do
+    Exograph.DuckDB.optimize_structural_indexes!(repo: repo, prefix: prefix)
+
     if Keyword.get(opts, :bm25?, true) do
       Exograph.DuckDB.create_bm25_indexes!(repo: repo, prefix: prefix)
-    else
-      Exograph.DuckDB.optimize_structural_indexes!(repo: repo, prefix: prefix)
     end
   end
 
