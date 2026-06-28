@@ -6,6 +6,10 @@
 
 - Rebuild sharded `fragment_terms` lookup tables after shard workers finish so staged Hex indexes publish with structural candidate lookups populated.
 
+### Changed
+
+- Reach source smell audits now use optional ExAST index terms during exact candidate filtering, allowing newly indexed literal terms to reduce verification work without changing findings.
+
 ## 0.9.2 - 2026-06-28
 
 ### Fixed

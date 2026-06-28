@@ -39,8 +39,12 @@ defmodule Exograph.Reach.SourceSmellAudit do
   """
   @spec scan(Index.t() | ShardedIndex.t(), [module()], keyword()) :: {:ok, Result.t()}
   def scan(index, modules, opts \\ []) when is_list(modules) do
-    patterns = load_patterns!(modules)
+    scan_patterns(index, load_patterns!(modules), opts)
+  end
 
+  @doc "Scans `index` with already-loaded source-pattern Reach smell metadata."
+  @spec scan_patterns(Index.t() | ShardedIndex.t(), [Pattern.t()], keyword()) :: {:ok, Result.t()}
+  def scan_patterns(index, patterns, opts \\ []) when is_list(patterns) do
     case index do
       %ShardedIndex{shards: shards} ->
         scan_sharded(shards, patterns, opts)
@@ -86,7 +90,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
   defp pattern_entries(module, source, entries) do
     Enum.map(entries, fn {pattern_or_fun, kind, message, prefilter} ->
       pattern = if source == :query, do: apply(module, pattern_or_fun, []), else: pattern_or_fun
-      required_terms = pattern |> ExAST.Index.plan() |> Map.fetch!(:required_terms)
+      plan = ExAST.Index.plan(pattern)
+      candidate_terms = MapSet.union(plan.required_terms, plan.optional_terms)
 
       %Pattern{
         module: module,
@@ -95,7 +100,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
         message: message,
         prefilter: prefilter,
         pattern: compile_verifier_pattern(pattern),
-        required_terms: required_terms
+        required_terms: candidate_terms
       }
     end)
   end

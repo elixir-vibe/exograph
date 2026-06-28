@@ -51,5 +51,13 @@ defmodule Exograph.Reach.SourceSmellAuditTest do
              )
 
     assert [%{check: LocalCheck, kind: :test_length_call, line: 4}] = result.findings
+
+    assert {:ok, pattern_result} =
+             SourceSmellAudit.scan_patterns(index, [pattern],
+               limit: 10,
+               max_anchor_candidates: 10_000
+             )
+
+    assert [%{check: LocalCheck, kind: :test_length_call, line: 4}] = pattern_result.findings
   end
 end
