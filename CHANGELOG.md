@@ -14,6 +14,10 @@
 - Mirrored Exograph test paths under `test/exograph/` and documented the layout in `AGENTS.md`.
 - Removed Exograph-owned raw DuckDB SQL assembly from text search, fragment append, migration backfill, and offline staging paths.
 
+### Fixed
+
+- Included web asset sources in Hex packages so `mix exograph.web` can rebuild the UI from clean installs.
+
 ## 0.9.0 - 2026-06-20
 
 ### Changed

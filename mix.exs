@@ -80,7 +80,8 @@ defmodule Exograph.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv guides mix.exs README.md LICENSE CHANGELOG.md .formatter.exs)
+      files:
+        ~w(assets/npm.lock assets/package.json assets/package-lock.json assets/web lib priv guides mix.exs README.md LICENSE CHANGELOG.md .formatter.exs)
     ]
   end
 
