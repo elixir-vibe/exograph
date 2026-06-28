@@ -171,6 +171,8 @@ defmodule Exograph.Hex.Corpus do
 
     results = [combined_results]
 
+    finalize_sharded_structural_indexes!(shards)
+
     Progress.finish_run()
 
     shard_indexes = Exograph.DuckDBShards.open_indexes(shards, opts)
@@ -744,6 +746,19 @@ defmodule Exograph.Hex.Corpus do
     if Keyword.get(opts, :bm25?, true) do
       Exograph.DuckDB.create_bm25_indexes!(repo: repo, prefix: prefix)
     end
+  end
+
+  defp finalize_sharded_structural_indexes!(shards) do
+    Enum.each(shards, fn shard ->
+      Exograph.DuckDBShards.with_repo(shard, fn ->
+        Exograph.Storage.FragmentStore.rebuild_fragment_terms(
+          repo: shard.repo,
+          prefix: shard.prefix
+        )
+
+        Exograph.DuckDB.optimize_structural_indexes!(repo: shard.repo, prefix: shard.prefix)
+      end)
+    end)
   end
 
   defp existing_versions(repo, prefix) do

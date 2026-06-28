@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Rebuild sharded `fragment_terms` lookup tables after shard workers finish so staged Hex indexes publish with structural candidate lookups populated.
+
 ## 0.9.2 - 2026-06-28
 
 ### Fixed
