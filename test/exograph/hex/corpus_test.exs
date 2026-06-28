@@ -91,6 +91,39 @@ defmodule Exograph.Hex.CorpusTest do
     assert reference_count > 0
   end
 
+  test "deferred fragment terms can be rebuilt from persisted fragment term arrays" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_deferred_terms_#{System.unique_integer([:positive])}"
+
+    source = """
+    defmodule Deferred.Terms do
+      def names(values), do: Enum.map(values, &String.trim/1)
+    end
+    """
+
+    opts =
+      DuckDBSupport.opts(prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        defer_fragment_terms?: true,
+        package_version: [
+          ecosystem: :hex,
+          name: "deferred_terms",
+          version: "1.0.0",
+          source_ref: "hex:deferred_terms:1.0.0"
+        ]
+      )
+
+    assert {:ok, _index} = Exograph.index_sources([{"lib/deferred/terms.ex", source}], opts)
+    assert table_count(prefix, "fragments") > 0
+    assert table_count(prefix, "terms") > 0
+    assert table_count(prefix, "fragment_terms") == 0
+
+    assert :ok = Exograph.Storage.FragmentStore.rebuild_fragment_terms(opts)
+    assert table_count(prefix, "fragment_terms") > 0
+  end
+
   test "DuckDB indexes Hex packages through the corpus pipeline" do
     if System.get_env("QUACKDB_TEST_URI") do
       DuckDBSupport.start_repo!()

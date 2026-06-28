@@ -738,6 +738,7 @@ defmodule Exograph.Hex.Corpus do
   defp prepare_backend!(_repo, _prefix, _opts), do: :ok
 
   defp finalize_backend!(repo, prefix, opts) do
+    Exograph.Storage.FragmentStore.rebuild_fragment_terms(repo: repo, prefix: prefix)
     Exograph.DuckDB.optimize_structural_indexes!(repo: repo, prefix: prefix)
 
     if Keyword.get(opts, :bm25?, true) do

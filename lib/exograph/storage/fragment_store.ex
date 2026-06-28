@@ -197,6 +197,31 @@ defmodule Exograph.Storage.FragmentStore do
     end
   end
 
+  @doc """
+  Rebuilds the normalized fragment-to-term lookup table from persisted fragment term arrays.
+
+  Hex corpus indexing stores normalized term IDs on each fragment and defers the
+  wide `fragment_terms` table for ingestion speed. This function materializes
+  that lookup table before structural query workloads and final index
+  optimization.
+  """
+  @spec rebuild_fragment_terms(keyword()) :: :ok
+  def rebuild_fragment_terms(opts) when is_list(opts) do
+    {:ok, store} = new(opts)
+    rebuild_fragment_terms(store)
+  end
+
+  @spec rebuild_fragment_terms(t()) :: :ok
+  def rebuild_fragment_terms(%__MODULE__{} = store) do
+    source = Schema.fragment_terms_source(store.prefix)
+
+    Exograph.Hex.StageTimings.measure(:fragment_terms_rebuild_delete, fn ->
+      store.repo.delete_all(source, timeout: :infinity)
+    end)
+
+    rebuild_fragment_terms_from_fragments(store, nil, 1_000)
+  end
+
   defp ensure_package_context(%__MODULE__{package: nil, package_version: nil} = store, _now),
     do: store
 
@@ -540,6 +565,50 @@ defmodule Exograph.Storage.FragmentStore do
 
   defp bulk_insert_fragment_terms(%{repo: repo}, source, entries) do
     bulk_insert_duckdb(repo, source, entries, chunk_size: 10_000)
+  end
+
+  defp rebuild_fragment_terms_from_fragments(store, cursor, batch_size) do
+    rows = fragment_term_rows(store, cursor, batch_size)
+
+    if rows == [] do
+      :ok
+    else
+      entries = fragment_term_entries(rows)
+      Exograph.Hex.StageTimings.count(:fragment_terms_rebuild_rows, length(entries))
+
+      Exograph.Hex.StageTimings.measure(:fragment_terms_rebuild_insert, fn ->
+        bulk_insert_fragment_terms(store, Schema.fragment_terms_source(store.prefix), entries)
+      end)
+
+      rows
+      |> List.last()
+      |> Map.fetch!(:id)
+      |> then(&rebuild_fragment_terms_from_fragments(store, &1, batch_size))
+    end
+  end
+
+  defp fragment_term_rows(store, cursor, batch_size) do
+    base =
+      from(fragment in {source(store), FragmentRecord},
+        order_by: [asc: fragment.id],
+        limit: ^batch_size,
+        select: map(fragment, [:id, :terms])
+      )
+
+    query = if cursor, do: where(base, [fragment], fragment.id > ^cursor), else: base
+
+    store.repo.all(query, timeout: :infinity)
+  end
+
+  defp fragment_term_entries(rows) do
+    rows
+    |> Enum.flat_map(fn %{id: fragment_id, terms: terms} ->
+      terms
+      |> List.wrap()
+      |> Enum.filter(&is_integer/1)
+      |> Enum.map(&%{fragment_id: fragment_id, term_id: &1})
+    end)
+    |> Enum.uniq()
   end
 
   defp bulk_insert_facts(repo, source, entries, opts) do

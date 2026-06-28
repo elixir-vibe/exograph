@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Materialize deferred `fragment_terms` rows during Hex corpus finalization so structural and Reach audit candidate lookups work on freshly indexed shards.
+
 ## 0.9.1 - 2026-06-28
 
 ### Changed
