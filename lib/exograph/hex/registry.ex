@@ -5,8 +5,6 @@ defmodule Exograph.Hex.Registry do
   @api_url "https://hex.pm/api/packages"
 
   def versions(opts \\ []) do
-    Application.ensure_all_started(:inets)
-
     registry_url = Keyword.get(opts, :registry_url) || @repo_url
     config = hex_config(registry_url)
 

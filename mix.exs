@@ -30,7 +30,7 @@ defmodule Exograph.MixProject do
   def application do
     [
       mod: {Exograph.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:logger, :inets]
     ]
   end
 
