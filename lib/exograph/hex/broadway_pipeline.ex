@@ -90,8 +90,25 @@ defmodule Exograph.Hex.BroadwayPipeline do
 
   @impl Broadway.Acknowledger
   def ack(owner, successful, failed) do
-    send(owner, {:hex_broadway_ack, Enum.map(successful, & &1.data), Enum.map(failed, & &1.data)})
+    send(
+      owner,
+      {:hex_broadway_ack, Enum.map(successful, & &1.data), Enum.map(failed, &failed_data/1)}
+    )
+
     :ok
+  end
+
+  defp failed_data(%Message{data: data, status: {:failed, reason}}) do
+    Map.put_new(data, :result, {:error, {:broadway_failed, reason}})
+  end
+
+  defp failed_data(%Message{data: data, status: {kind, reason, stacktrace}})
+       when kind in [:throw, :error, :exit] do
+    Map.put_new(data, :result, {:error, {:broadway_failed, kind, reason, stacktrace}})
+  end
+
+  defp failed_data(%Message{data: data, status: status}) do
+    Map.put_new(data, :result, {:error, {:broadway_failed, status}})
   end
 
   defp producer(entries, owner) do

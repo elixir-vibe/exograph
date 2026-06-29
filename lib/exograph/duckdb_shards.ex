@@ -241,7 +241,9 @@ defmodule Exograph.DuckDBShards do
     [
       pool_size: Keyword.get(opts, :pool_size, 1),
       queue_target: Keyword.get(opts, :queue_target, 60_000),
-      queue_interval: Keyword.get(opts, :queue_interval, 120_000)
+      queue_interval: Keyword.get(opts, :queue_interval, 120_000),
+      receive_timeout: Keyword.get(opts, :receive_timeout, 120_000),
+      connect_timeout: Keyword.get(opts, :connect_timeout, 120_000)
     ]
   end
 
@@ -253,6 +255,8 @@ defmodule Exograph.DuckDBShards do
       pool_size: Keyword.fetch!(opts, :pool_size),
       queue_target: Keyword.fetch!(opts, :queue_target),
       queue_interval: Keyword.fetch!(opts, :queue_interval),
+      receive_timeout: Keyword.fetch!(opts, :receive_timeout),
+      connect_timeout: Keyword.fetch!(opts, :connect_timeout),
       telemetry_prefix: [:quackdb],
       log: false,
       timeout: 120_000

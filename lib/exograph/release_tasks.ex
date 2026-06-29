@@ -23,6 +23,8 @@ defmodule Exograph.ReleaseTasks do
       duckdb_memory_limit: env("EXOGRAPH_DUCKDB_MEMORY_LIMIT", "2GB"),
       duckdb_queue_target: env_integer("EXOGRAPH_DUCKDB_QUEUE_TARGET", 60_000),
       duckdb_queue_interval: env_integer("EXOGRAPH_DUCKDB_QUEUE_INTERVAL", 120_000),
+      receive_timeout: env_integer("EXOGRAPH_QUACKDB_RECEIVE_TIMEOUT", 120_000),
+      connect_timeout: env_integer("EXOGRAPH_QUACKDB_CONNECT_TIMEOUT", 120_000),
       manifest_path: build.manifest_path,
       report_path: build.report_path,
       shard_directory: build.shard_dir,
@@ -38,10 +40,28 @@ defmodule Exograph.ReleaseTasks do
 
     result = Exograph.Hex.Corpus.index(opts)
 
+    validate_index_result!(result, build)
+
     publish_file!(build.manifest_path, final_manifest_path)
     publish_file!(build.report_path, final_report_path)
 
     result
+  end
+
+  @doc false
+  def validate_index_result!(result, build) do
+    max_errors = env_integer("EXOGRAPH_MAX_INDEX_ERRORS", 0)
+    errors = Map.get(result, :error, 0)
+
+    if errors > max_errors do
+      failures = Map.get(result, :failures, [])
+
+      raise "Exograph Hex index produced #{errors} package errors, exceeding " <>
+              "EXOGRAPH_MAX_INDEX_ERRORS=#{max_errors}; refusing to publish staged index " <>
+              "#{build.build_dir}. Failures: #{inspect(failures, limit: :infinity)}"
+    end
+
+    :ok
   end
 
   defp staged_build_paths(final_shard_dir) do

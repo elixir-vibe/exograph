@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.5 - 2026-06-29
+
+### Fixed
+
+- Production Hex reindex release tasks now refuse to publish staged indexes when package indexing errors remain, defaulting `EXOGRAPH_MAX_INDEX_ERRORS` to `0`.
+- Broadway indexing failures now preserve failure reasons instead of reporting `:unknown` when messages fail outside normal package result handling.
+- QuackDB shard repository transport receive/connect timeouts now default to `120s` and can be configured with `EXOGRAPH_QUACKDB_RECEIVE_TIMEOUT` / `EXOGRAPH_QUACKDB_CONNECT_TIMEOUT`, avoiding the transport's ungrounded ~16s default for long DuckDB commits.
+
 ## 0.9.4 - 2026-06-29
 
 ### Changed

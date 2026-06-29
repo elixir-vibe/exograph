@@ -117,7 +117,9 @@ defmodule Exograph.Hex.Corpus do
         recovery_mode: Keyword.get(opts, :recovery_mode),
         pool_size: shard_pool_size,
         queue_target: Keyword.get(opts, :duckdb_queue_target, 60_000),
-        queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000)
+        queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000),
+        receive_timeout: Keyword.get(opts, :receive_timeout, 120_000),
+        connect_timeout: Keyword.get(opts, :connect_timeout, 120_000)
       )
 
     shards =
