@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.4 - 2026-06-29
+
+### Changed
+
+- Updated ExAST to `0.12.4` so Reach source-smell audits can use explicit nil, small integer, and call-argument literal terms for narrower exact candidate filtering.
+
 ## 0.9.3 - 2026-06-29
 
 ### Fixed
