@@ -342,12 +342,11 @@ defmodule Exograph.ShardedIndexTest do
              )
   end
 
-  test "sharded DSL queries apply limit globally" do
+  test "sharded DSL queries apply limit and skip globally" do
     alpha_path =
       fixture("limit_alpha.ex", """
       defmodule Demo.LimitAlpha do
         def alpha_one, do: :alpha
-        def alpha_two, do: :alpha
       end
       """)
 
@@ -355,7 +354,6 @@ defmodule Exograph.ShardedIndexTest do
       fixture("limit_beta.ex", """
       defmodule Demo.LimitBeta do
         def beta_one, do: :beta
-        def beta_two, do: :beta
       end
       """)
 
@@ -382,13 +380,14 @@ defmodule Exograph.ShardedIndexTest do
     query = %Exograph.DSL.Query{
       source: :fragment,
       binding: :f,
-      predicates: [{:matches, :f, "def _ do ... end"}],
-      limit: 1
+      predicates: [{:matches, :f, "def _ do ... end"}]
     }
 
     sharded = ShardedIndex.new([alpha_index, beta_index])
 
-    assert {:ok, [_one]} = Exograph.all(sharded, query, limit: 1)
+    assert {:ok, [_first, second]} = Exograph.all(sharded, query, limit: 2)
+    assert {:ok, [page_two]} = Exograph.all(sharded, query, limit: 1, skip: 1)
+    assert page_two.fragment.id == second.fragment.id
   end
 
   def handle_event(_event, measurements, metadata, test_pid) do

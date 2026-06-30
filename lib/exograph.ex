@@ -413,6 +413,7 @@ defmodule Exograph do
   defp shard_opts(shard, opts, limit) do
     opts
     |> Keyword.put(:limit, limit)
+    |> Keyword.put(:skip, 0)
     |> put_shard_package_version_filter(shard)
   end
 
