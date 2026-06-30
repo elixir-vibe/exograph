@@ -289,7 +289,9 @@ defmodule Exograph.Web.QueryLive do
     <div class="flex flex-col h-full">
       <header class="flex flex-col gap-3 px-4 py-3 border-b border-zinc-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 class="text-lg font-semibold tracking-tight">Exograph</h1>
+          <h1 class="text-lg font-semibold tracking-tight">
+            <.link navigate={@prefix || "/"} class="hover:text-blue-400 transition-colors">Exograph</.link>
+          </h1>
           <span class="text-xs text-zinc-500">{@package_count} packages indexed</span>
         </div>
         <div class="flex w-full flex-wrap items-center gap-2 text-sm text-zinc-400 sm:w-auto sm:justify-end sm:gap-4">
