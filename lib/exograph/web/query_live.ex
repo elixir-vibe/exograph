@@ -12,26 +12,25 @@ defmodule Exograph.Web.QueryLive do
 
   @default_query """
   from(f in Fragment,
-    where: matches(f, "def mount(_, _, _) do ... end"),
-    where: contains(f, "Repo."),
+    where: matches(f, "def handle_event(_, _, _) do ... end"),
     limit: 20
   )\
   """
 
   @examples [
-    {"LiveView mount Repo work", "Audit Reach's disconnected mount Repo smell",
+    {"LiveView handle_event callbacks",
+     "Find LiveView-style handle_event/3 callbacks in Hex packages",
      ~S"""
      from(f in Fragment,
-       where: matches(f, "def mount(_, _, _) do ... end"),
-       where: contains(f, "Repo."),
+       where: matches(f, "def handle_event(_, _, _) do ... end"),
        limit: 20)
      """},
-    {"Guarded mount subscriptions", "Compare PubSub subscribe patterns with connected?/1 guards",
+    {"LiveView render functions",
+     "Find render/1 callbacks in modules that mention Phoenix.LiveView",
      ~S"""
      from(f in Fragment,
-       where: matches(f, "def mount(_, _, _) do ... end"),
-       where: contains(f, "subscribe"),
-       where: contains(f, "connected?"),
+       where: matches(f, "def render(_) do ... end"),
+       where: contains(f, "Phoenix.LiveView"),
        limit: 20)
      """},
     {"Parser atom audit", "Join references and source text to inspect String.to_atom/1 usage",
