@@ -208,11 +208,9 @@ defmodule Exograph.Web.QueryLive do
       assign(socket,
         query: query,
         error: nil,
-        results: nil,
         elapsed_ms: nil,
         result_count: nil,
         loading: true,
-        all_results: [],
         current_page: page,
         total_pages: page,
         total_results: nil,
@@ -339,6 +337,15 @@ defmodule Exograph.Web.QueryLive do
         <div id="results-wrapper" class="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent p-3 space-y-3 sm:p-4">
           <div :if={@error} class="p-4 text-red-400 font-mono text-sm whitespace-pre-wrap">
             {@error}
+          </div>
+
+          <div
+            :if={@loading}
+            class="rounded-lg border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-400 flex items-center gap-3"
+          >
+            <span class="inline-block w-4 h-4 border-2 border-zinc-700 border-t-blue-400 rounded-full animate-spin">
+            </span>
+            Loading results…
           </div>
 
           <div
