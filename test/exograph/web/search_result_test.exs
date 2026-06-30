@@ -14,7 +14,9 @@ defmodule Exograph.Web.SearchResultTest do
 
     hit = %Hit{
       fragment: %Fragment{
-        file: "/tmp/sources/demo-1.0.0/lib/demo.ex",
+        file: "lib/demo.ex",
+        package: "demo",
+        package_version: "1.0.0",
         kind: :module,
         name: "Demo",
         module: "Demo",
@@ -35,10 +37,11 @@ defmodule Exograph.Web.SearchResultTest do
     assert result.package_version == "1.0.0"
   end
 
-  test "uses hydrated package version when file path is relative" do
+  test "uses hydrated package metadata when file path is relative" do
     hit = %Hit{
       fragment: %Fragment{
         file: "lib/demo.ex",
+        package: "real_package",
         package_version: "1.2.3",
         kind: :def,
         name: "run",
@@ -50,6 +53,7 @@ defmodule Exograph.Web.SearchResultTest do
 
     result = SearchResult.from(hit)
 
+    assert result.package == "real_package"
     assert result.package_version == "1.2.3"
   end
 

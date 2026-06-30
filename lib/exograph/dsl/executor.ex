@@ -348,6 +348,7 @@ defmodule Exograph.DSL.Executor do
   defp base_fragment_query(index, cursor) do
     files_source = Schema.files_source(index.inverted.prefix)
     versions_source = Schema.package_versions_source(index.inverted.prefix)
+    packages_source = Schema.packages_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
@@ -356,9 +357,11 @@ defmodule Exograph.DSL.Executor do
         on: file.id == fragment.file_id,
         left_join: version in ^versions_source,
         on: version.id == fragment.package_version_id,
+        left_join: package in ^packages_source,
+        on: package.id == version.package_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^@stream_batch_size,
-        select: {fragment, file.source, file.path, version.version}
+        select: {fragment, file.source, file.path, version.version, package.name}
       )
 
     where_after_cursor(query, cursor)
@@ -371,6 +374,7 @@ defmodule Exograph.DSL.Executor do
   defp base_fragment_candidate_query(index, cursor, include_source?) do
     files_source = Schema.files_source(index.inverted.prefix)
     versions_source = Schema.package_versions_source(index.inverted.prefix)
+    packages_source = Schema.packages_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
@@ -379,6 +383,8 @@ defmodule Exograph.DSL.Executor do
         on: file.id == fragment.file_id,
         left_join: version in ^versions_source,
         on: version.id == fragment.package_version_id,
+        left_join: package in ^packages_source,
+        on: package.id == version.package_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^@stream_batch_size
       )
@@ -388,20 +394,22 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp select_fragment_candidate(query, true) do
-    select(query, [fragment, file, version], {
+    select(query, [fragment, file, version, package], {
       map(fragment, @candidate_fragment_fields),
       file.source,
       file.path,
-      version.version
+      version.version,
+      package.name
     })
   end
 
   defp select_fragment_candidate(query, false) do
-    select(query, [fragment, file, version], {
+    select(query, [fragment, file, version, package], {
       map(fragment, @candidate_fragment_fields),
       nil,
       file.path,
-      version.version
+      version.version,
+      package.name
     })
   end
 
@@ -410,7 +418,7 @@ defmodule Exograph.DSL.Executor do
   defp where_after_cursor(query, {path, line, id}) do
     where(
       query,
-      [fragment, file, _version],
+      [fragment, file, _version, _package],
       file.path > ^path or
         (file.path == ^path and fragment.line > ^line) or
         (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
@@ -424,20 +432,28 @@ defmodule Exograph.DSL.Executor do
 
   defp hydrate_fragment_batch(query, index) do
     index.inverted.repo.all(query)
-    |> Enum.map(fn {fragment, source, path, package_version} ->
-      hydrate_query_fragment(fragment, source, path, package_version)
+    |> Enum.map(fn {fragment, source, path, package_version, package_name} ->
+      hydrate_query_fragment(fragment, source, path, package_version, package_name)
     end)
   end
 
-  defp hydrate_query_fragment(%FragmentRecord{} = fragment, source, path, package_version) do
-    Hydration.fragment(fragment, source, path, package_version)
+  defp hydrate_query_fragment(
+         %FragmentRecord{} = fragment,
+         source,
+         path,
+         package_version,
+         package_name
+       ) do
+    Hydration.fragment(fragment, source, path, package_version, package_name)
   end
 
-  defp hydrate_query_fragment(fragment, source, path, package_version) when is_map(fragment) do
+  defp hydrate_query_fragment(fragment, source, path, package_version, package_name)
+       when is_map(fragment) do
     %Fragment{
       id: fragment.id,
       package_id: fragment.package_id,
       package_version_id: fragment.package_version_id,
+      package: package_name,
       package_version: package_version,
       file_id: fragment.file_id,
       file: path,
@@ -515,6 +531,8 @@ defmodule Exograph.DSL.Executor do
   defp joined_fragments_fact_first(index, plan, join, opts, cursor) do
     candidate_limit = candidate_limit(index, opts)
     files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    packages_source = Schema.packages_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
@@ -552,6 +570,10 @@ defmodule Exograph.DSL.Executor do
         on: true,
         left_join: file in ^files_source,
         on: file.id == frag.file_id,
+        left_join: version in ^versions_source,
+        on: version.id == frag.package_version_id,
+        left_join: package in ^packages_source,
+        on: package.id == version.package_id,
         order_by: [asc: file.path, asc: frag.line, asc: frag.id],
         limit: ^candidate_limit
       )
@@ -566,7 +588,7 @@ defmodule Exograph.DSL.Executor do
         {path, line, id} ->
           where(
             query,
-            [_joined, frag, file],
+            [_joined, frag, file, _version, _package],
             file.path > ^path or
               (file.path == ^path and frag.line > ^line) or
               (file.path == ^path and frag.line == ^line and frag.id > ^id)
@@ -580,9 +602,17 @@ defmodule Exograph.DSL.Executor do
     |> where_second_binding_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
     |> where_fragment_scope_second(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, joined} ->
+    |> Enum.map(fn {fragment, source, path, package_version, package_name, joined} ->
       {
-        hydrate_joined_fragment(fragment, source, path, index, plan),
+        hydrate_joined_fragment(
+          fragment,
+          source,
+          path,
+          package_version,
+          package_name,
+          index,
+          plan
+        ),
         %{join.binding => joined_value(join.assoc, joined)}
       }
     end)
@@ -591,6 +621,8 @@ defmodule Exograph.DSL.Executor do
   defp joined_fragments_fragment_first(index, plan, join, opts, cursor) do
     candidate_limit = candidate_limit(index, opts)
     files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    packages_source = Schema.packages_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
     function_fragment_kinds = JoinSemantics.function_fragment_kinds()
 
@@ -604,6 +636,10 @@ defmodule Exograph.DSL.Executor do
             (is_nil(fragment.end_line) or joined.line <= fragment.end_line),
         left_join: file in ^files_source,
         on: file.id == fragment.file_id,
+        left_join: version in ^versions_source,
+        on: version.id == fragment.package_version_id,
+        left_join: package in ^packages_source,
+        on: package.id == version.package_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^candidate_limit
       )
@@ -618,7 +654,7 @@ defmodule Exograph.DSL.Executor do
         {path, line, id} ->
           where(
             query,
-            [fragment, _joined, file],
+            [fragment, _joined, file, _version, _package],
             file.path > ^path or
               (file.path == ^path and fragment.line > ^line) or
               (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
@@ -632,9 +668,17 @@ defmodule Exograph.DSL.Executor do
     |> where_second_binding_predicates(predicates(plan, join.binding), join.binding, join.assoc)
     |> where_fragment_scope(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, joined} ->
+    |> Enum.map(fn {fragment, source, path, package_version, package_name, joined} ->
       {
-        hydrate_joined_fragment(fragment, source, path, index, plan),
+        hydrate_joined_fragment(
+          fragment,
+          source,
+          path,
+          package_version,
+          package_name,
+          index,
+          plan
+        ),
         %{join.binding => joined_value(join.assoc, joined)}
       }
     end)
@@ -798,7 +842,14 @@ defmodule Exograph.DSL.Executor do
     if light_join_projection?(index, plan) do
       select_light_joined_fragment(query, :fact_first, assoc)
     else
-      select(query, [joined, frag, file], {frag, file.source, file.path, joined})
+      select(query, [joined, frag, file, version, package], {
+        frag,
+        file.source,
+        file.path,
+        version.version,
+        package.name,
+        joined
+      })
     end
   end
 
@@ -806,24 +857,35 @@ defmodule Exograph.DSL.Executor do
     if light_join_projection?(index, plan) do
       select_light_joined_fragment(query, :fragment_first, assoc)
     else
-      select(query, [fragment, joined, file], {fragment, file.source, file.path, joined})
+      select(query, [fragment, joined, file, version, package], {
+        fragment,
+        file.source,
+        file.path,
+        version.version,
+        package.name,
+        joined
+      })
     end
   end
 
   defp select_light_joined_fragment(query, :fact_first, :references) do
-    select(query, [joined, frag, file], {
+    select(query, [joined, frag, file, version, package], {
       map(frag, @light_fragment_fields),
       file.source,
       file.path,
+      version.version,
+      package.name,
       map(joined, @light_reference_fields)
     })
   end
 
   defp select_light_joined_fragment(query, :fragment_first, :references) do
-    select(query, [fragment, joined, file], {
+    select(query, [fragment, joined, file, version, package], {
       map(fragment, @light_fragment_fields),
       file.source,
       file.path,
+      version.version,
+      package.name,
       map(joined, @light_reference_fields)
     })
   end
@@ -831,16 +893,19 @@ defmodule Exograph.DSL.Executor do
   defp select_light_joined_fragment(query, :fact_first, _assoc) do
     select(
       query,
-      [joined, frag, file],
-      {map(frag, @light_fragment_fields), file.source, file.path, joined}
+      [joined, frag, file, version, package],
+      {map(frag, @light_fragment_fields), file.source, file.path, version.version, package.name,
+       joined}
     )
   end
 
   defp select_light_joined_fragment(query, :fragment_first, _assoc) do
-    select(query, [fragment, joined, file], {
+    select(query, [fragment, joined, file, version, package], {
       map(fragment, @light_fragment_fields),
       file.source,
       file.path,
+      version.version,
+      package.name,
       joined
     })
   end
@@ -893,19 +958,22 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_value(:calls, joined) when is_map(joined), do: struct(Exograph.CallEdge, joined)
 
-  defp hydrate_joined_fragment(fragment, source, path, index, plan) do
+  defp hydrate_joined_fragment(fragment, source, path, package_version, package_name, index, plan) do
     if light_join_projection?(index, plan) do
-      hydrate_light_fragment(fragment, source, path)
+      hydrate_light_fragment(fragment, source, path, package_version, package_name)
     else
-      Hydration.fragment(fragment, source, path)
+      Hydration.fragment(fragment, source, path, package_version, package_name)
     end
   end
 
-  defp hydrate_light_fragment(record, source, path) when is_map(record) do
+  defp hydrate_light_fragment(record, source, path, package_version, package_name)
+       when is_map(record) do
     %Fragment{
       id: record.id,
       package_id: record.package_id,
       package_version_id: record.package_version_id,
+      package: package_name,
+      package_version: package_version,
       file_id: record.file_id,
       file: path,
       source: source,

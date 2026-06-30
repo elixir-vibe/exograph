@@ -26,7 +26,7 @@ defmodule Exograph.Web.SearchResult do
     %__MODULE__{
       type: :fragment,
       file: relative_path(f.file),
-      package: extract_package(f.file),
+      package: fragment_package(f),
       module: clean_name(f.module),
       kind: match.kind || f.kind,
       name: clean_name(match.name || f.name),
@@ -44,7 +44,7 @@ defmodule Exograph.Web.SearchResult do
     %__MODULE__{
       type: :text,
       file: relative_path(f.file),
-      package: extract_package(f.file),
+      package: fragment_package(f),
       module: clean_name(f.module),
       kind: f.kind,
       name: clean_name(f.name),
@@ -64,7 +64,7 @@ defmodule Exograph.Web.SearchResult do
     %__MODULE__{
       type: :joined,
       file: relative_path(f.file),
-      package: extract_package(f.file),
+      package: fragment_package(f),
       module: clean_name(f.module),
       kind: match.kind || f.kind,
       name: clean_name(match.name || f.name),
@@ -105,8 +105,8 @@ defmodule Exograph.Web.SearchResult do
 
     %__MODULE__{
       type: :definition,
-      file: file,
-      package: extract_package(file),
+      file: relative_path(file),
+      package: fragment_package(f),
       module: clean_name(d.module),
       kind: d.kind,
       name: clean_name(d.qualified_name),
@@ -125,8 +125,8 @@ defmodule Exograph.Web.SearchResult do
 
     %__MODULE__{
       type: :reference,
-      file: file,
-      package: extract_package(file),
+      file: relative_path(file),
+      package: fragment_package(f),
       module: clean_name(r.module),
       kind: r.kind,
       name: clean_name(r.qualified_name),
@@ -242,46 +242,11 @@ defmodule Exograph.Web.SearchResult do
   end
 
   defp relative_path(nil), do: ""
+  defp relative_path(path) when is_binary(path), do: path
 
-  defp relative_path(path) do
-    case Regex.run(~r"/sources/[^/]+/(.+)$", path) do
-      [_, rel] -> rel
-      _ -> Path.basename(path)
-    end
-  end
-
-  defp extract_package(nil), do: "unknown"
-  defp extract_package(""), do: "unknown"
-
-  defp extract_package(file) do
-    case Regex.run(~r"/sources/([^/]+)/", file) do
-      [_, pkg_dir] ->
-        case Regex.run(~r/^(.+)-\d/, pkg_dir) do
-          [_, name] -> name
-          _ -> pkg_dir
-        end
-
-      _ ->
-        file |> Path.basename() |> Path.rootname()
-    end
-  end
+  defp fragment_package(%{package: package}) when is_binary(package), do: package
+  defp fragment_package(_fragment), do: "unknown"
 
   defp fragment_package_version(%{package_version: version}) when is_binary(version), do: version
-  defp fragment_package_version(%{file: file}), do: extract_package_version(file)
-
-  defp extract_package_version(nil), do: nil
-  defp extract_package_version(""), do: nil
-
-  defp extract_package_version(file) do
-    case Regex.run(~r"/sources/([^/]+)/", file) do
-      [_, pkg_dir] ->
-        case Regex.run(~r/^.+-(\d+\.\d+\.\d+.*)$/, pkg_dir) do
-          [_, version] -> version
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
+  defp fragment_package_version(_fragment), do: nil
 end
