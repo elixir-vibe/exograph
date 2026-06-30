@@ -14,13 +14,19 @@ defmodule Exograph.Web.ResultFormatter do
         |> Enum.group_by(& &1.file)
         |> Enum.sort_by(fn {file, _} -> file end)
         |> Enum.map(fn {file, file_results} ->
+          formatted_results =
+            Enum.map(file_results, fn r ->
+              %{
+                r
+                | preview: build_preview(r.source, r.fragment_line, r.line),
+                  source_url: hex_source_url(r)
+              }
+            end)
+
           %{
             file: file,
-            source_url: hex_source_url(file_results),
-            results:
-              Enum.map(file_results, fn r ->
-                %{r | preview: build_preview(r.source, r.fragment_line, r.line)}
-              end)
+            source_url: formatted_results |> List.first() |> file_source_url(),
+            results: formatted_results
           }
         end)
 
@@ -52,13 +58,34 @@ defmodule Exograph.Web.ResultFormatter do
   def badge_class(:call), do: "bg-teal-900/40 text-teal-300"
   def badge_class(_), do: "bg-zinc-800 text-zinc-400"
 
-  defp hex_source_url([%{package: pkg, package_version: ver} | _]) when is_binary(ver),
-    do: hex_package_url(pkg, ver)
+  defp hex_source_url(%{package: pkg, package_version: ver, file: file, line: line})
+       when is_binary(pkg) and is_binary(ver) and is_binary(file) and is_integer(line) do
+    "#{hex_file_url(pkg, ver, file)}#L#{line}"
+  end
 
   defp hex_source_url(_), do: nil
 
+  defp file_source_url(%{package: pkg, package_version: ver, file: file})
+       when is_binary(pkg) and is_binary(ver) and is_binary(file),
+       do: hex_file_url(pkg, ver, file)
+
+  defp file_source_url(_), do: nil
+
+  defp hex_file_url(pkg, ver, file) do
+    "https://preview.hex.pm/preview/#{url_segment(pkg)}/#{url_segment(ver)}/show/#{url_path(file)}"
+  end
+
   defp hex_package_url(pkg, ver) when is_binary(ver), do: "https://hex.pm/packages/#{pkg}/#{ver}"
   defp hex_package_url(pkg, _ver), do: "https://hex.pm/packages/#{pkg}"
+
+  defp url_segment(value), do: URI.encode(value, &URI.char_unreserved?/1)
+
+  defp url_path(path) do
+    path
+    |> String.split("/")
+    |> Enum.map(&url_segment/1)
+    |> Enum.join("/")
+  end
 
   defp package_key(package, nil), do: package
   defp package_key(package, version), do: "#{package}@#{version}"

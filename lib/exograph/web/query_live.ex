@@ -5,6 +5,7 @@ defmodule Exograph.Web.QueryLive do
 
   import Exograph.Web.ResultFormatter, only: [display_name: 1, badge_class: 1]
 
+  alias Exograph.{DuckDBShards, ShardedIndex}
   alias Exograph.Storage.Schema
   alias Exograph.Web.IndexStats
   alias Exograph.Web.QueryExecutor
@@ -163,7 +164,8 @@ defmodule Exograph.Web.QueryLive do
       ) do
     line = String.to_integer(line)
     package_version = blank_to_nil(params["package-version"] || params["package_version"])
-    source = fetch_file_source(socket.assigns, file)
+    source_url_base = source_url_base(blank_to_nil(params["source-url"] || params["source_url"]))
+    source = fetch_file_source(socket.assigns, file, package, package_version)
 
     socket =
       socket
@@ -173,7 +175,8 @@ defmodule Exograph.Web.QueryLive do
           source: source,
           line: line,
           package: package,
-          package_version: package_version
+          package_version: package_version,
+          source_url_base: source_url_base
         }
       )
       |> push_event("scroll_to_line", %{line: line})
@@ -410,7 +413,16 @@ defmodule Exograph.Web.QueryLive do
                       <span :if={result.module} class="text-zinc-500 text-xs font-mono">
                         {result.module}
                       </span>
-                      <span class="ml-0 text-zinc-600 text-xs tabular-nums sm:ml-auto">
+                      <a
+                        :if={result.source_url}
+                        href={result.source_url}
+                        target="_blank"
+                        class="ml-0 text-zinc-600 hover:text-blue-400 text-xs tabular-nums sm:ml-auto"
+                        title="Open exact source line on Hex Preview"
+                      >
+                        line {result.line}
+                      </a>
+                      <span :if={!result.source_url} class="ml-0 text-zinc-600 text-xs tabular-nums sm:ml-auto">
                         line {result.line}
                       </span>
                       <button
@@ -419,6 +431,7 @@ defmodule Exograph.Web.QueryLive do
                         phx-value-line={to_string(result.line)}
                         phx-value-package={result.package}
                         phx-value-package-version={result.package_version || ""}
+                        phx-value-source-url={result.source_url || ""}
                         class="text-zinc-600 hover:text-zinc-400 cursor-pointer ml-1"
                         title="View full source"
                       >
@@ -437,7 +450,16 @@ defmodule Exograph.Web.QueryLive do
                         :for={{line_num, html, is_matched} <- result.preview}
                         class={"flex font-mono" <> if(is_matched, do: " bg-blue-900/20 border-l-2 border-l-blue-500", else: "")}
                       >
-                        <span class="w-10 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
+                        <a
+                          :if={file_group.source_url}
+                          href={file_group.source_url <> "#L#{line_num}"}
+                          target="_blank"
+                          class="w-10 text-right pr-3 text-zinc-600 hover:text-blue-400 shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums"
+                          title={"Open line #{line_num} on Hex Preview"}
+                        >{line_num}</a><span
+                          :if={!file_group.source_url}
+                          class="w-10 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums"
+                        >{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
                       </div>
                     </div>
                   </div>
@@ -538,7 +560,16 @@ defmodule Exograph.Web.QueryLive do
                 id={"source-line-#{line_num}"}
                 class={"flex font-mono" <> if(is_highlighted, do: " bg-blue-900/30 border-l-2 border-l-blue-500", else: "")}
               >
-                <span class="w-12 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums">{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
+                <a
+                  :if={@viewing_source.source_url_base}
+                  href={@viewing_source.source_url_base <> "#L#{line_num}"}
+                  target="_blank"
+                  class="w-12 text-right pr-3 text-zinc-600 hover:text-blue-400 shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums"
+                  title={"Open line #{line_num} on Hex Preview"}
+                >{line_num}</a><span
+                  :if={!@viewing_source.source_url_base}
+                  class="w-12 text-right pr-3 text-zinc-600 select-none shrink-0 bg-zinc-900/50 border-r border-zinc-800/50 tabular-nums"
+                >{line_num}</span><code class="px-3 min-w-max flex-1 text-zinc-300 whitespace-pre">{raw(html)}</code>
               </div>
             </div>
           </div>
@@ -602,19 +633,50 @@ defmodule Exograph.Web.QueryLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  defp fetch_file_source(assigns, relative_path) do
-    import Ecto.Query
-    prefix = assigns.prefix
-    repo = assigns.index.inverted.repo
-    source = Schema.files_source(prefix)
+  defp source_url_base(nil), do: nil
+  defp source_url_base(url), do: url |> String.split("#", parts: 2) |> hd()
 
-    from(f in source,
-      where: ilike(f.path, ^"%#{relative_path}"),
+  defp fetch_file_source(_assigns, _relative_path, _package, nil), do: nil
+
+  defp fetch_file_source(%{index: %ShardedIndex{shards: shards}}, relative_path, package, version) do
+    Enum.find_value(shards, fn shard ->
+      DuckDBShards.with_repo(shard, fn ->
+        shard
+        |> shard_index()
+        |> fetch_file_source_from_index(relative_path, package, version)
+      end)
+    end)
+  end
+
+  defp fetch_file_source(%{index: index}, relative_path, package, version) do
+    fetch_file_source_from_index(index, relative_path, package, version)
+  end
+
+  defp fetch_file_source_from_index(index, relative_path, package, version) do
+    import Ecto.Query
+
+    prefix = index.inverted.prefix
+    repo = index.inverted.repo
+    files_source = Schema.files_source(prefix)
+    versions_source = Schema.package_versions_source(prefix)
+    packages_source = Schema.packages_source(prefix)
+
+    from(f in files_source,
+      join: v in ^versions_source,
+      on: v.id == f.package_version_id,
+      join: p in ^packages_source,
+      on: p.id == v.package_id,
+      where: f.path == ^relative_path,
+      where: p.name == ^package,
+      where: v.version == ^version,
       limit: 1,
       select: f.source
     )
     |> repo.one()
   end
+
+  defp shard_index(%{index: index}), do: index
+  defp shard_index(index), do: index
 
   defp highlight_full_source(nil, _line), do: []
 

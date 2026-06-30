@@ -17,7 +17,8 @@ defmodule Exograph.Web.SearchResult do
     :fragment_line,
     :joined_label,
     :preview,
-    :package_version
+    :package_version,
+    :source_url
   ]
 
   def from(%Exograph.Hit{fragment: f, match: m}) do
