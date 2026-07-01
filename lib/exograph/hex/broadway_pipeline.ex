@@ -154,12 +154,14 @@ defmodule Exograph.Hex.BroadwayPipeline do
   defp index_with_retries(entry, index, opts) do
     retry_count = Keyword.get(opts, :retry_count, 3)
     retry_sleep = Keyword.get(opts, :retry_sleep, 1_000)
+    index_fun = Keyword.get(opts, :index_fun, &Exograph.Hex.Corpus.index_entry/3)
+    sleep_fun = Keyword.get(opts, :sleep_fun, &Process.sleep/1)
 
     Enum.reduce_while(0..retry_count, nil, fn attempt, _last_result ->
-      result = Exograph.Hex.Corpus.index_entry(entry, index, opts)
+      result = safe_index_entry(index_fun, entry, index, opts)
 
       if transient_error?(result) and attempt < retry_count do
-        Process.sleep(retry_sleep * (attempt + 1))
+        sleep_fun.(retry_sleep * (attempt + 1))
         {:cont, result}
       else
         {:halt, result}
@@ -167,14 +169,27 @@ defmodule Exograph.Hex.BroadwayPipeline do
     end)
   end
 
-  defp transient_error?({:error, reason}) do
-    text = inspect(reason)
+  defp safe_index_entry(index_fun, entry, index, opts) do
+    index_fun.(entry, index, opts)
+  rescue
+    error -> {:error, {error.__struct__, Exception.message(error)}}
+  catch
+    :exit, reason -> {:error, {:exit, reason}}
+    kind, reason -> {:error, {kind, reason}}
+  end
 
-    String.contains?(text, [
+  defp transient_error?({:error, reason}) do
+    reason
+    |> inspect()
+    |> String.downcase()
+    |> String.contains?([
       "queue_timeout",
       "connection not available",
       "request was dropped from queue",
-      "timed out"
+      "timed out",
+      "time out",
+      "timeout",
+      "transport_error"
     ])
   end
 
