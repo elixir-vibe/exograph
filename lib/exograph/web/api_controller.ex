@@ -286,17 +286,36 @@ defmodule Exograph.Web.APIController do
   defp stats_payload(index), do: Map.put(table_counts(index), "prefix", index.inverted.prefix)
 
   defp zero_counts do
-    Map.new(@stats_tables, fn table -> {Atom.to_string(table), 0} end)
+    @stats_tables
+    |> Map.new(fn table -> {Atom.to_string(table), 0} end)
+    |> Map.put("poisoned_structural_names", 0)
   end
 
   defp table_counts(index) do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    Map.new(@stats_tables, fn table ->
-      {Atom.to_string(table),
-       repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
-    end)
+    counts =
+      Map.new(@stats_tables, fn table ->
+        {Atom.to_string(table),
+         repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
+      end)
+
+    Map.put(counts, "poisoned_structural_names", poisoned_structural_names_count(index))
+  end
+
+  defp poisoned_structural_names_count(index) do
+    prefix = index.inverted.prefix
+    repo = index.inverted.repo
+    unknown = "%__exograph_unknown_atom__%"
+
+    from(f in Schema.fragments_source(prefix),
+      where: like(f.name, ^unknown) or like(f.module, ^unknown),
+      select: count(f.id)
+    )
+    |> repo.one(timeout: 30_000)
+  rescue
+    _ -> 0
   end
 
   defp shard_index(%{index: index}), do: index
@@ -309,9 +328,11 @@ defmodule Exograph.Web.APIController do
   defp decode_cursor(""), do: 0
 
   defp decode_cursor(encoded) do
-    case Base.url_decode64(encoded, padding: false) do
-      {:ok, decoded} -> String.to_integer(decoded)
-      :error -> 0
+    with {:ok, decoded} <- Base.url_decode64(encoded, padding: false),
+         {offset, ""} <- Integer.parse(decoded) do
+      offset
+    else
+      _ -> 0
     end
   end
 

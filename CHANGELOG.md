@@ -2,13 +2,17 @@
 
 ## Unreleased
 
-## 0.9.5 - 2026-06-29
+## 0.9.5 - 2026-07-02
 
 ### Fixed
 
+- Fixed a critical Hex-corpus parser/index poisoning bug where unknown package identifiers were silently replaced with `:__exograph_unknown_atom__`, causing structural search over the deployed Hex-wide index to return no matches for common patterns such as `Repo.get!(_, _)`.
+- Added parser and indexing regression coverage asserting structural identifiers round-trip and `Repo.get!(_, _)` matches indexed package source.
+- Added a `/api/stats` `poisoned_structural_names` counter so poisoned module/function names are visible in deployed indexes.
+- Hardened API cursor decoding so malformed cursors fall back to the first page instead of raising.
 - Production Hex reindex release tasks now refuse to publish staged indexes when package indexing errors remain, defaulting `EXOGRAPH_MAX_INDEX_ERRORS` to `0`.
-- Broadway indexing failures now preserve failure reasons instead of reporting `:unknown` when messages fail outside normal package result handling.
-- QuackDB shard repository transport receive/connect timeouts now default to `120s` and can be configured with `EXOGRAPH_QUACKDB_RECEIVE_TIMEOUT` / `EXOGRAPH_QUACKDB_CONNECT_TIMEOUT`, avoiding the transport's ungrounded ~16s default for long DuckDB commits.
+- Broadway indexing failures now preserve failure reasons and retry transient timeout/transport failures raised outside normal package result handling.
+- QuackDB shard repository transport receive/connect timeouts now default to `120s` and can be configured with `EXOGRAPH_QUACKDB_RECEIVE_TIMEOUT` / `EXOGRAPH_QUACKDB_CONNECT_TIMEOUT`.
 
 ## 0.9.4 - 2026-06-29
 

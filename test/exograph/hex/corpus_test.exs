@@ -3,6 +3,7 @@ defmodule Exograph.Hex.CorpusTest do
 
   alias Exograph.DuckDBSupport
   alias Exograph.Storage.SQL
+  alias Exograph.Web.SafeEval
 
   @moduletag :integration
 
@@ -89,6 +90,45 @@ defmodule Exograph.Hex.CorpusTest do
 
     assert definition_count > 0
     assert reference_count > 0
+  end
+
+  test "indexed package source preserves structural identifiers for search" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_identifier_fidelity_#{System.unique_integer([:positive])}"
+
+    source = """
+    defmodule Fidelity.Probe do
+      def handle_call(msg, _from, state) do
+        users = Repo.all(User)
+        ids = Enum.map(users, & &1.id)
+        {:reply, Repo.get!(User, msg.id), Map.put(state, :ids, ids)}
+      end
+    end
+    """
+
+    opts =
+      DuckDBSupport.opts(prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        package_version: [
+          ecosystem: :hex,
+          name: "identifier_fidelity",
+          version: "1.0.0",
+          source_ref: "hex:identifier_fidelity:1.0.0"
+        ]
+      )
+
+    assert {:ok, index} = Exograph.index_sources([{"lib/fidelity/probe.ex", source}], opts)
+
+    assert_structural_hits(index, ~s|Repo.get!(_, _)|)
+    assert_structural_hits(index, ~s|def handle_call(_, _, _) do ... end|)
+    assert_structural_hits(index, ~s|Enum.map(_, _)|)
+
+    fragments = indexed_fragments(prefix)
+    assert Enum.any?(fragments, &(&1.name == "handle_call"))
+    assert Enum.any?(fragments, &(&1.module == "Fidelity.Probe"))
+    refute Enum.any?(fragments, &String.contains?(&1.name || "", "__exograph_unknown_atom__"))
   end
 
   test "deferred fragment terms can be rebuilt from persisted fragment term arrays" do
@@ -186,6 +226,13 @@ defmodule Exograph.Hex.CorpusTest do
   end
 
   defp search_text(prefix, literal), do: Exograph.search_text(index!(prefix), literal)
+
+  defp assert_structural_hits(index, pattern) do
+    assert {:ok, query} =
+             SafeEval.eval(~s|from(f in Fragment, where: contains(f, "#{pattern}"), limit: 20)|)
+
+    assert {:ok, [_hit | _]} = Exograph.all(index, query, limit: 20)
+  end
 
   defp index!(prefix) do
     {:ok, index} =

@@ -49,7 +49,7 @@ defmodule Exograph.Storage.FragmentStore do
             extractors: [:ex_ast, :reach],
             defer_fragment_terms?: false,
             duckdb_insert_buffer: nil,
-            static_atoms: :existing
+            static_atoms: :indexed
 
   @type t :: %__MODULE__{
           repo: module(),

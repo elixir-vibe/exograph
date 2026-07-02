@@ -48,6 +48,21 @@ defmodule Exograph.Features.APITest do
       assert page1_lines != page2_lines
     end
 
+    test "malformed cursor falls back to first page" do
+      first_page =
+        api_post("/api/search", %{pattern: "def _ do ... end", limit: 2}) |> json_body()
+
+      malformed_cursor_page =
+        api_post("/api/search", %{
+          pattern: "def _ do ... end",
+          limit: 2,
+          cursor: Base.url_encode64("not-an-integer", padding: false)
+        })
+        |> json_body()
+
+      assert malformed_cursor_page["results"] == first_page["results"]
+    end
+
     test "expands structural predicate shorthand" do
       resp =
         api_post("/api/search", %{
@@ -146,6 +161,7 @@ defmodule Exograph.Features.APITest do
       assert is_integer(body["fragments"])
       assert is_integer(body["definitions"])
       assert is_integer(body["references"])
+      assert is_integer(body["poisoned_structural_names"])
       assert body["prefix"]
     end
   end
