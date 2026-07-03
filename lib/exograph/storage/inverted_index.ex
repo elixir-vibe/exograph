@@ -129,15 +129,15 @@ defmodule Exograph.Storage.InvertedIndex do
         where: regexp_matches(file.source, ^pattern),
         order_by: [asc: file.path, asc: fragment.line],
         limit: ^limit,
-        select: {fragment, file.source, file.path, version.version}
+        select: {fragment, file.source, file.path, version.version, file.ast}
       )
       |> Scope.where_scope(opts)
 
     hits =
       index.repo.all(query, timeout: 30_000)
-      |> Enum.map(fn {record, source, path, package_version} ->
+      |> Enum.map(fn {record, source, path, package_version, file_ast} ->
         Hit.new(
-          fragment: Hydration.fragment(record, source, path, package_version),
+          fragment: Hydration.fragment(record, source, path, package_version, nil, file_ast),
           score: 1.0
         )
       end)
@@ -155,7 +155,7 @@ defmodule Exograph.Storage.InvertedIndex do
       on: file.id == fragment.file_id,
       left_join: version in ^package_versions_source(index),
       on: version.id == fragment.package_version_id,
-      select: {fragment, file.source, file.path, version.version}
+      select: {fragment, file.source, file.path, version.version, file.ast}
     )
   end
 
@@ -165,7 +165,7 @@ defmodule Exograph.Storage.InvertedIndex do
       on: file.id == fragment.file_id,
       left_join: version in ^package_versions_source(index),
       on: version.id == fragment.package_version_id,
-      select: {fragment, nil, file.path, version.version}
+      select: {fragment, nil, file.path, version.version, file.ast}
     )
   end
 
@@ -221,19 +221,18 @@ defmodule Exograph.Storage.InvertedIndex do
   end
 
   defp hit(
-         {%FragmentRecord{} = record, source, path, package_version},
+         {%FragmentRecord{} = record, source, path, package_version, file_ast},
          _query,
          required_id_set,
          optional_id_set
        ) do
-    fragment = Hydration.fragment(record, source, path, package_version)
-    required_matches = MapSet.intersection(fragment.terms, required_id_set)
-    optional_matches = MapSet.intersection(fragment.terms, optional_id_set)
+    fragment = Hydration.fragment(record, source, path, package_version, nil, file_ast)
+    matched_terms = MapSet.union(required_id_set, optional_id_set)
 
     Hit.new(
       fragment: fragment,
-      score: MapSet.size(required_matches) * 10 + MapSet.size(optional_matches),
-      matched_terms: required_matches |> MapSet.union(optional_matches) |> MapSet.to_list()
+      score: MapSet.size(required_id_set) * 10 + MapSet.size(optional_id_set),
+      matched_terms: MapSet.to_list(matched_terms)
     )
   end
 

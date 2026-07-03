@@ -63,9 +63,8 @@ defmodule Exograph.Extractor.ExAST do
 
     with {:ok, ast} <- Exograph.ElixirParser.string_to_quoted(source, parser_opts(file, opts)) do
       package_context = package_context(opts)
-      source_file = SourceFile.new(file, source, package_context)
-
       ast = neutralize_atom_word_sigils(ast)
+      source_file = SourceFile.new(file, source, Map.put(package_context, :ast, ast))
       modules = collect_modules(ast)
 
       min_mass = effective_min_mass(file, source, opts)
@@ -81,6 +80,7 @@ defmodule Exograph.Extractor.ExAST do
 
   defp to_fragment(fingerprint, source_file, package_context, modules) do
     ast = fingerprint.ast
+    {node_pre, node_post} = Exograph.AST.Locator.locate(source_file.ast, ast)
     {kind, name, arity} = classify(ast)
     line = Map.get(fingerprint, :line, line(ast))
     exact_hash = fingerprint.hash
@@ -97,7 +97,10 @@ defmodule Exograph.Extractor.ExAST do
       package_id: package_context.package_id,
       package_version_id: package_context.package_version_id,
       file_id: nil,
+      file_ast: source_file.ast,
       ast: ast,
+      node_pre: node_pre,
+      node_post: node_post,
       kind: kind,
       module: containing_module(modules, line),
       name: name,

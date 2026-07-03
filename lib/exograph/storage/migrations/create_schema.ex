@@ -37,6 +37,7 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
       add(:path, :text, null: false)
       add(:source, :text, null: false)
+      add(:ast, :binary)
       add(:comments_text, :text, null: false, default: "")
       add(:sha256, :text, null: false)
       timestamps(type: :utc_datetime_usec)
@@ -61,7 +62,8 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
       add(:file_id, references(name(:files), on_delete: :delete_all))
       add(:content_hash, :binary)
-      add(:ast, :binary, null: false)
+      add(:node_pre, :integer)
+      add(:node_post, :integer)
       add(:kind, :text, null: false)
       add(:module, :text)
       add(:name, :text)
@@ -70,7 +72,6 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:end_line, :integer)
       add(:mass, :integer, null: false)
       add(:exact_hash, :binary)
-      add(:terms, {:array, :integer}, null: false, default: [])
       add(:sub_hashes, {:array, :bigint}, null: false, default: [])
       timestamps(type: :utc_datetime_usec)
     end
@@ -163,26 +164,6 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
     end
 
     create_indexes(:call_edges)
-
-    create_if_not_exists table(name(:tree_nodes), table_opts(primary_key: false)) do
-      add(:fragment_id, references(name(:fragments), on_delete: :delete_all),
-        null: false,
-        primary_key: true
-      )
-
-      add(:id, :integer, null: false, primary_key: true)
-      add(:parent_id, :integer)
-      add(:ordinal, :integer, null: false)
-      add(:role, :text)
-      add(:kind, :text, null: false)
-      add(:label, :text)
-      add(:line, :integer, null: false)
-      add(:preorder, :integer, null: false)
-      add(:postorder, :integer, null: false)
-      add(:depth, :integer, null: false)
-    end
-
-    create_indexes(:tree_nodes)
   end
 
   def down do

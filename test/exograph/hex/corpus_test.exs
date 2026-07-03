@@ -134,7 +134,7 @@ defmodule Exograph.Hex.CorpusTest do
            end)
   end
 
-  test "deferred fragment terms can be rebuilt from persisted fragment term arrays" do
+  test "fragment terms are materialized without persisted fragment term arrays" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)
     prefix = "exograph_duckdb_deferred_terms_#{System.unique_integer([:positive])}"
@@ -161,7 +161,7 @@ defmodule Exograph.Hex.CorpusTest do
     assert {:ok, _index} = Exograph.index_sources([{"lib/deferred/terms.ex", source}], opts)
     assert table_count(prefix, "fragments") > 0
     assert table_count(prefix, "terms") > 0
-    assert table_count(prefix, "fragment_terms") == 0
+    assert table_count(prefix, "fragment_terms") > 0
 
     assert :ok = Exograph.Storage.FragmentStore.rebuild_fragment_terms(opts)
     assert table_count(prefix, "fragment_terms") > 0

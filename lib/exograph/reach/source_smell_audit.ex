@@ -19,7 +19,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
   @default_anchor_candidate_batch_size 1_000
   @default_exact_candidate_batch_size 8_000
   @default_max_anchor_candidates 10_000
-  @candidate_fragment_fields [:id, :file_id, :ast, :kind, :line, :terms]
+  @candidate_fragment_fields [:id, :file_id, :node_pre, :node_post, :kind, :line]
 
   @doc """
   Scans `index` with source-pattern Reach smell `modules`.
@@ -307,8 +307,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
   defp verify_candidate_batch(rows, patterns, concurrency) do
     rows
     |> Task.async_stream(
-      fn {record, path, package_version, package} ->
-        fragment = candidate_fragment(record, path, package_version)
+      fn {record, path, package_version, package, file_ast} ->
+        fragment = candidate_fragment(record, path, package_version, file_ast)
         fragment_findings(fragment, package, patterns)
       end,
       max_concurrency: concurrency,
@@ -370,21 +370,26 @@ defmodule Exograph.Reach.SourceSmellAudit do
       where: fragment.id in ^ids,
       order_by: [asc: fragment.id],
       select:
-        {map(fragment, ^@candidate_fragment_fields), file.path, version.version, package.name}
+        {map(fragment, ^@candidate_fragment_fields), file.path, version.version, package.name,
+         file.ast}
     )
     |> index.inverted.repo.all()
   end
 
-  defp candidate_fragment(record, path, package_version) do
+  defp candidate_fragment(record, path, package_version, file_ast) do
     %{
       id: record.id,
       file_id: record.file_id,
       file: path,
       package_version: package_version,
-      ast: :erlang.binary_to_term(record.ast, [:safe]),
+      ast:
+        Exograph.AST.Locator.slice(
+          :erlang.binary_to_term(file_ast, [:safe]),
+          record.node_pre,
+          record.node_post
+        ),
       kind: record.kind,
-      line: record.line,
-      terms: MapSet.new(record.terms || [])
+      line: record.line
     }
   end
 
@@ -445,24 +450,15 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp fragment_findings(fragment, package, patterns) do
-    applicable =
-      Enum.filter(patterns, fn pattern ->
-        MapSet.subset?(pattern.required_term_ids, fragment.terms)
-      end)
+    if fragment.kind == :expression do
+      named = Map.new(patterns, &{&1.id, &1.pattern})
+      by_id = Map.new(patterns, &{&1.id, &1})
 
-    if applicable == [] do
-      []
+      fragment.ast
+      |> ExAST.Patcher.find_many(named)
+      |> Enum.map(&finding(fragment, package, Map.fetch!(by_id, &1.pattern), &1))
     else
-      named = Map.new(applicable, &{&1.id, &1.pattern})
-      by_id = Map.new(applicable, &{&1.id, &1})
-
-      if fragment.kind == :expression do
-        fragment.ast
-        |> ExAST.Patcher.find_many(named)
-        |> Enum.map(&finding(fragment, package, Map.fetch!(by_id, &1.pattern), &1))
-      else
-        []
-      end
+      []
     end
   rescue
     _error -> []

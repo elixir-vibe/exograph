@@ -31,7 +31,7 @@ defmodule Exograph.Storage.FactQuery do
         where: ilike(fact.qualified_name, ^"%#{escape_like(literal)}%"),
         order_by: [asc: fact.qualified_name, asc: fact.line],
         limit: ^limit,
-        select: {fragment, nil, file.path, version.version, fact}
+        select: {fragment, nil, file.path, version.version, fact, file.ast}
       )
       |> where_scope(opts)
 
@@ -59,23 +59,23 @@ defmodule Exograph.Storage.FactQuery do
   end
 
   defp hit(
-         {record, source, path, package_version, fact},
+         {record, source, path, package_version, fact, file_ast},
          {_table, Exograph.Storage.DefinitionRecord}
        ) do
     DefinitionHit.new(
       definition: Exograph.Storage.DefinitionRecord.to_definition(fact),
-      fragment: Hydration.fragment(record, source, path, package_version),
+      fragment: Hydration.fragment(record, source, path, package_version, nil, file_ast),
       score: 1.0
     )
   end
 
   defp hit(
-         {record, source, path, package_version, fact},
+         {record, source, path, package_version, fact, file_ast},
          {_table, Exograph.Storage.ReferenceRecord}
        ) do
     ReferenceHit.new(
       reference: Exograph.Storage.ReferenceRecord.to_reference(fact),
-      fragment: Hydration.fragment(record, source, path, package_version),
+      fragment: Hydration.fragment(record, source, path, package_version, nil, file_ast),
       score: 1.0
     )
   end

@@ -43,15 +43,15 @@ defmodule Exograph.DuckDB.TextSearch do
       left_join: package_version in ^Schema.package_versions_source(index.prefix),
       on: package_version.id == fragment.package_version_id,
       order_by: [desc: file.score, asc: file.path, asc: fragment.line],
-      select: {fragment, file.source, file.path, package_version.version}
+      select: {fragment, file.source, file.path, package_version.version, file.ast}
     )
   end
 
   defp query_hits(index, query, fallback) do
     index.repo.all(query)
-    |> Enum.map(fn {record, source, path, package_version} ->
+    |> Enum.map(fn {record, source, path, package_version, file_ast} ->
       Hit.new(
-        fragment: Hydration.fragment(record, source, path, package_version),
+        fragment: Hydration.fragment(record, source, path, package_version, nil, file_ast),
         score: 1.0
       )
     end)
@@ -92,6 +92,7 @@ defmodule Exograph.DuckDB.TextSearch do
           id: file.id,
           source: file.source,
           path: file.path,
+          ast: file.ast,
           score: match_bm25(^schema, file.id, ^literal)
         }
       )
@@ -110,7 +111,13 @@ defmodule Exograph.DuckDB.TextSearch do
     from(file in Schema.files_source(index.prefix),
       where: ilike(field(file, ^field), ^pattern),
       order_by: [asc: file.path],
-      select: %{id: file.id, source: file.source, path: file.path, score: type(^0.0, :float)}
+      select: %{
+        id: file.id,
+        source: file.source,
+        path: file.path,
+        ast: file.ast,
+        score: type(^0.0, :float)
+      }
     )
   end
 

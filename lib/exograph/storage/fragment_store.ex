@@ -117,12 +117,12 @@ defmodule Exograph.Storage.FragmentStore do
         left_join: file in ^files_source(store),
         on: file.id == fragment.file_id,
         where: fragment.id == ^fragment_id,
-        select: {fragment, file.source, file.path}
+        select: {fragment, file.source, file.path, file.ast}
       )
 
     case store.repo.one(query) do
-      {%FragmentRecord{} = record, source, path} ->
-        {:ok, Hydration.fragment(record, source, path)}
+      {%FragmentRecord{} = record, source, path, file_ast} ->
+        {:ok, Hydration.fragment(record, source, path, nil, nil, file_ast)}
 
       nil ->
         :error
@@ -135,11 +135,13 @@ defmodule Exograph.Storage.FragmentStore do
         left_join: file in ^files_source(store),
         on: file.id == fragment.file_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
-        select: {fragment, file.source, file.path}
+        select: {fragment, file.source, file.path, file.ast}
       )
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Hydration.fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path, file_ast} ->
+      Hydration.fragment(record, source, path, nil, nil, file_ast)
+    end)
   end
 
   def count(%__MODULE__{} = store) do
@@ -156,7 +158,7 @@ defmodule Exograph.Storage.FragmentStore do
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         offset: ^offset,
         limit: ^limit,
-        select: {fragment, file.source, file.path}
+        select: {fragment, file.source, file.path, file.ast}
       )
 
     query =
@@ -172,7 +174,9 @@ defmodule Exograph.Storage.FragmentStore do
       end
 
     store.repo.all(query)
-    |> Enum.map(fn {record, source, path} -> Hydration.fragment(record, source, path) end)
+    |> Enum.map(fn {record, source, path, file_ast} ->
+      Hydration.fragment(record, source, path, nil, nil, file_ast)
+    end)
   end
 
   def term_frequencies(_store, []), do: %{}
@@ -185,24 +189,22 @@ defmodule Exograph.Storage.FragmentStore do
     else
       ids = Map.values(term_to_id)
       id_to_term = Map.new(term_to_id, fn {term, id} -> {id, term} end)
-      id_set = MapSet.new(ids)
 
-      from(fragment in {source(store), FragmentRecord}, select: fragment.terms)
+      from(fragment_term in Schema.fragment_terms_source(store.prefix),
+        where: fragment_term.term_id in ^ids,
+        group_by: fragment_term.term_id,
+        select: {fragment_term.term_id, count(fragment_term.fragment_id)}
+      )
       |> store.repo.all()
-      |> Enum.flat_map(&(&1 || []))
-      |> Enum.filter(&MapSet.member?(id_set, &1))
-      |> Enum.frequencies()
       |> Map.new(fn {id, count} -> {Map.fetch!(id_to_term, id), count} end)
     end
   end
 
   @doc """
-  Rebuilds the normalized fragment-to-term lookup table from persisted fragment term arrays.
+  Ensures the normalized fragment-to-term lookup table exists.
 
-  Hex corpus indexing stores normalized term IDs on each fragment and defers the
-  wide `fragment_terms` table for ingestion speed. This function materializes
-  that lookup table before structural query workloads and final index
-  optimization.
+  Storage v2 materializes `fragment_terms` directly during indexing and no longer
+  persists duplicated term arrays on fragments, so this is intentionally a no-op.
   """
   @spec rebuild_fragment_terms(keyword()) :: :ok
   def rebuild_fragment_terms(opts) when is_list(opts) do
@@ -211,15 +213,7 @@ defmodule Exograph.Storage.FragmentStore do
   end
 
   @spec rebuild_fragment_terms(t()) :: :ok
-  def rebuild_fragment_terms(%__MODULE__{} = store) do
-    source = Schema.fragment_terms_source(store.prefix)
-
-    Exograph.Hex.StageTimings.measure(:fragment_terms_rebuild_delete, fn ->
-      store.repo.delete_all(source, timeout: :infinity)
-    end)
-
-    rebuild_fragment_terms_from_fragments(store, nil, 1_000)
-  end
+  def rebuild_fragment_terms(%__MODULE__{} = _store), do: :ok
 
   defp ensure_package_context(%__MODULE__{package: nil, package_version: nil} = store, _now),
     do: store
@@ -323,22 +317,22 @@ defmodule Exograph.Storage.FragmentStore do
 
   defp fetch_files_by_package_version_and_sha256(store, raw_files) do
     keys = MapSet.new(raw_files, &{&1.package_version_id, &1.sha256})
-    package_version_ids = raw_files |> Enum.map(& &1.package_version_id) |> Enum.uniq()
     sha256s = raw_files |> Enum.map(& &1.sha256) |> Enum.uniq()
 
     from(f in files_source(store),
-      where: f.package_version_id in ^package_version_ids and f.sha256 in ^sha256s,
-      select: {f.id, f.path, f.source, f.package_id, f.package_version_id, f.sha256}
+      where: f.sha256 in ^sha256s,
+      select: {f.id, f.path, f.source, f.ast, f.package_id, f.package_version_id, f.sha256}
     )
     |> store.repo.all()
-    |> Enum.filter(fn {_id, _path, _source, _package_id, package_version_id, sha256} ->
+    |> Enum.filter(fn {_id, _path, _source, _ast, _package_id, package_version_id, sha256} ->
       MapSet.member?(keys, {package_version_id, sha256})
     end)
-    |> Enum.map(fn {id, path, source, package_id, package_version_id, sha256} ->
+    |> Enum.map(fn {id, path, source, ast, package_id, package_version_id, sha256} ->
       %File{
         id: id,
         path: path,
         source: source,
+        ast: safe_term(ast),
         package_id: package_id,
         package_version_id: package_version_id,
         sha256: sha256,
@@ -359,7 +353,8 @@ defmodule Exograph.Storage.FragmentStore do
 
       File.new(fragment.file, source, %{
         package_id: package_id || fragment.package_id,
-        package_version_id: package_version_id || fragment.package_version_id
+        package_version_id: package_version_id || fragment.package_version_id,
+        ast: fragment.file_ast
       })
     end)
   end
@@ -428,11 +423,9 @@ defmodule Exograph.Storage.FragmentStore do
 
     resolved = resolved_hashed ++ unhashed
 
-    unless store.defer_fragment_terms? do
-      Exograph.Hex.StageTimings.measure(:fragment_store_upsert_fragment_terms, fn ->
-        upsert_fragment_terms(store, resolved, inserted_fragment_ids)
-      end)
-    end
+    Exograph.Hex.StageTimings.measure(:fragment_store_upsert_fragment_terms, fn ->
+      upsert_fragment_terms(store, resolved, inserted_fragment_ids)
+    end)
 
     resolved
   end
@@ -564,50 +557,6 @@ defmodule Exograph.Storage.FragmentStore do
 
   defp bulk_insert_fragment_terms(%{repo: repo}, source, entries) do
     bulk_insert_duckdb(repo, source, entries, chunk_size: 10_000)
-  end
-
-  defp rebuild_fragment_terms_from_fragments(store, cursor, batch_size) do
-    rows = fragment_term_rows(store, cursor, batch_size)
-
-    if rows == [] do
-      :ok
-    else
-      entries = fragment_term_entries(rows)
-      Exograph.Hex.StageTimings.count(:fragment_terms_rebuild_rows, length(entries))
-
-      Exograph.Hex.StageTimings.measure(:fragment_terms_rebuild_insert, fn ->
-        bulk_insert_fragment_terms(store, Schema.fragment_terms_source(store.prefix), entries)
-      end)
-
-      rows
-      |> List.last()
-      |> Map.fetch!(:id)
-      |> then(&rebuild_fragment_terms_from_fragments(store, &1, batch_size))
-    end
-  end
-
-  defp fragment_term_rows(store, cursor, batch_size) do
-    base =
-      from(fragment in {source(store), FragmentRecord},
-        order_by: [asc: fragment.id],
-        limit: ^batch_size,
-        select: map(fragment, [:id, :terms])
-      )
-
-    query = if cursor, do: where(base, [fragment], fragment.id > ^cursor), else: base
-
-    store.repo.all(query, timeout: :infinity)
-  end
-
-  defp fragment_term_entries(rows) do
-    rows
-    |> Enum.flat_map(fn %{id: fragment_id, terms: terms} ->
-      terms
-      |> List.wrap()
-      |> Enum.filter(&is_integer/1)
-      |> Enum.map(&%{fragment_id: fragment_id, term_id: &1})
-    end)
-    |> Enum.uniq()
   end
 
   defp bulk_insert_facts(repo, source, entries, opts) do
@@ -944,6 +893,9 @@ defmodule Exograph.Storage.FragmentStore do
 
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
+
+  defp safe_term(nil), do: nil
+  defp safe_term(binary) when is_binary(binary), do: :erlang.binary_to_term(binary, [:safe])
 
   defp package_from_version(%PackageVersion{} = version) do
     %Package{

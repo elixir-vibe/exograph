@@ -20,8 +20,7 @@ defmodule Exograph.Storage.Schema do
     PackageVersionRecord,
     ReferenceRecord,
     SchemaMigration,
-    TermRecord,
-    TreeNodeRecord
+    TermRecord
   }
 
   @tables [
@@ -70,9 +69,6 @@ defmodule Exograph.Storage.Schema do
       index([:caller_qualified_name], name: :caller)
       index([:callee_qualified_name], name: :callee)
       index([:file_id], name: :file)
-    end,
-    table(:tree_nodes, TreeNodeRecord, primary_key: false) do
-      index([:fragment_id], name: :fragment)
     end
   ]
 

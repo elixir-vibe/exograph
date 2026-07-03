@@ -7,6 +7,7 @@
 - Updated ExAST to `0.12.6` for tagged identifier support in structural matching, candidate terms, and symbol extraction.
 - Reworked Elixir parsing for indexed source to persist atom-free tagged identifiers instead of interning arbitrary package identifiers.
 - Bumped the storage/parser format gate so old v1 indexes and old shard manifests are refused instead of opened in a degraded mode.
+- Reworked storage v2 to persist whole-file ASTs once on `files`, hydrate fragments by node locators, drop persisted fragment AST blobs and fragment term arrays, and remove the unused `tree_nodes` table.
 
 ### Fixed
 

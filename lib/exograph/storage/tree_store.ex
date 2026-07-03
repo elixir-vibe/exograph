@@ -1,10 +1,12 @@
 defmodule Exograph.Storage.TreeStore do
   @moduledoc """
-  Durable AST tree node store backed by Ecto repositories.
+  Query-time AST tree helper backed by file-level AST storage.
   """
 
+  import Ecto.Query
+
   alias Exograph.DuckDB
-  alias Exograph.Storage.{FragmentRecord, Schema}
+  alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
   alias Exograph.Tree
 
   defstruct repo: nil, prefix: "exograph"
@@ -24,10 +26,18 @@ defmodule Exograph.Storage.TreeStore do
   def put_fragments(%__MODULE__{} = store, fragments) when is_list(fragments), do: {:ok, store}
 
   def nodes(%__MODULE__{} = store, fragment_id) do
-    case store.repo.get({Schema.fragments_source(store.prefix), FragmentRecord}, fragment_id) do
-      %FragmentRecord{} = record ->
+    query =
+      from(fragment in {Schema.fragments_source(store.prefix), FragmentRecord},
+        left_join: file in ^Schema.files_source(store.prefix),
+        on: file.id == fragment.file_id,
+        where: fragment.id == ^fragment_id,
+        select: {fragment, file.source, file.path, file.ast}
+      )
+
+    case store.repo.one(query) do
+      {%FragmentRecord{} = record, source, path, file_ast} ->
         record
-        |> FragmentRecord.to_fragment()
+        |> Hydration.fragment(source, path, nil, nil, file_ast)
         |> Tree.nodes()
 
       nil ->

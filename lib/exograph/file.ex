@@ -9,11 +9,12 @@ defmodule Exograph.File do
           package_version_id: integer() | nil,
           path: String.t(),
           source: String.t(),
+          ast: Macro.t() | nil,
           comments_text: String.t(),
           sha256: String.t()
         }
 
-  defstruct [:id, :package_id, :package_version_id, :path, :source, :comments_text, :sha256]
+  defstruct [:id, :package_id, :package_version_id, :path, :source, :ast, :comments_text, :sha256]
 
   def new(path, source, context \\ %{}) do
     sha256 = :crypto.hash(:sha256, source) |> Base.encode16(case: :lower)
@@ -24,6 +25,7 @@ defmodule Exograph.File do
       package_version_id: Map.get(context, :package_version_id),
       path: path,
       source: source,
+      ast: Map.get(context, :ast),
       comments_text: comments_text(source),
       sha256: sha256
     }

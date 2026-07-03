@@ -132,6 +132,8 @@ defmodule Exograph.DSL.Executor do
     :package_id,
     :package_version_id,
     :file_id,
+    :node_pre,
+    :node_post,
     :kind,
     :module,
     :name,
@@ -154,7 +156,7 @@ defmodule Exograph.DSL.Executor do
     :line,
     :column
   ]
-  @candidate_fragment_fields [:ast | @light_fragment_fields]
+  @candidate_fragment_fields @light_fragment_fields
 
   defp stream_filtered_fragments(index, plan, opts) do
     Stream.resource(
@@ -361,7 +363,7 @@ defmodule Exograph.DSL.Executor do
         on: package.id == version.package_id,
         order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
         limit: ^@stream_batch_size,
-        select: {fragment, file.source, file.path, version.version, package.name}
+        select: {fragment, file.source, file.path, version.version, package.name, file.ast}
       )
 
     where_after_cursor(query, cursor)
@@ -399,7 +401,8 @@ defmodule Exograph.DSL.Executor do
       file.source,
       file.path,
       version.version,
-      package.name
+      package.name,
+      file.ast
     })
   end
 
@@ -409,7 +412,8 @@ defmodule Exograph.DSL.Executor do
       nil,
       file.path,
       version.version,
-      package.name
+      package.name,
+      file.ast
     })
   end
 
@@ -432,8 +436,8 @@ defmodule Exograph.DSL.Executor do
 
   defp hydrate_fragment_batch(query, index) do
     index.inverted.repo.all(query)
-    |> Enum.map(fn {fragment, source, path, package_version, package_name} ->
-      hydrate_query_fragment(fragment, source, path, package_version, package_name)
+    |> Enum.map(fn {fragment, source, path, package_version, package_name, file_ast} ->
+      hydrate_query_fragment(fragment, source, path, package_version, package_name, file_ast)
     end)
   end
 
@@ -442,12 +446,13 @@ defmodule Exograph.DSL.Executor do
          source,
          path,
          package_version,
-         package_name
+         package_name,
+         file_ast
        ) do
-    Hydration.fragment(fragment, source, path, package_version, package_name)
+    Hydration.fragment(fragment, source, path, package_version, package_name, file_ast)
   end
 
-  defp hydrate_query_fragment(fragment, source, path, package_version, package_name)
+  defp hydrate_query_fragment(fragment, source, path, package_version, package_name, file_ast)
        when is_map(fragment) do
     %Fragment{
       id: fragment.id,
@@ -458,7 +463,14 @@ defmodule Exograph.DSL.Executor do
       file_id: fragment.file_id,
       file: path,
       source: source,
-      ast: :erlang.binary_to_term(fragment.ast, [:safe]),
+      ast:
+        Exograph.AST.Locator.slice(
+          :erlang.binary_to_term(file_ast, [:safe]),
+          fragment.node_pre,
+          fragment.node_post
+        ),
+      node_pre: fragment.node_pre,
+      node_post: fragment.node_post,
       kind: fragment.kind,
       module: fragment.module,
       name: fragment.name,
@@ -602,7 +614,7 @@ defmodule Exograph.DSL.Executor do
     |> where_second_binding_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
     |> where_fragment_scope_second(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, package_version, package_name, joined} ->
+    |> Enum.map(fn {fragment, source, path, package_version, package_name, file_ast, joined} ->
       {
         hydrate_joined_fragment(
           fragment,
@@ -610,6 +622,7 @@ defmodule Exograph.DSL.Executor do
           path,
           package_version,
           package_name,
+          file_ast,
           index,
           plan
         ),
@@ -668,7 +681,7 @@ defmodule Exograph.DSL.Executor do
     |> where_second_binding_predicates(predicates(plan, join.binding), join.binding, join.assoc)
     |> where_fragment_scope(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, package_version, package_name, joined} ->
+    |> Enum.map(fn {fragment, source, path, package_version, package_name, file_ast, joined} ->
       {
         hydrate_joined_fragment(
           fragment,
@@ -676,6 +689,7 @@ defmodule Exograph.DSL.Executor do
           path,
           package_version,
           package_name,
+          file_ast,
           index,
           plan
         ),
@@ -706,7 +720,7 @@ defmodule Exograph.DSL.Executor do
       distinct: fragment.id,
       order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
       limit: ^candidate_limit,
-      select: {fragment, file.source, file.path, first, second}
+      select: {fragment, file.source, file.path, file.ast, first, second}
     )
     |> JoinSemantics.where_call_definition_pairs(plan)
     |> where_structural_terms(index, plan)
@@ -723,9 +737,9 @@ defmodule Exograph.DSL.Executor do
     )
     |> where_fragment_scope(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, first, second} ->
+    |> Enum.map(fn {fragment, source, path, file_ast, first, second} ->
       {
-        Hydration.fragment(fragment, source, path),
+        Hydration.fragment(fragment, source, path, nil, nil, file_ast),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second)
@@ -762,7 +776,7 @@ defmodule Exograph.DSL.Executor do
       distinct: fragment.id,
       order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
       limit: ^candidate_limit,
-      select: {fragment, file.source, file.path, first, second, third}
+      select: {fragment, file.source, file.path, file.ast, first, second, third}
     )
     |> JoinSemantics.where_call_definition_pairs(plan)
     |> where_structural_terms(index, plan)
@@ -784,9 +798,9 @@ defmodule Exograph.DSL.Executor do
     )
     |> where_fragment_scope(opts)
     |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, first, second, third} ->
+    |> Enum.map(fn {fragment, source, path, file_ast, first, second, third} ->
       {
-        Hydration.fragment(fragment, source, path),
+        Hydration.fragment(fragment, source, path, nil, nil, file_ast),
         %{
           first_join.binding => joined_value(first_join.assoc, first),
           second_join.binding => joined_value(second_join.assoc, second),
@@ -848,6 +862,7 @@ defmodule Exograph.DSL.Executor do
         file.path,
         version.version,
         package.name,
+        file.ast,
         joined
       })
     end
@@ -863,6 +878,7 @@ defmodule Exograph.DSL.Executor do
         file.path,
         version.version,
         package.name,
+        file.ast,
         joined
       })
     end
@@ -875,6 +891,7 @@ defmodule Exograph.DSL.Executor do
       file.path,
       version.version,
       package.name,
+      file.ast,
       map(joined, @light_reference_fields)
     })
   end
@@ -886,6 +903,7 @@ defmodule Exograph.DSL.Executor do
       file.path,
       version.version,
       package.name,
+      file.ast,
       map(joined, @light_reference_fields)
     })
   end
@@ -895,7 +913,7 @@ defmodule Exograph.DSL.Executor do
       query,
       [joined, frag, file, version, package],
       {map(frag, @light_fragment_fields), file.source, file.path, version.version, package.name,
-       joined}
+       file.ast, joined}
     )
   end
 
@@ -906,6 +924,7 @@ defmodule Exograph.DSL.Executor do
       file.path,
       version.version,
       package.name,
+      file.ast,
       joined
     })
   end
@@ -958,11 +977,20 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_value(:calls, joined) when is_map(joined), do: struct(Exograph.CallEdge, joined)
 
-  defp hydrate_joined_fragment(fragment, source, path, package_version, package_name, index, plan) do
+  defp hydrate_joined_fragment(
+         fragment,
+         source,
+         path,
+         package_version,
+         package_name,
+         file_ast,
+         index,
+         plan
+       ) do
     if light_join_projection?(index, plan) do
       hydrate_light_fragment(fragment, source, path, package_version, package_name)
     else
-      Hydration.fragment(fragment, source, path, package_version, package_name)
+      Hydration.fragment(fragment, source, path, package_version, package_name, file_ast)
     end
   end
 
@@ -977,6 +1005,8 @@ defmodule Exograph.DSL.Executor do
       file_id: record.file_id,
       file: path,
       source: source,
+      node_pre: Map.get(record, :node_pre),
+      node_post: Map.get(record, :node_post),
       kind: record.kind,
       module: record.module,
       name: record.name,
@@ -1046,11 +1076,11 @@ defmodule Exograph.DSL.Executor do
       left_join: version in ^versions_source,
       on: version.id == fragment.package_version_id,
       where: fragment.id in ^ids,
-      select: {fragment, file.source, file.path, version.version}
+      select: {fragment, file.source, file.path, version.version, file.ast}
     )
     |> index.inverted.repo.all()
-    |> Map.new(fn {fragment, source, path, package_version} ->
-      hydrated = Hydration.fragment(fragment, source, path, package_version)
+    |> Map.new(fn {fragment, source, path, package_version, file_ast} ->
+      hydrated = Hydration.fragment(fragment, source, path, package_version, nil, file_ast)
       {hydrated.id, hydrated}
     end)
   end
@@ -1268,7 +1298,7 @@ defmodule Exograph.DSL.Executor do
         order_by: [asc: fact.qualified_name, asc: fact.line, asc: fact.id],
         offset: ^skip,
         limit: ^limit,
-        select: {fact, fragment, nil, file.path}
+        select: {fact, fragment, nil, file.path, file.ast}
       )
       |> where_source_predicates(predicates(plan, plan.binding), nil, source_name)
       |> where_scope(opts)
@@ -1303,24 +1333,24 @@ defmodule Exograph.DSL.Executor do
     {:ok, results}
   end
 
-  defp hit({fact, fragment, source, path}, {_table, DefinitionRecord}) do
+  defp hit({fact, fragment, source, path, file_ast}, {_table, DefinitionRecord}) do
     DefinitionHit.new(
       definition: DefinitionRecord.to_definition(fact),
-      fragment: hydrate_fragment(fragment, source, path),
+      fragment: hydrate_fragment(fragment, source, path, file_ast),
       score: 1.0
     )
   end
 
-  defp hit({fact, fragment, source, path}, {_table, ReferenceRecord}) do
+  defp hit({fact, fragment, source, path, file_ast}, {_table, ReferenceRecord}) do
     ReferenceHit.new(
       reference: ReferenceRecord.to_reference(fact),
-      fragment: hydrate_fragment(fragment, source, path),
+      fragment: hydrate_fragment(fragment, source, path, file_ast),
       score: 1.0
     )
   end
 
-  defp hydrate_fragment(nil, _source, _path), do: nil
+  defp hydrate_fragment(nil, _source, _path, _file_ast), do: nil
 
-  defp hydrate_fragment(fragment, source, path),
-    do: Hydration.fragment(fragment, source, path)
+  defp hydrate_fragment(fragment, source, path, file_ast),
+    do: Hydration.fragment(fragment, source, path, nil, nil, file_ast)
 end
