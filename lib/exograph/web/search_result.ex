@@ -1,7 +1,8 @@
 defmodule Exograph.Web.SearchResult do
   @moduledoc false
 
-  @unknown_atom "__exograph_unknown_atom__"
+  alias Exograph.Ident
+
   @definition_kinds [:def, :defp, :defmacro, :defmacrop]
 
   defstruct [
@@ -221,26 +222,33 @@ defmodule Exograph.Web.SearchResult do
   defp definition_head_name_arity({:when, _meta, [head | _guards]}),
     do: definition_head_name_arity(head)
 
-  defp definition_head_name_arity({name, _meta, args}) when is_atom(name) and is_list(args),
-    do: {Atom.to_string(name), length(args)}
+  defp definition_head_name_arity({name, _meta, args}) when is_list(args) do
+    if identifier?(name), do: {identifier_name(name), length(args)}, else: {nil, nil}
+  end
 
-  defp definition_head_name_arity({name, _meta, nil}) when is_atom(name),
-    do: {Atom.to_string(name), 0}
+  defp definition_head_name_arity({name, _meta, nil}) do
+    if identifier?(name), do: {identifier_name(name), 0}, else: {nil, nil}
+  end
 
   defp definition_head_name_arity(_head), do: {nil, nil}
 
-  defp module_name({:__aliases__, _meta, parts}) when is_list(parts),
-    do: Enum.map_join(parts, ".", &to_string/1)
+  defp module_name({:__aliases__, _meta, parts}) when is_list(parts) do
+    if Enum.all?(parts, &identifier?/1),
+      do: Enum.map_join(parts, ".", &identifier_name/1),
+      else: nil
+  end
 
   defp module_name(atom) when is_atom(atom), do: Atom.to_string(atom)
-  defp module_name(_other), do: nil
+  defp module_name(ident), do: if(Ident.ident?(ident), do: Ident.name(ident), else: nil)
 
   defp clean_name(nil), do: nil
   defp clean_name(name) when is_atom(name), do: clean_name(Atom.to_string(name))
+  defp clean_name(name) when is_binary(name), do: name
 
-  defp clean_name(name) when is_binary(name) do
-    if String.contains?(name, @unknown_atom), do: nil, else: name
-  end
+  defp identifier?(value), do: is_atom(value) or Ident.ident?(value)
+
+  defp identifier_name(value) when is_atom(value), do: Atom.to_string(value)
+  defp identifier_name(value), do: Ident.name(value)
 
   defp relative_path(nil), do: ""
   defp relative_path(path) when is_binary(path), do: path

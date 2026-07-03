@@ -1,9 +1,13 @@
 defmodule Exograph.ElixirParserTest do
   use ExUnit.Case, async: false
 
-  test "indexed static atom mode preserves structural identifiers without interning atom payloads" do
-    prefix = "exograph_parser_indexed_#{System.unique_integer([:positive])}"
-    module = Module.concat([Macro.camelize(prefix)])
+  alias Exograph.Ident
+
+  defp id(name), do: Ident.tag(name)
+
+  test "parser emits tagged identifiers and does not intern arbitrary source identifiers" do
+    prefix = "exograph_parser_tagged_#{System.unique_integer([:positive])}"
+    module = Macro.camelize(prefix)
     function = "#{prefix}_function"
     variable = "#{prefix}_variable"
     local_call = "#{prefix}_local_call"
@@ -12,114 +16,106 @@ defmodule Exograph.ElixirParserTest do
     literal = "#{prefix}_literal"
 
     source = """
-    defmodule #{inspect(module)} do
+    defmodule #{module} do
       @value :#{literal}
       def #{function}(#{variable}) do
         %{#{map_key}: :#{literal}}
-        #{local_call} #{variable}, #{keyword}: :#{literal}
+        #{local_call}(#{variable}, #{keyword}: :#{literal})
       end
     end
     """
 
-    assert {:ok, ast} =
-             Exograph.ElixirParser.string_to_quoted(source,
-               line: 1,
-               columns: true,
-               static_atoms: :indexed
-             )
+    before_count = :erlang.system_info(:atom_count)
 
-    rendered = Macro.to_string(ast)
-    assert rendered =~ inspect(module)
-    assert rendered =~ function
-    assert rendered =~ variable
-    assert rendered =~ local_call
-    assert rendered =~ "__exograph_unknown_atom__"
-    assert_raise ArgumentError, fn -> String.to_existing_atom(keyword) end
-    assert_raise ArgumentError, fn -> String.to_existing_atom(map_key) end
-    assert_raise ArgumentError, fn -> String.to_existing_atom(literal) end
-  end
+    assert {:ok, ast} = Exograph.ElixirParser.string_to_quoted(source, line: 1, columns: true)
 
-  test "indexed static atom mode preserves definitions whose first argument is an atom literal" do
-    prefix = "exograph_parser_atom_arg_#{System.unique_integer([:positive])}"
-    function = "#{prefix}_function"
-    literal = "#{prefix}_literal"
+    after_count = :erlang.system_info(:atom_count)
+    assert after_count - before_count < 20
 
-    source = """
-    def #{function}(:#{literal}) do
-      :ok
+    assert contains?(ast, id(module))
+    assert contains?(ast, id(function))
+    assert contains?(ast, id(variable))
+    assert contains?(ast, id(local_call))
+    assert contains?(ast, id(keyword))
+    assert contains?(ast, id(map_key))
+    assert contains?(ast, id(literal))
+
+    for name <- [module, function, variable, local_call, keyword, map_key, literal] do
+      assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
     end
-    """
-
-    assert {:ok, ast} =
-             Exograph.ElixirParser.string_to_quoted(source,
-               line: 1,
-               columns: true,
-               static_atoms: :indexed
-             )
-
-    rendered = Macro.to_string(ast)
-    assert rendered =~ function
-    assert rendered =~ "__exograph_unknown_atom__"
-    assert_raise ArgumentError, fn -> String.to_existing_atom(literal) end
   end
 
-  test "indexed static atom mode preserves common structural search shapes" do
-    prefix = "exograph_parser_shapes_#{System.unique_integer([:positive])}"
-    module = Module.concat([Macro.camelize(prefix)])
-
+  test "parser preserves structural search shapes with tagged identifiers" do
     source = """
-    defmodule #{inspect(module)} do
+    defmodule MyApp.Server do
+      alias MyApp.User
+      @moduledoc false
+
       def handle_call(msg, from, state) do
         users = Repo.all(User)
         ids = Enum.map(users, & &1.id)
+        %MyStruct{field: msg}
         {:reply, Repo.get!(User, msg.id), state}
       end
     end
     """
 
-    assert {:ok, ast} =
-             Exograph.ElixirParser.string_to_quoted(source,
-               line: 1,
-               columns: true,
-               static_atoms: :indexed
-             )
+    assert {:ok, ast} = Exograph.ElixirParser.string_to_quoted(source, line: 1, columns: true)
 
-    rendered = Macro.to_string(ast)
-    assert rendered =~ inspect(module)
-    assert rendered =~ "handle_call(msg, from, state)"
-    assert rendered =~ "Repo.all(User)"
-    assert rendered =~ "Enum.map(users"
-    assert rendered =~ "Repo.get!(User, msg.id)"
+    assert matches_any?(ast, "Repo.get!(_, _)")
+    assert matches_any?(ast, "Enum.map(_, _)")
+    assert matches_any?(ast, "def handle_call(_, _, _) do ... end")
+    assert matches_any?(ast, "%MyStruct{field: _}")
+    assert matches_any?(ast, "alias MyApp.User")
+    assert matches_any?(ast, "@moduledoc _")
   end
 
-  test "existing static atom mode remains an explicit lossy legacy mode" do
-    prefix = "exograph_parser_unknown_#{System.unique_integer([:positive])}"
-
+  test "term binaries are deterministic regardless of previously existing atoms" do
     source = """
-    defmodule #{Macro.camelize(prefix)} do
-      @value :#{prefix}_literal
-      def #{prefix}_function, do: @value
+    defmodule DeterministicExample do
+      def call(value), do: Repo.get!(User, value)
     end
     """
 
-    assert {:ok, ast} =
-             Exograph.ElixirParser.string_to_quoted(source,
-               line: 1,
-               columns: true,
-               static_atoms: :existing
-             )
+    assert {:ok, ast1} = Exograph.ElixirParser.string_to_quoted(source, line: 1, columns: true)
 
-    assert Macro.to_string(ast) =~ "__exograph_unknown_atom__"
-    assert_raise ArgumentError, fn -> String.to_existing_atom("#{prefix}_literal") end
-    assert_raise ArgumentError, fn -> String.to_existing_atom("#{prefix}_function") end
+    _ = :persistent_term
+    _ = Enum.map([:calendar, :crypto, :gen_tcp], &:code.ensure_loaded/1)
+
+    assert {:ok, ast2} = Exograph.ElixirParser.string_to_quoted(source, line: 1, columns: true)
+
+    assert :erlang.term_to_binary(ast1) == :erlang.term_to_binary(ast2)
   end
 
-  test "create static atom mode preserves opt-in behavior" do
-    name = "exograph_parser_created_#{System.unique_integer([:positive])}"
+  test "legacy static_atoms options are ignored and remain atom-free" do
+    name = "exograph_parser_ignored_option_#{System.unique_integer([:positive])}"
     source = ":#{name}"
 
     assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
-    assert {:ok, _ast} = Exograph.ElixirParser.string_to_quoted(source, static_atoms: :create)
-    assert String.to_existing_atom(name) == String.to_atom(name)
+
+    for mode <- [:create, :existing, :indexed] do
+      assert {:ok, ast} = Exograph.ElixirParser.string_to_quoted(source, static_atoms: mode)
+      assert ast == id(name)
+      assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+    end
+  end
+
+  defp matches_any?(ast, pattern) do
+    {_ast, matched?} =
+      Macro.prewalk(ast, false, fn node, matched? ->
+        matched? = matched? or match?({:ok, _}, ExAST.Pattern.match(node, pattern))
+        {node, matched?}
+      end)
+
+    matched?
+  end
+
+  defp contains?(term, wanted) do
+    term == wanted or
+      cond do
+        is_tuple(term) -> term |> Tuple.to_list() |> Enum.any?(&contains?(&1, wanted))
+        is_list(term) -> Enum.any?(term, &contains?(&1, wanted))
+        true -> false
+      end
   end
 end

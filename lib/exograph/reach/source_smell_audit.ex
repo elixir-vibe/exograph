@@ -19,7 +19,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
   @default_anchor_candidate_batch_size 1_000
   @default_exact_candidate_batch_size 8_000
   @default_max_anchor_candidates 10_000
-  @candidate_fragment_fields [:id, :file_id, :ast, :line, :terms]
+  @candidate_fragment_fields [:id, :file_id, :ast, :kind, :line, :terms]
 
   @doc """
   Scans `index` with source-pattern Reach smell `modules`.
@@ -279,7 +279,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp finding_key(finding) do
-    {finding.check, finding.kind, finding.file, finding.line, finding.message}
+    {finding.check, finding.kind, finding.package, finding.package_version, finding.file,
+     finding.line, finding.message}
   end
 
   defp candidate_batch_size(opts) do
@@ -380,7 +381,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
       file_id: record.file_id,
       file: path,
       package_version: package_version,
-      ast: :erlang.binary_to_term(record.ast),
+      ast: :erlang.binary_to_term(record.ast, [:safe]),
+      kind: record.kind,
       line: record.line,
       terms: MapSet.new(record.terms || [])
     }
@@ -454,9 +456,13 @@ defmodule Exograph.Reach.SourceSmellAudit do
       named = Map.new(applicable, &{&1.id, &1.pattern})
       by_id = Map.new(applicable, &{&1.id, &1})
 
-      fragment.ast
-      |> ExAST.Patcher.find_many(named)
-      |> Enum.map(&finding(fragment, package, Map.fetch!(by_id, &1.pattern), &1))
+      if fragment.kind == :expression do
+        fragment.ast
+        |> ExAST.Patcher.find_many(named)
+        |> Enum.map(&finding(fragment, package, Map.fetch!(by_id, &1.pattern), &1))
+      else
+        []
+      end
     end
   rescue
     _error -> []

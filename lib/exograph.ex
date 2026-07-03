@@ -36,7 +36,7 @@ defmodule Exograph do
 
   alias Exograph.Extractor.ExAST, as: ExASTExtractor
 
-  alias Exograph.Storage.{FragmentStore, InvertedIndex, Schema, TreeStore}
+  alias Exograph.Storage.{Format, FragmentStore, InvertedIndex, Schema, TreeStore}
 
   import Ecto.Query, only: [from: 2]
 
@@ -84,7 +84,12 @@ defmodule Exograph do
       Keyword.get(opts, :duckdb_threads)
     )
 
-    if Keyword.get(opts, :migrate?, false), do: Exograph.DuckDB.migrate!(opts)
+    if Keyword.get(opts, :migrate?, false) do
+      Exograph.DuckDB.migrate!(opts)
+    else
+      Format.ensure_current!(Keyword.fetch!(opts, :repo), Keyword.get(opts, :prefix, "exograph"))
+    end
+
     store_opts = Keyword.put(store_opts, :migrate?, false)
 
     store_opts_without_migration = Keyword.put(store_opts, :migrate?, false)

@@ -4,7 +4,7 @@ defmodule Exograph.Extractor.ExAST do
   """
 
   alias ExDNA.AST.Fingerprint
-  alias Exograph.{Fragment, Package, PackageVersion}
+  alias Exograph.{Fragment, Ident, Package, PackageVersion}
   alias Exograph.File, as: SourceFile
 
   @default_opts [min_mass: 15, literal_mode: :keep, normalize_pipes: true]
@@ -168,11 +168,11 @@ defmodule Exograph.Extractor.ExAST do
   defp collect_modules(ast) do
     {_ast, modules} =
       Macro.prewalk(ast, [], fn
-        {:defmodule, meta, [{:__aliases__, _, parts} | _]} = node, acc when is_list(meta) ->
-          if Enum.all?(parts, &is_atom/1) do
+        {:defmodule, meta, [module_ast | _]} = node, acc when is_list(meta) ->
+          if module = alias_name(module_ast) do
             line = Keyword.get(meta, :line, 0)
             end_line = Keyword.get(meta, :end, []) |> Keyword.get(:line, 999_999)
-            {node, [{Enum.join(parts, "."), line, end_line} | acc]}
+            {node, [{module, line, end_line} | acc]}
           else
             {node, acc}
           end
@@ -217,11 +217,13 @@ defmodule Exograph.Extractor.ExAST do
 
   defp classify({form, _meta, [head | _]}) when form in [:def, :defp, :defmacro, :defmacrop] do
     case unwrap_head(head) do
-      {name, _, nil} when is_atom(name) ->
-        {form, Atom.to_string(name), 0}
+      {name, _, nil} ->
+        if identifier?(name), do: {form, identifier_name(name), 0}, else: {form, nil, nil}
 
-      {name, _, args} when is_atom(name) and is_list(args) ->
-        {form, Atom.to_string(name), length(args)}
+      {name, _, args} when is_list(args) ->
+        if identifier?(name),
+          do: {form, identifier_name(name), length(args)},
+          else: {form, nil, nil}
 
       _ ->
         {form, nil, nil}
@@ -238,10 +240,17 @@ defmodule Exograph.Extractor.ExAST do
   defp unwrap_head(head), do: head
 
   defp alias_name({:__aliases__, _, parts}) do
-    if Enum.all?(parts, &is_atom/1), do: Enum.join(parts, "."), else: nil
+    if Enum.all?(parts, &identifier?/1),
+      do: parts |> Enum.map(&identifier_name/1) |> Enum.join("."),
+      else: nil
   end
 
   defp alias_name(_), do: nil
+
+  defp identifier?(value), do: is_atom(value) or Ident.ident?(value)
+
+  defp identifier_name(value) when is_atom(value), do: Atom.to_string(value)
+  defp identifier_name(value), do: Ident.name(value)
 
   defp line({_form, meta, _args}), do: Keyword.get(meta, :line, 0)
   defp line(_), do: 0

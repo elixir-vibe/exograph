@@ -1,6 +1,8 @@
 defmodule Exograph.DuckDBShards do
   @moduledoc false
 
+  alias Exograph.Storage.Format
+
   defmodule Manifest do
     @moduledoc false
 
@@ -84,6 +86,8 @@ defmodule Exograph.DuckDBShards do
   def open(manifest, opts \\ [])
 
   def open(%Manifest{} = manifest, opts) do
+    ensure_manifest_current!(manifest)
+
     port_base = Keyword.get(opts, :port_base, 9_700)
     duckdb_threads = Keyword.get(opts, :duckdb_threads)
     duckdb_memory_limit = Keyword.get(opts, :duckdb_memory_limit)
@@ -107,6 +111,8 @@ defmodule Exograph.DuckDBShards do
         uri = QuackDB.Server.uri(server)
         dynamic_repo = start_repo!(name, uri, token, repo_opts(opts))
 
+        Format.ensure_current_or_empty!(dynamic_repo, shard.prefix)
+
         %{
           shard
           | repo: Exograph.DuckDBRepo,
@@ -121,6 +127,15 @@ defmodule Exograph.DuckDBShards do
   end
 
   def open(path, opts) when is_binary(path), do: path |> load_manifest() |> open(opts)
+
+  defp ensure_manifest_current!(%Manifest{version: version}) do
+    if version == Format.current_manifest_version() do
+      :ok
+    else
+      raise ArgumentError,
+            "refusing to open Exograph shard manifest version #{inspect(version)}; expected #{Format.current_manifest_version()}"
+    end
+  end
 
   def stop(shards) when is_list(shards) do
     Enum.each(shards, &stop/1)
@@ -167,6 +182,7 @@ defmodule Exograph.DuckDBShards do
 
   def manifest(shards, opts \\ []) do
     %Manifest{
+      version: Format.current_manifest_version(),
       shard_count: length(shards),
       prefix: Keyword.get(opts, :prefix),
       shards:

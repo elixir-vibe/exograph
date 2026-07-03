@@ -161,7 +161,7 @@ defmodule Exograph.Features.APITest do
       assert is_integer(body["fragments"])
       assert is_integer(body["definitions"])
       assert is_integer(body["references"])
-      assert is_integer(body["poisoned_structural_names"])
+      refute Map.has_key?(body, "poisoned_structural_names")
       assert body["prefix"]
     end
   end

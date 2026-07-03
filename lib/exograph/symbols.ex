@@ -1,6 +1,8 @@
 defmodule Exograph.Symbols do
   @moduledoc false
 
+  alias Exograph.Ident
+
   @type result :: %{
           defs: MapSet.t(String.t()),
           refs: MapSet.t(String.t()),
@@ -40,7 +42,7 @@ defmodule Exograph.Symbols do
        when form in [:def, :defp, :defmacro, :defmacrop] do
     case function_head(head) do
       {name, arity} ->
-        {node, acc |> put(:defs, "#{name}/#{arity}") |> put(:functions, Atom.to_string(name))}
+        {node, acc |> put(:defs, "#{name}/#{arity}") |> put(:functions, name)}
 
       nil ->
         {node, acc}
@@ -59,21 +61,28 @@ defmodule Exograph.Symbols do
     end
   end
 
-  defp visit({{:., _, [module_ast, fun]}, _, args} = node, acc)
-       when is_atom(fun) and is_list(args) do
-    case alias_name(module_ast) do
-      nil -> {node, put(acc, :refs, "#{fun}/#{length(args)}")}
-      module -> {node, put(acc, :refs, "#{module}.#{fun}/#{length(args)}")}
+  defp visit({{:., _, [module_ast, fun]}, _, args} = node, acc) when is_list(args) do
+    if identifier?(fun) do
+      fun = identifier_name(fun)
+
+      case alias_name(module_ast) do
+        nil -> {node, put(acc, :refs, "#{fun}/#{length(args)}")}
+        module -> {node, put(acc, :refs, "#{module}.#{fun}/#{length(args)}")}
+      end
+    else
+      {node, acc}
     end
   end
 
-  defp visit({name, _, args} = node, acc) when is_atom(name) and is_list(args) do
-    if name in [:__aliases__, :., :..., :_] do
-      {node, acc}
+  defp visit({name, _, args} = node, acc) when is_list(args) do
+    if identifier?(name) and not synthetic_call?(name) do
+      {node, put(acc, :refs, "#{identifier_name(name)}/#{length(args)}")}
     else
-      {node, put(acc, :refs, "#{name}/#{length(args)}")}
+      {node, acc}
     end
   end
+
+  defp visit({:__exograph_ident__, _name} = node, acc), do: {node, acc}
 
   defp visit({:__aliases__, _, _} = node, acc) do
     case alias_name(node) do
@@ -89,10 +98,14 @@ defmodule Exograph.Symbols do
   defp visit(node, acc), do: {node, acc}
 
   defp function_head({:when, _, [head | _]}), do: function_head(head)
-  defp function_head({name, _, nil}) when is_atom(name), do: {name, 0}
 
-  defp function_head({name, _, args}) when is_atom(name) and is_list(args),
-    do: {name, length(args)}
+  defp function_head({name, _, nil}) do
+    if identifier?(name), do: {identifier_name(name), 0}, else: nil
+  end
+
+  defp function_head({name, _, args}) when is_list(args) do
+    if identifier?(name), do: {identifier_name(name), length(args)}, else: nil
+  end
 
   defp function_head(_), do: nil
 
@@ -116,10 +129,20 @@ defmodule Exograph.Symbols do
   defp aliases_from(_), do: []
 
   defp alias_name({:__aliases__, _, parts}) when is_list(parts) do
-    if Enum.all?(parts, &is_atom/1), do: Enum.join(parts, "."), else: nil
+    if Enum.all?(parts, &identifier?/1),
+      do: parts |> Enum.map(&identifier_name/1) |> Enum.join("."),
+      else: nil
   end
 
   defp alias_name(_), do: nil
+
+  defp identifier?(value), do: is_atom(value) or Ident.ident?(value)
+
+  defp identifier_name(value) when is_atom(value), do: Atom.to_string(value)
+  defp identifier_name(value), do: Ident.name(value)
+
+  defp synthetic_call?(name) when is_atom(name), do: name in [:__aliases__, :., :..., :_]
+  defp synthetic_call?(_name), do: false
 
   defp put(acc, _key, nil), do: acc
 

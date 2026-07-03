@@ -6,7 +6,7 @@ defmodule Exograph.Extractor.Reach do
   callee nodes, and call edges with stable Exograph IDs.
   """
 
-  alias Exograph.{CallEdge, FragmentLocator, GraphNode}
+  alias Exograph.{CallEdge, FragmentLocator, GraphNode, Ident}
 
   def extract_files(files, fragments_by_file) do
     if Code.ensure_loaded?(Reach) do
@@ -91,7 +91,7 @@ defmodule Exograph.Extractor.Reach do
     |> Enum.map(fn node ->
       name = node.meta[:name]
       arity = node.meta[:arity]
-      definition = definitions[{Atom.to_string(name), arity}]
+      definition = definitions[{function_name(name), arity}]
       line = source_line(node) || maybe_field(definition, :line)
       column = source_column(node) || maybe_field(definition, :column)
       module = maybe_field(definition, :module)
@@ -211,7 +211,11 @@ defmodule Exograph.Extractor.Reach do
 
   defp term_name(value) when is_atom(value), do: Atom.to_string(value)
   defp term_name(value) when is_binary(value), do: value
-  defp term_name(value) when is_tuple(value), do: Macro.to_string(value)
+
+  defp term_name(value) when is_tuple(value) do
+    if Ident.ident?(value), do: Ident.name(value), else: Macro.to_string(value)
+  end
+
   defp term_name(value), do: to_string(value)
 
   defp reach_node_id(nil), do: nil

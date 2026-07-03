@@ -57,13 +57,13 @@ defmodule Exograph.Web.SearchResultTest do
     assert result.package_version == "1.2.3"
   end
 
-  test "internal unknown atom placeholders are hidden" do
+  test "fragment names are displayed verbatim" do
     hit = %Hit{
       fragment: %Fragment{
         file: "/tmp/sources/demo-1.0.0/lib/demo.ex",
         kind: :module,
-        name: "__exograph_unknown_atom__.__exograph_unknown_atom__",
-        module: "__exograph_unknown_atom__",
+        name: "Demo.App",
+        module: "Demo",
         line: 1
       },
       match: nil
@@ -71,7 +71,7 @@ defmodule Exograph.Web.SearchResultTest do
 
     result = SearchResult.from(hit)
 
-    assert result.name == nil
-    assert result.module == nil
+    assert result.name == "Demo.App"
+    assert result.module == "Demo"
   end
 end

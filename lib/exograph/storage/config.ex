@@ -42,7 +42,7 @@ defmodule Exograph.Storage.Config do
       bm25?: Keyword.get(opts, :bm25?, true),
       defer_fragment_terms?: Keyword.get(opts, :defer_fragment_terms?, false),
       duckdb_insert_buffer: Keyword.get(opts, :duckdb_insert_buffer),
-      static_atoms: Keyword.get(opts, :static_atoms, :indexed)
+      static_atoms: Keyword.get(opts, :static_atoms, :tagged)
     }
 
     module

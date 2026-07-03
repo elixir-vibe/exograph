@@ -286,9 +286,7 @@ defmodule Exograph.Web.APIController do
   defp stats_payload(index), do: Map.put(table_counts(index), "prefix", index.inverted.prefix)
 
   defp zero_counts do
-    @stats_tables
-    |> Map.new(fn table -> {Atom.to_string(table), 0} end)
-    |> Map.put("poisoned_structural_names", 0)
+    Map.new(@stats_tables, fn table -> {Atom.to_string(table), 0} end)
   end
 
   defp table_counts(index) do
@@ -301,21 +299,7 @@ defmodule Exograph.Web.APIController do
          repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
       end)
 
-    Map.put(counts, "poisoned_structural_names", poisoned_structural_names_count(index))
-  end
-
-  defp poisoned_structural_names_count(index) do
-    prefix = index.inverted.prefix
-    repo = index.inverted.repo
-    unknown = "%__exograph_unknown_atom__%"
-
-    from(f in Schema.fragments_source(prefix),
-      where: like(f.name, ^unknown) or like(f.module, ^unknown),
-      select: count(f.id)
-    )
-    |> repo.one(timeout: 30_000)
-  rescue
-    _ -> 0
+    counts
   end
 
   defp shard_index(%{index: index}), do: index

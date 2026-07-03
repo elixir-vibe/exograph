@@ -128,7 +128,10 @@ defmodule Exograph.Hex.CorpusTest do
     fragments = indexed_fragments(prefix)
     assert Enum.any?(fragments, &(&1.name == "handle_call"))
     assert Enum.any?(fragments, &(&1.module == "Fidelity.Probe"))
-    refute Enum.any?(fragments, &String.contains?(&1.name || "", "__exograph_unknown_atom__"))
+
+    assert Enum.all?(fragments, fn fragment ->
+             is_nil(fragment.name) or is_binary(fragment.name)
+           end)
   end
 
   test "deferred fragment terms can be rebuilt from persisted fragment term arrays" do

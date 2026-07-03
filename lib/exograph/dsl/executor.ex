@@ -458,7 +458,7 @@ defmodule Exograph.DSL.Executor do
       file_id: fragment.file_id,
       file: path,
       source: source,
-      ast: :erlang.binary_to_term(fragment.ast),
+      ast: :erlang.binary_to_term(fragment.ast, [:safe]),
       kind: fragment.kind,
       module: fragment.module,
       name: fragment.name,

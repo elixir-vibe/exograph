@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- Updated ExAST to `0.12.6` for tagged identifier support in structural matching, candidate terms, and symbol extraction.
+- Reworked Elixir parsing for indexed source to persist atom-free tagged identifiers instead of interning arbitrary package identifiers.
+- Bumped the storage/parser format gate so old v1 indexes and old shard manifests are refused instead of opened in a degraded mode.
+
+### Fixed
+
+- Hydrate persisted AST binaries with safe binary term decoding.
+- Removed poisoned structural-name compatibility paths and stats now that identifier placeholders are no longer emitted.
+
 ## 0.9.5 - 2026-07-02
 
 ### Fixed

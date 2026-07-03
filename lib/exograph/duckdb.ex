@@ -6,7 +6,7 @@ defmodule Exograph.DuckDB do
   import Ecto.Query
 
   alias Ecto.Migration.Runner
-  alias Exograph.Storage.{FragmentTermRecord, Schema}
+  alias Exograph.Storage.{Format, FragmentTermRecord, Schema}
   alias Exograph.Storage.Migrations.CreateSchema
 
   @doc "Configures DuckDB execution threads for the current connection."
@@ -22,21 +22,54 @@ defmodule Exograph.DuckDB do
     repo = Keyword.fetch!(opts, :repo)
     prefix = Keyword.get(opts, :prefix, "exograph")
 
+    Format.ensure_current_or_empty!(repo, prefix)
+
     Application.put_env(:exograph, CreateSchema, prefix: prefix)
 
-    Runner.run(repo, repo.config(), 1, CreateSchema, :forward, :up, :up,
+    Runner.run(
+      repo,
+      repo.config(),
+      Format.current_schema_version(),
+      CreateSchema,
+      :forward,
+      :up,
+      :up,
       log: false,
       log_migrations_sql: false
     )
 
-    repo.insert_all(
-      Schema.source(:schema_migrations, prefix),
-      [%{version: 1}],
+    record_current_schema_version!(repo, prefix)
+
+    :ok
+  end
+
+  defp record_current_schema_version!(repo, prefix) do
+    source = Schema.source(:schema_migrations, prefix)
+    version = Format.current_schema_version()
+
+    repo.insert_all(source, [%{version: version}],
       conflict_target: [:version],
       on_conflict: :nothing
     )
 
+    unless version in applied_versions(repo, prefix) do
+      repo.insert_all(source, [%{version: version}])
+    end
+
+    checkpoint(repo)
+  end
+
+  defp checkpoint(repo) do
+    repo.query!("CHECKPOINT", [], timeout: :infinity)
     :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp applied_versions(repo, prefix) do
+    Schema.source(:schema_migrations, prefix)
+    |> select([migration], migration.version)
+    |> repo.all(timeout: 30_000)
   end
 
   @doc "Creates DuckDB FTS/BM25 indexes for searchable Exograph tables."

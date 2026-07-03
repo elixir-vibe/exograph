@@ -74,7 +74,7 @@ defmodule Exograph.Storage.FragmentRecord do
       file: record.file,
       source: record.source,
       content_hash: record.content_hash,
-      ast: :erlang.binary_to_term(record.ast),
+      ast: :erlang.binary_to_term(record.ast, [:safe]),
       kind: record.kind,
       module: record.module,
       name: record.name,
