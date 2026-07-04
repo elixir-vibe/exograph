@@ -15,7 +15,6 @@ defmodule Exograph.Web.HealthTest do
 
   test "reports sharded DuckDB manifest metadata" do
     manifest = %DuckDBShards.Manifest{
-      version: 1,
       prefix: "hex",
       shard_count: 2,
       shards: [

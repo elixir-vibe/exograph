@@ -19,12 +19,10 @@ defmodule Exograph.Storage.Schema do
     PackageRecord,
     PackageVersionRecord,
     ReferenceRecord,
-    SchemaMigration,
     TermRecord
   }
 
   @tables [
-    table(:schema_migrations, SchemaMigration, primary_key: false),
     table(:packages, PackageRecord) do
       unique_index([:ecosystem, :name], name: :ecosystem_name)
     end,

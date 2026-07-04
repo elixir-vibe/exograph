@@ -8,10 +8,6 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
   alias Exograph.Storage.Schema
 
   def up do
-    create_if_not_exists table(name(:schema_migrations), table_opts(primary_key: false)) do
-      add(:version, :bigint, primary_key: true)
-    end
-
     create_if_not_exists table(name(:packages), table_opts()) do
       add(:ecosystem, :text, null: false)
       add(:name, :text, null: false)

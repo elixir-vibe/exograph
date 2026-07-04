@@ -63,7 +63,6 @@ defmodule Exograph.Web.Health do
       prefix: manifest.prefix,
       shard_count: manifest.shard_count,
       opened_shards: length(shards),
-      manifest_version: manifest.version,
       packages: shard_package_count(manifest),
       databases: Enum.map(manifest.shards, &shard_database/1)
     }
