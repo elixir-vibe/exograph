@@ -5,7 +5,7 @@ defmodule Exograph.Storage.Format do
 
   alias Exograph.Storage.Schema
 
-  @current_schema_version 2
+  @current_schema_version 3
   @current_parser_format :tagged_idents
 
   def current_schema_version, do: @current_schema_version

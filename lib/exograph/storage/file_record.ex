@@ -26,12 +26,12 @@ defmodule Exograph.Storage.FileRecord do
       package_version_id: file.package_version_id,
       path: file.path,
       source: file.source,
-      ast: compressed_binary(file.ast),
+      ast: ast_binary(file.ast),
       comments_text: file.comments_text,
       sha256: file.sha256
     }
   end
 
-  defp compressed_binary(nil), do: nil
-  defp compressed_binary(term), do: :erlang.term_to_binary(term, [:compressed])
+  defp ast_binary(nil), do: nil
+  defp ast_binary(term), do: Exograph.AST.Codec.dump(term)
 end

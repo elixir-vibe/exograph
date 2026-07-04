@@ -34,7 +34,9 @@ defmodule Exograph.Storage.StorageV2Test do
 
     [file] = Exograph.DuckDBRepo.all(Schema.files_source(prefix))
     assert is_binary(file.ast)
-    assert {:defmodule, _, _} = :erlang.binary_to_term(file.ast, [:safe])
+    raw_ast = :erlang.binary_to_term(file.ast, [:safe])
+    refute contains_atom?(raw_ast)
+    assert {:defmodule, _, _} = Exograph.AST.Codec.load(file.ast)
 
     fragment_rows =
       Exograph.DuckDBRepo.all(
@@ -52,6 +54,21 @@ defmodule Exograph.Storage.StorageV2Test do
     assert fragment.node_pre != nil
     assert fragment.node_post != nil
   end
+
+  defp contains_atom?(term) when is_atom(term), do: true
+
+  defp contains_atom?(term) when is_tuple(term) do
+    term
+    |> Tuple.to_list()
+    |> Enum.any?(&contains_atom?/1)
+  end
+
+  defp contains_atom?(term) when is_list(term), do: Enum.any?(term, &contains_atom?/1)
+
+  defp contains_atom?(term) when is_map(term),
+    do: Enum.any?(term, fn {k, v} -> contains_atom?(k) or contains_atom?(v) end)
+
+  defp contains_atom?(_term), do: false
 
   test "schema drops persisted fragment AST and tree node table", %{prefix: prefix} do
     Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)

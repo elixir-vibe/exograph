@@ -894,12 +894,7 @@ defmodule Exograph.Storage.FragmentStore do
   defp code_fact_insert_stages(:from_call_edge),
     do: {:code_facts_build_call_edge_rows, :code_facts_bulk_insert_call_edges}
 
-  defp safe_term(nil), do: nil
-
-  defp safe_term(binary) when is_binary(binary) do
-    Exograph.ElixirParser.ensure_safe_decode_atoms!()
-    :erlang.binary_to_term(binary, [:safe])
-  end
+  defp safe_term(term), do: Exograph.AST.Codec.load(term)
 
   defp package_from_version(%PackageVersion{} = version) do
     %Package{
