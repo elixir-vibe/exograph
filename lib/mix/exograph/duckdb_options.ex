@@ -28,6 +28,8 @@ defmodule Mix.Exograph.DuckDBOptions do
       uri: uri,
       token: token,
       pool_size: 5,
+      queue_target: Keyword.get(opts, :duckdb_queue_target, 60_000),
+      queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000),
       telemetry_prefix: [:quackdb],
       log: false,
       timeout: 120_000
