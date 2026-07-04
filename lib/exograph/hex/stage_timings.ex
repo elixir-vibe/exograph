@@ -15,7 +15,8 @@ defmodule Exograph.Hex.StageTimings do
     try do
       fun.()
     after
-      :ets.insert(@table, {:duration, stage, System.monotonic_time(:microsecond) - started})
+      duration_us = System.monotonic_time(:microsecond) - started
+      update({:duration, stage}, duration_us)
     end
   end
 
@@ -23,7 +24,7 @@ defmodule Exograph.Hex.StageTimings do
 
   def count(stage, amount) when is_atom(stage) and is_integer(amount) do
     ensure_table!()
-    :ets.insert(@table, {:counter, stage, amount})
+    update({:counter, stage}, amount)
   end
 
   def snapshot do
@@ -31,44 +32,41 @@ defmodule Exograph.Hex.StageTimings do
 
     @table
     |> :ets.tab2list()
-    |> Enum.group_by(&snapshot_key/1, &snapshot_value/1)
     |> Map.new(fn
-      {{:duration, stage}, durations} ->
-        total_us = Enum.sum(durations)
-        count = length(durations)
-
+      {{:duration, stage}, count, total_us, max_us} ->
         {stage,
          %{
            count: count,
            total_ms: div(total_us, 1_000),
            avg_ms: div(total_us, max(count, 1) * 1_000),
-           max_ms: div(Enum.max(durations, fn -> 0 end), 1_000)
+           max_ms: div(max_us, 1_000)
          }}
 
-      {{:counter, stage}, amounts} ->
-        count = length(amounts)
-        total = Enum.sum(amounts)
-
+      {{:counter, stage}, count, total, max} ->
         {stage,
          %{
            count: count,
            total: total,
            avg: div(total, max(count, 1)),
-           max: Enum.max(amounts, fn -> 0 end)
+           max: max
          }}
     end)
   end
 
-  defp snapshot_key({kind, stage, _value}), do: {kind, stage}
-  defp snapshot_key({stage, _duration_us}), do: {:duration, stage}
+  defp update(key, value) do
+    case :ets.lookup(@table, key) do
+      [] ->
+        :ets.insert(@table, {key, 1, value, value})
 
-  defp snapshot_value({_kind, _stage, value}), do: value
-  defp snapshot_value({_stage, duration_us}), do: duration_us
+      [{^key, count, total, max}] ->
+        :ets.insert(@table, {key, count + 1, total + value, max(max, value)})
+    end
+  end
 
   defp ensure_table! do
     case :ets.whereis(@table) do
       :undefined ->
-        :ets.new(@table, [:named_table, :public, :bag, {:write_concurrency, true}])
+        :ets.new(@table, [:named_table, :public, :set, {:write_concurrency, true}])
 
       _table ->
         :ok
