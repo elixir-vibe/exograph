@@ -465,7 +465,7 @@ defmodule Exograph.DSL.Executor do
       source: source,
       ast:
         Exograph.AST.Locator.slice(
-          :erlang.binary_to_term(file_ast, [:safe]),
+          Exograph.Storage.Hydration.decode_file_ast(file_ast),
           fragment.node_pre,
           fragment.node_post
         ),

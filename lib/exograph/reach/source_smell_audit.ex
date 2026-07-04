@@ -384,7 +384,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
       package_version: package_version,
       ast:
         Exograph.AST.Locator.slice(
-          :erlang.binary_to_term(file_ast, [:safe]),
+          Exograph.Storage.Hydration.decode_file_ast(file_ast),
           record.node_pre,
           record.node_post
         ),

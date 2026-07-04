@@ -14,7 +14,12 @@ defmodule Exograph.Storage.Hydration do
     |> Map.put(:package, package_name)
   end
 
-  defp decode_file_ast(nil), do: nil
-  defp decode_file_ast(binary) when is_binary(binary), do: :erlang.binary_to_term(binary, [:safe])
-  defp decode_file_ast(ast), do: ast
+  def decode_file_ast(nil), do: nil
+
+  def decode_file_ast(binary) when is_binary(binary) do
+    Exograph.ElixirParser.ensure_safe_decode_atoms!()
+    :erlang.binary_to_term(binary, [:safe])
+  end
+
+  def decode_file_ast(ast), do: ast
 end
