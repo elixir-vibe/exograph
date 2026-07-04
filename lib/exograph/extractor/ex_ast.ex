@@ -72,6 +72,7 @@ defmodule Exograph.Extractor.ExAST do
       ast
       |> Fingerprint.fragments(file, min_mass, opts)
       |> Enum.map(&to_fragment(&1, source_file, package_context, modules))
+      |> attach_file_ast_once(source_file.ast)
       |> compute_end_lines()
     else
       _ -> []
@@ -97,7 +98,7 @@ defmodule Exograph.Extractor.ExAST do
       package_id: package_context.package_id,
       package_version_id: package_context.package_version_id,
       file_id: nil,
-      file_ast: source_file.ast,
+      file_ast: nil,
       ast: ast,
       node_pre: node_pre,
       node_post: node_post,
@@ -111,6 +112,12 @@ defmodule Exograph.Extractor.ExAST do
       terms: terms,
       sub_hashes: fingerprint.sub_hashes
     }
+  end
+
+  defp attach_file_ast_once([], _file_ast), do: []
+
+  defp attach_file_ast_once([first | rest], file_ast) do
+    [%{first | file_ast: file_ast} | Enum.map(rest, &%{&1 | file_ast: nil})]
   end
 
   defp parser_opts(file, opts) do

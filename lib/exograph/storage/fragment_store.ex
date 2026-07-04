@@ -347,8 +347,9 @@ defmodule Exograph.Storage.FragmentStore do
 
     fragments
     |> Enum.reject(&is_nil(&1.file))
-    |> Enum.uniq_by(& &1.file)
-    |> Enum.map(fn fragment ->
+    |> Enum.group_by(& &1.file)
+    |> Enum.map(fn {_file, fragments} ->
+      fragment = Enum.find(fragments, & &1.file_ast) || hd(fragments)
       source = fragment.source || ""
 
       File.new(fragment.file, source, %{
