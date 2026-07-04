@@ -45,7 +45,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--retry-sleep` - base retry sleep in milliseconds (default: `1000`)
     * `--shard-dir` - directory for managed DuckDB shard files
     * `--min-mass` - minimum fragment AST mass (default: `8`)
-    * `--generated-min-mass` - minimum fragment AST mass for generated files (default: `16`)
+    * `--generated-min-mass` - minimum fragment AST mass for generated files (default: `1000`)
     * `--reach` - include Reach call graph extraction
     * `--force` - re-index already-indexed packages
     * `--no-bm25` - skip DuckDB BM25/FTS index creation
@@ -159,7 +159,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       retry_sleep: Keyword.get(opts, :retry_sleep, 1_000),
       shard_directory: Keyword.get(opts, :shard_dir),
       min_mass: Keyword.get(opts, :min_mass, 8),
-      generated_min_mass: Keyword.get(opts, :generated_min_mass, 16),
+      generated_min_mass: Keyword.get(opts, :generated_min_mass, 1_000),
       resume: not Keyword.get(opts, :force, false),
       bm25?: !Keyword.get(opts, :no_bm25, false),
       extractors: extractors,
