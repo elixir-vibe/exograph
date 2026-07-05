@@ -138,22 +138,24 @@ defmodule Exograph.Extractor.ExAST do
     min_mass = Keyword.fetch!(opts, :min_mass)
     generated_min_mass = Keyword.get(opts, :generated_min_mass)
 
-    if is_integer(generated_min_mass) and generated_source?(file, source) do
+    if is_integer(generated_min_mass) and generated_or_large_source?(file, source) do
       max(min_mass, generated_min_mass)
     else
       min_mass
     end
   end
 
-  defp generated_source?(file, source) do
-    generated_path?(file) or generated_comment?(source)
+  defp generated_or_large_source?(file, source) do
+    generated_path?(file) or generated_comment?(source) or large_source?(source)
   end
 
   defp generated_path?(file) do
     file
     |> Path.split()
-    |> Enum.any?(&(&1 in ["generated", "gen"]))
+    |> Enum.any?(&(&1 in ["generated", "gen"] or String.ends_with?(&1, ".pb.ex")))
   end
+
+  defp large_source?(source), do: byte_size(source) >= 500_000
 
   defp generated_comment?(source) do
     source
