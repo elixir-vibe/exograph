@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.9.7 - 2026-07-05
+
+### Fixed
+
+- Treat tokenizer/parser exceptions from atom-free identifier encoding as parse failures so template-like invalid source files do not crash Hex indexing workers.
+
 ## 0.9.6 - 2026-07-05
 
 ### Changed
