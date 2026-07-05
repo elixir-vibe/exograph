@@ -1,7 +1,7 @@
 defmodule Exograph.MixProject do
   use Mix.Project
 
-  @version "0.9.5"
+  @version "0.9.6"
   @source_url "https://github.com/elixir-vibe/exograph"
 
   def project do
