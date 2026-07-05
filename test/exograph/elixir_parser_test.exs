@@ -87,6 +87,15 @@ defmodule Exograph.ElixirParserTest do
     assert :erlang.term_to_binary(ast1) == :erlang.term_to_binary(ast2)
   end
 
+  test "template-like parse failures return errors instead of raising" do
+    source = "{:ok, conn:<%= @arke_ns %>.ConnTest.build_conn()}"
+
+    assert {:error, %ArgumentError{}} =
+             Exograph.ElixirParser.string_to_quoted(source, line: 1, columns: true)
+
+    assert [] = Exograph.Extractor.ExAST.index_source("template.ex", source)
+  end
+
   test "legacy static_atoms options are ignored and remain atom-free" do
     name = "exograph_parser_ignored_option_#{System.unique_integer([:positive])}"
     source = ":#{name}"
