@@ -48,6 +48,40 @@ defmodule Exograph.Hex.BroadwayPipelineTest do
     assert Agent.get(attempts, & &1) == 2
   end
 
+  test "per-package timeout fails the package and still completes" do
+    {result, _elapsed_ms} =
+      BroadwayPipeline.index([%{name: "stuck", version: "1.0.0"}],
+        name: :"test_broadway_package_timeout_#{System.unique_integer([:positive])}",
+        index_fun: fn _entry, _index, _opts -> Process.sleep(:infinity) end,
+        timeout: 20,
+        retry_count: 0
+      )
+
+    assert result.ok == 0
+    assert result.error == 1
+    assert [%{name: "stuck", version: "1.0.0", reason: reason}] = result.failures
+    assert reason =~ "index_timeout"
+  end
+
+  test "per-package timeout is not retried as a transient timeout" do
+    {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+    {result, _elapsed_ms} =
+      BroadwayPipeline.index([%{name: "stuck", version: "1.0.0"}],
+        name: :"test_broadway_package_timeout_no_retry_#{System.unique_integer([:positive])}",
+        index_fun: fn _entry, _index, _opts ->
+          Agent.update(attempts, &(&1 + 1))
+          Process.sleep(:infinity)
+        end,
+        timeout: 20,
+        retry_count: 3,
+        retry_sleep: 0
+      )
+
+    assert result.error == 1
+    assert Agent.get(attempts, & &1) == 1
+  end
+
   test "ack preserves failed message reasons" do
     owner = self()
 

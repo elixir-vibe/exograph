@@ -30,6 +30,7 @@ defmodule Exograph.ReleaseTasks do
       shard_directory: build.shard_dir,
       retry_count: env_integer("EXOGRAPH_RETRY_COUNT", 3),
       retry_sleep: env_integer("EXOGRAPH_RETRY_SLEEP", 1_000),
+      timeout: env_integer("EXOGRAPH_INDEX_TIMEOUT", 300_000),
       bm25?: false,
       extractors: [:ex_ast],
       mirrors: [env("EXOGRAPH_MIRROR", "https://hex.pm")],

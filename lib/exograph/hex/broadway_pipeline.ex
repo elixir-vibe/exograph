@@ -6,6 +6,8 @@ defmodule Exograph.Hex.BroadwayPipeline do
   alias Broadway.Message
   alias Exograph.Hex.Progress
 
+  require Logger
+
   @behaviour Broadway.Acknowledger
 
   def index(entries, opts) do
@@ -170,6 +172,25 @@ defmodule Exograph.Hex.BroadwayPipeline do
   end
 
   defp safe_index_entry(index_fun, entry, index, opts) do
+    timeout = Keyword.get(opts, :timeout, 300_000)
+
+    if timeout == :infinity do
+      do_safe_index_entry(index_fun, entry, index, opts)
+    else
+      task = Task.async(fn -> do_safe_index_entry(index_fun, entry, index, opts) end)
+
+      case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+        {:ok, result} ->
+          result
+
+        nil ->
+          Logger.error("Package #{entry.name}@#{entry.version} Broadway indexing timed out")
+          {:error, {:index_timeout, timeout}}
+      end
+    end
+  end
+
+  defp do_safe_index_entry(index_fun, entry, index, opts) do
     index_fun.(entry, index, opts)
   rescue
     error -> {:error, {error.__struct__, Exception.message(error)}}
@@ -177,6 +198,8 @@ defmodule Exograph.Hex.BroadwayPipeline do
     :exit, reason -> {:error, {:exit, reason}}
     kind, reason -> {:error, {kind, reason}}
   end
+
+  defp transient_error?({:error, {:index_timeout, _timeout}}), do: false
 
   defp transient_error?({:error, reason}) do
     reason
