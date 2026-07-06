@@ -65,13 +65,14 @@ defmodule Exograph.Extractor.ExAST do
       package_context = package_context(opts)
       ast = neutralize_atom_word_sigils(ast)
       source_file = SourceFile.new(file, source, Map.put(package_context, :ast, ast))
+      locator_index = Exograph.AST.Locator.index(ast)
       modules = collect_modules(ast)
 
       min_mass = effective_min_mass(file, source, opts)
 
       ast
       |> Fingerprint.fragments(file, min_mass, opts)
-      |> Enum.map(&to_fragment(&1, source_file, package_context, modules))
+      |> Enum.map(&to_fragment(&1, source_file, package_context, modules, locator_index))
       |> attach_file_ast_once(source_file.ast)
       |> compute_end_lines()
     else
@@ -79,9 +80,9 @@ defmodule Exograph.Extractor.ExAST do
     end
   end
 
-  defp to_fragment(fingerprint, source_file, package_context, modules) do
+  defp to_fragment(fingerprint, source_file, package_context, modules, locator_index) do
     ast = fingerprint.ast
-    {node_pre, node_post} = Exograph.AST.Locator.locate(source_file.ast, ast)
+    {node_pre, node_post} = Exograph.AST.Locator.locate(locator_index, ast)
     {kind, name, arity} = classify(ast)
     line = Map.get(fingerprint, :line, line(ast))
     exact_hash = fingerprint.hash

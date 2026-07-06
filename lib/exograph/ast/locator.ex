@@ -6,9 +6,14 @@ defmodule Exograph.AST.Locator do
     %{entries: Enum.reverse(entries), size: next - 1}
   end
 
-  def locate(ast, target) do
-    entries = ast |> index() |> Map.fetch!(:entries)
+  def locate(%{entries: entries}, target) when is_list(entries) do
     locate_in_entries(entries, target)
+  end
+
+  def locate(ast, target) do
+    ast
+    |> index()
+    |> locate(target)
   end
 
   defp locate_in_entries(entries, target) do

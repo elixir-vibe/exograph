@@ -9,6 +9,8 @@ defmodule Exograph.Hex.Corpus do
 
   require Logger
 
+  @default_generated_min_mass 20_000
+
   def index(opts \\ []) do
     if Keyword.get(opts, :shards, 1) > 1 do
       index_sharded(opts)
@@ -538,7 +540,7 @@ defmodule Exograph.Hex.Corpus do
       bm25?: Keyword.get(opts, :bm25?, true),
       duckdb_threads: Keyword.get(opts, :duckdb_threads),
       min_mass: min_mass,
-      generated_min_mass: Keyword.get(opts, :generated_min_mass),
+      generated_min_mass: generated_min_mass(opts),
       static_atoms: Keyword.get(opts, :static_atoms, :tagged),
       index_concurrency: Keyword.get(opts, :index_concurrency) || System.schedulers_online(),
       index_batch_size: hex_index_batch_size(opts),
@@ -558,6 +560,10 @@ defmodule Exograph.Hex.Corpus do
         Logger.warning("Hex package batch indexing failed: #{inspect(reason, limit: 30)}")
         {:error, reason}
     end
+  end
+
+  defp generated_min_mass(opts) do
+    Keyword.get(opts, :generated_min_mass, @default_generated_min_mass)
   end
 
   defp write_entries_snapshot(entries, opts) do
@@ -812,7 +818,7 @@ defmodule Exograph.Hex.Corpus do
         bm25?: Keyword.get(opts, :bm25?, true),
         duckdb_threads: Keyword.get(opts, :duckdb_threads),
         min_mass: min_mass,
-        generated_min_mass: Keyword.get(opts, :generated_min_mass),
+        generated_min_mass: generated_min_mass(opts),
         static_atoms: Keyword.get(opts, :static_atoms, :tagged),
         index_concurrency: Keyword.get(opts, :index_concurrency) || System.schedulers_online(),
         index_batch_size: hex_index_batch_size(opts),
