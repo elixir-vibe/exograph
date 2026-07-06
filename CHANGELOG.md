@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.8 - 2026-07-06
+
+### Fixed
+
+- Restore Broadway Hex indexing per-package timeouts so stuck package jobs fail and acknowledge instead of blocking corpus finalization forever.
+- Allow production release reindex timeout tuning with `EXOGRAPH_INDEX_TIMEOUT`.
+
 ## 0.9.7 - 2026-07-05
 
 ### Fixed
