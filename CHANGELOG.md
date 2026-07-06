@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.9 - 2026-07-06
+
+### Fixed
+
+- Reuse a precomputed AST locator index while converting ExAST fingerprints to fragments, avoiding per-fragment whole-file locator rebuilds on macro-heavy files.
+- Raise the Hex generated-source fragment threshold default and expose `EXOGRAPH_GENERATED_MIN_MASS` for release reindex tuning.
+
 ## 0.9.8 - 2026-07-06
 
 ### Fixed
