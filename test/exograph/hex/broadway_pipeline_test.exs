@@ -82,6 +82,22 @@ defmodule Exograph.Hex.BroadwayPipelineTest do
     assert Agent.get(attempts, & &1) == 1
   end
 
+  test "package errors are marked as Broadway failures while preserving result" do
+    message = %Message{
+      data: %{entry: %{name: "bad", version: "1.0.0"}, index: 0},
+      acknowledger: {BroadwayPipeline, self(), nil}
+    }
+
+    [failed] =
+      BroadwayPipeline.handle_batch(:default, [message], %Broadway.BatchInfo{size: 1}, %{
+        opts: [index_fun: fn _entry, _index, _opts -> {:error, :commit_timeout} end],
+        shards: nil
+      })
+
+    assert failed.status == {:failed, :commit_timeout}
+    assert failed.data.result == {:error, :commit_timeout}
+  end
+
   test "ack preserves failed message reasons" do
     owner = self()
 

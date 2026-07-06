@@ -145,12 +145,22 @@ defmodule Exograph.Hex.BroadwayPipeline do
     result = index_with_retries(entry, index, opts)
     Progress.package_done(entry, result)
 
-    Message.update_data(message, &Map.put(&1, :result, result))
+    put_result(message, result)
   rescue
     error ->
       result = {:error, Exception.message(error)}
       Progress.package_done(message.data.entry, result)
-      Message.update_data(message, &Map.put(&1, :result, result))
+      put_result(message, result)
+  end
+
+  defp put_result(message, {:error, reason} = result) do
+    message
+    |> Message.update_data(&Map.put(&1, :result, result))
+    |> Message.failed(reason)
+  end
+
+  defp put_result(message, result) do
+    Message.update_data(message, &Map.put(&1, :result, result))
   end
 
   defp index_with_retries(entry, index, opts) do
