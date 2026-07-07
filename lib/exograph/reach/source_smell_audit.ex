@@ -30,8 +30,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
     * `:candidate_batch_size` - fragment candidate page size. Defaults to
       `#{@default_anchor_candidate_batch_size}` for anchor mode and
       `#{@default_exact_candidate_batch_size}` for exact mode.
-    * `:max_anchor_candidates` - skip patterns whose best indexed anchor appears
-      in more fragments than this, default `#{@default_max_anchor_candidates}`.
+    * `:max_anchor_candidates` - in anchor mode, skip patterns whose best indexed
+      anchor appears in more fragments than this, default `#{@default_max_anchor_candidates}`.
     * `:candidate_mode` - `:anchor` for fast first results or `:exact` to
       precompute candidates matching each pattern's full required term set.
     * `:verify_concurrency` - maximum concurrent AST verification tasks,
@@ -170,18 +170,28 @@ defmodule Exograph.Reach.SourceSmellAudit do
     term_ids = term_ids(index, patterns)
     term_counts = term_counts(index, term_ids)
 
-    max_anchor_candidates =
-      Keyword.get(opts, :max_anchor_candidates, @default_max_anchor_candidates)
+    planned = Enum.map(patterns, &plan_pattern(&1, term_ids, term_counts))
 
-    patterns
-    |> Enum.map(&plan_pattern(&1, term_ids, term_counts))
-    |> Enum.split_with(fn
-      %Pattern{anchor_count: count, missing_terms: []} when is_integer(count) ->
-        count <= max_anchor_candidates
+    if exact_candidate_mode?(opts) do
+      Enum.split_with(planned, fn
+        %Pattern{missing_terms: [], required_term_ids: required_term_ids} ->
+          MapSet.size(required_term_ids) > 0
 
-      _pattern ->
-        false
-    end)
+        _pattern ->
+          false
+      end)
+    else
+      max_anchor_candidates =
+        Keyword.get(opts, :max_anchor_candidates, @default_max_anchor_candidates)
+
+      Enum.split_with(planned, fn
+        %Pattern{anchor_count: count, missing_terms: []} when is_integer(count) ->
+          count <= max_anchor_candidates
+
+        _pattern ->
+          false
+      end)
+    end
   end
 
   defp plan_pattern(%Pattern{} = pattern, term_ids, term_counts) do
@@ -291,10 +301,10 @@ defmodule Exograph.Reach.SourceSmellAudit do
         batch_size
 
       _default ->
-        case Keyword.get(opts, :candidate_mode, :anchor) do
-          :exact -> @default_exact_candidate_batch_size
-          "exact" -> @default_exact_candidate_batch_size
-          _mode -> @default_anchor_candidate_batch_size
+        if exact_candidate_mode?(opts) do
+          @default_exact_candidate_batch_size
+        else
+          @default_anchor_candidate_batch_size
         end
     end
   end
@@ -321,12 +331,15 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp candidate_batches(index, patterns, opts, batch_size) do
-    case Keyword.get(opts, :candidate_mode, :anchor) do
-      :exact -> exact_candidate_batches(index, patterns, batch_size)
-      "exact" -> exact_candidate_batches(index, patterns, batch_size)
-      _mode -> anchor_candidate_batches(index, patterns, batch_size)
+    if exact_candidate_mode?(opts) do
+      exact_candidate_batches(index, patterns, batch_size)
+    else
+      anchor_candidate_batches(index, patterns, batch_size)
     end
   end
+
+  defp exact_candidate_mode?(opts),
+    do: Keyword.get(opts, :candidate_mode, :anchor) in [:exact, "exact"]
 
   defp anchor_candidate_batches(index, patterns, batch_size) do
     anchor_ids = patterns |> Enum.map(& &1.anchor_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()

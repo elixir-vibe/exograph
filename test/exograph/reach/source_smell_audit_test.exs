@@ -106,6 +106,44 @@ defmodule Exograph.Reach.SourceSmellAuditTest do
     assert result.skipped_patterns == []
   end
 
+  test "exact audit ignores anchor candidate cap after required terms narrow candidates", %{
+    prefix: prefix
+  } do
+    source = """
+    defmodule Demo do
+      def count_values(values) do
+        length(values)
+      end
+    end
+    """
+
+    {:ok, index} =
+      Exograph.index_sources(
+        [{"lib/demo.ex", source}],
+        Exograph.DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
+      )
+
+    assert {:ok, exact_result} =
+             SourceSmellAudit.scan(index, [LocalCheck],
+               candidate_mode: :exact,
+               limit: 10,
+               max_anchor_candidates: 0
+             )
+
+    assert [%{check: LocalCheck, kind: :test_length_call, line: 3}] = exact_result.findings
+    assert exact_result.skipped_patterns == []
+
+    assert {:ok, anchor_result} =
+             SourceSmellAudit.scan(index, [LocalCheck],
+               candidate_mode: :anchor,
+               limit: 10,
+               max_anchor_candidates: 0
+             )
+
+    assert anchor_result.findings == []
+    assert [%{module: LocalCheck, kind: :test_length_call}] = anchor_result.skipped_patterns
+  end
+
   test "exact audit deduplicates the same match from enclosing fragments", %{prefix: prefix} do
     source = """
     defmodule Demo do

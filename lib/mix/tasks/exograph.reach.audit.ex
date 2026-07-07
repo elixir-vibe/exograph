@@ -25,8 +25,8 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--shard-port-base` - first local QuackDB port when opening a sharded manifest
     * `--limit` - maximum findings to print (default: 100)
     * `--candidate-batch-size` - fragment candidate page size (defaults to 1000 in anchor mode and 8000 in exact mode)
-    * `--max-anchor-candidates` - skip patterns whose best anchor is broader than this (default: 10000)
-    * `--candidate-mode` - `anchor` for quick samples or `exact` for deeper full scans
+    * `--max-anchor-candidates` - in anchor mode, skip patterns whose best anchor is broader than this (default: 10000)
+    * `--candidate-mode` - `anchor` for quick samples or `exact` for full required-term scans
     * `--verify-concurrency` - concurrent AST verifier tasks (default: min(scheduler count, 8))
     * `--json` - print compact JSON
     * `--pretty` - pretty-print JSON (implies `--json`)
