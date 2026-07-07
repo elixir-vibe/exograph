@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.9.12 - 2026-07-07
+
+### Changed
+
+- Let exact Reach source-smell audits ignore anchor candidate caps after required terms narrow candidates.
+
+### Added
+
+- Add Reach file-local smell audit support for checks that do not expose source-pattern metadata, with `--source-prefilter` for narrowing indexed source scans.
+
 ## 0.9.11 - 2026-07-07
 
 ### Fixed
