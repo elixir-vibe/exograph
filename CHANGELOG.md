@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.9.10 - 2026-07-07
+
+### Changed
+
+- Updated ExAST to `0.12.9` so Reach exact audits can use pipe-equivalent, literal argument, keyword literal, and wildcard-safe source terms.
+
+### Fixed
+
+- Added Reach exact-audit regressions for pipe-equivalent calls, negative integer arguments, comparison literal arguments, and keyword literal arguments.
+
 ## 0.9.9 - 2026-07-06
 
 ### Fixed
