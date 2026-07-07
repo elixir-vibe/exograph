@@ -22,6 +22,37 @@ defmodule Exograph.Reach.SourceSmellAuditTest.PipeEquivalentCheck do
   )
 end
 
+defmodule Exograph.Reach.SourceSmellAuditTest.FileLocalCheck do
+  @moduledoc "Test-only non-source Reach smell check."
+
+  @behaviour Reach.Smell.Check
+
+  alias Reach.Smell.{Finding, Source}
+
+  @impl true
+  def run(project) do
+    project
+    |> Source.module_files()
+    |> Enum.flat_map(&scan_file/1)
+  end
+
+  defp scan_file(file) do
+    source = File.read!(file)
+
+    if String.contains?(source, "always_bad()") do
+      [
+        Finding.new(
+          kind: :test_file_local,
+          message: "file-local check found",
+          location: "#{file}:3"
+        )
+      ]
+    else
+      []
+    end
+  end
+end
+
 defmodule Exograph.Reach.SourceSmellAuditTest.LiteralArgumentCheck do
   @moduledoc "Test-only Reach source-pattern smell check for literal arguments."
 
@@ -64,6 +95,7 @@ defmodule Exograph.Reach.SourceSmellAuditTest do
   alias Exograph.Reach.SourceSmellAudit
 
   alias Exograph.Reach.SourceSmellAuditTest.{
+    FileLocalCheck,
     LiteralArgumentCheck,
     LocalCheck,
     PipeEquivalentCheck
@@ -76,6 +108,35 @@ defmodule Exograph.Reach.SourceSmellAuditTest do
     on_exit(fn -> Exograph.DuckDBSupport.drop_prefix(prefix) end)
 
     {:ok, prefix: prefix}
+  end
+
+  test "file-local check audit scans indexed sources with prefilter", %{prefix: prefix} do
+    source = """
+    defmodule Demo do
+      def run do
+        always_bad()
+      end
+    end
+    """
+
+    {:ok, index} =
+      Exograph.index_sources(
+        [{"lib/demo.ex", source}],
+        Exograph.DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
+      )
+
+    assert {:ok, result} =
+             SourceSmellAudit.scan_file_checks(index, [FileLocalCheck],
+               source_prefilter: "always_bad",
+               limit: 10
+             )
+
+    assert [%{check: FileLocalCheck, kind: :test_file_local, file: "lib/demo.ex", line: 3}] =
+             result.findings
+
+    assert result.candidate_count == 1
+    assert result.scanned_patterns == 1
+    assert result.skipped_patterns == []
   end
 
   test "exact audit finds pipe-equivalent source terms", %{prefix: prefix} do
