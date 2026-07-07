@@ -214,11 +214,14 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
   defp finding_identity(finding) do
     {:finding, comparable_field(finding, :check), comparable_field(finding, :kind),
      comparable_field(finding, :package), comparable_field(finding, :package_version),
-     comparable_field(finding, :file), comparable_field(finding, :line),
-     comparable_field(finding, :message)}
+     comparable_field(finding, :file),
+     comparable_field(finding, :range) || comparable_field(finding, :match_fingerprint) ||
+       comparable_field(finding, :line), comparable_field(finding, :message)}
   end
 
   defp comparable_field(finding, :line), do: field(finding, :line)
+  defp comparable_field(finding, :range), do: field(finding, :range)
+  defp comparable_field(finding, :match_fingerprint), do: field(finding, :match_fingerprint)
   defp comparable_field(finding, key), do: finding |> field(key) |> comparable_string()
 
   defp comparable_string(nil), do: nil
@@ -379,6 +382,8 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
       package_version: finding.package_version,
       file: finding.file,
       line: finding.line,
+      range: finding.range,
+      match_fingerprint: finding.match_fingerprint,
       snippet: finding.snippet,
       anchor_term: finding.anchor_term
     }

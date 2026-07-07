@@ -279,8 +279,10 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp finding_key(finding) do
+    location_key = finding.range || finding.match_fingerprint || {:line, finding.line}
+
     {finding.check, finding.kind, finding.package, finding.package_version, finding.file,
-     finding.line, finding.message}
+     location_key, finding.message}
   end
 
   defp candidate_batch_size(opts) do
@@ -465,7 +467,9 @@ defmodule Exograph.Reach.SourceSmellAudit do
   end
 
   defp finding(fragment, package, %Pattern{} = pattern, match) do
-    line = match_line(match) || fragment.line
+    range = match_range(match)
+    line = match_line(match) || match_node_line(match) || fragment.line
+    match_fingerprint = match_fingerprint(match)
 
     %Finding{
       check: pattern.module,
@@ -477,6 +481,8 @@ defmodule Exograph.Reach.SourceSmellAudit do
       file_id: fragment.file_id,
       fragment_id: fragment.id,
       line: line,
+      range: range,
+      match_fingerprint: match_fingerprint,
       snippet: nil,
       anchor_term: pattern.anchor_term
     }
@@ -508,8 +514,37 @@ defmodule Exograph.Reach.SourceSmellAudit do
     end
   end
 
+  defp match_range(%{range: %{start: start, end: stop}}) when is_list(start) and is_list(stop) do
+    %{
+      start_line: Keyword.get(start, :line),
+      start_column: Keyword.get(start, :column),
+      end_line: Keyword.get(stop, :line),
+      end_column: Keyword.get(stop, :column)
+    }
+  end
+
+  defp match_range(_match), do: nil
+
+  defp match_fingerprint(%{node: node}) do
+    node
+    |> Macro.prewalk(fn
+      {form, meta, args} when is_list(meta) -> {form, [], args}
+      other -> other
+    end)
+    |> :erlang.term_to_binary()
+    |> :erlang.phash2()
+    |> Integer.to_string(16)
+  end
+
+  defp match_fingerprint(_match), do: nil
+
   defp match_line(%{range: %{start: start}}) when is_list(start), do: Keyword.get(start, :line)
   defp match_line(_match), do: nil
+
+  defp match_node_line(%{node: {_form, meta, _args}}) when is_list(meta),
+    do: Keyword.get(meta, :line)
+
+  defp match_node_line(_match), do: nil
 
   defp snippet(source, line) when is_binary(source) and is_integer(line) do
     source

@@ -106,6 +106,35 @@ defmodule Exograph.Reach.SourceSmellAuditTest do
     assert result.skipped_patterns == []
   end
 
+  test "exact audit deduplicates the same match from enclosing fragments", %{prefix: prefix} do
+    source = """
+    defmodule Demo do
+      def set(items) do
+        value = items |> Enum.dedup() |> MapSet.new()
+        {:ok, value}
+      end
+    end
+    """
+
+    {:ok, index} =
+      Exograph.index_sources(
+        [{"lib/demo.ex", source}],
+        Exograph.DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
+      )
+
+    assert {:ok, result} =
+             SourceSmellAudit.scan(index, [PipeEquivalentCheck],
+               candidate_mode: :exact,
+               limit: 10,
+               max_anchor_candidates: 10_000
+             )
+
+    assert [%{check: PipeEquivalentCheck, kind: :test_redundant_dedup, line: 3}] =
+             result.findings
+
+    assert result.skipped_patterns == []
+  end
+
   test "exact audit finds literal argument source terms", %{prefix: prefix} do
     source = """
     defmodule Demo do
