@@ -41,7 +41,7 @@ defmodule Exograph.MixProject do
     [
       {:pi_bridge, "== 0.6.21", only: :dev, runtime: false},
       {:release_kit, "~> 0.3.1", only: [:dev, :test, :prod], runtime: false},
-      {:ex_ast, "~> 0.12.7"},
+      {:ex_ast, "~> 0.12.9"},
       {:ex_dna, "~> 1.5"},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.2", optional: true},
