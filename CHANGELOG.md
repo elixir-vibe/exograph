@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.11 - 2026-07-07
+
+### Fixed
+
+- Deduplicate Reach source-smell audit findings by matched range or matched AST fingerprint so overlapping expression fragments do not inflate audit reports.
+- Report Reach audit finding lines from matched nodes when ExAST range metadata is unavailable.
+
 ## 0.9.10 - 2026-07-07
 
 ### Changed
