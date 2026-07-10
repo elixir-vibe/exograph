@@ -68,7 +68,11 @@ defmodule Exograph.DuckDB do
     execute_optional!(repo, QuackDB.FTS.install())
     execute_optional!(repo, QuackDB.FTS.load())
 
-    create_fts_index!(repo, prefix, "files", :id, [:source, :comments_text])
+    create_fts_index!(repo, prefix, "files", :id, [:source, :comments_text, :identifier_tokens],
+      stemmer: :none,
+      stopwords: :none
+    )
+
     create_fts_index!(repo, prefix, "fragments", :id, [:name, :module, :kind])
     create_fts_index!(repo, prefix, "comments", :id, [:text])
     create_fts_index!(repo, prefix, "definitions", :id, [:name, :module, :qualified_name, :kind])
@@ -103,10 +107,13 @@ defmodule Exograph.DuckDB do
     :ok
   end
 
-  defp create_fts_index!(repo, prefix, table, id_column, columns) do
+  defp create_fts_index!(repo, prefix, table, id_column, columns, options \\ []) do
     repo.query!(
-      QuackDB.FTS.create_index(Schema.table_name(prefix, table), id_column, columns,
-        overwrite: true
+      QuackDB.FTS.create_index(
+        Schema.table_name(prefix, table),
+        id_column,
+        columns,
+        Keyword.put(options, :overwrite, true)
       ),
       []
     )

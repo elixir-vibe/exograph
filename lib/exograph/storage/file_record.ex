@@ -15,6 +15,7 @@ defmodule Exograph.Storage.FileRecord do
     field(:source, :string)
     field(:ast, :binary)
     field(:comments_text, :string)
+    field(:identifier_tokens, :string)
     field(:sha256, :string)
 
     timestamps(type: :utc_datetime_usec)
@@ -28,6 +29,7 @@ defmodule Exograph.Storage.FileRecord do
       source: file.source,
       ast: ast_binary(file.ast),
       comments_text: file.comments_text,
+      identifier_tokens: file.identifier_tokens,
       sha256: file.sha256
     }
   end

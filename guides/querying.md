@@ -51,7 +51,10 @@ Search source code by literal text:
 {:ok, hits} = Exograph.search_text(index, "deprecated", limit: 50)
 ```
 
-Text search uses the DuckDB/QuackDB text-search path.
+Text search uses DuckDB/QuackDB FTS to prefilter normalized identifier tokens
+(such as qualified, snake-case, camel-case, and bang identifiers), followed by
+an exact source-text check. Indexes created before this identifier index format
+must be rebuilt.
 
 ## Regex search
 

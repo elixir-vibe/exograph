@@ -6,7 +6,7 @@ defmodule Exograph.DuckDB.TextSearch do
   import Ecto.Query
   import QuackDB.Ecto.FTS, only: [match_bm25: 3]
 
-  alias Exograph.Hit
+  alias Exograph.{Hit, IdentifierTokens}
   alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
 
   def search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
@@ -83,24 +83,26 @@ defmodule Exograph.DuckDB.TextSearch do
 
   defp maybe_bm25_matched_files_query(%{bm25?: true} = index, literal, field, pattern)
        when is_binary(literal) do
-    if simple_fts_literal?(literal) do
-      {files_table, _schema} = Schema.files_source(index.prefix)
-      schema = QuackDB.FTS.schema_name("main.#{files_table}")
+    case IdentifierTokens.from_source(literal) do
+      "" ->
+        ilike_matched_files_query(index, field, pattern)
 
-      from(file in Schema.files_source(index.prefix),
-        where: match_bm25(^schema, file.id, ^literal) > 0,
-        where: ilike(field(file, ^field), ^pattern),
-        order_by: [desc: match_bm25(^schema, file.id, ^literal), asc: file.path],
-        select: %{
-          id: file.id,
-          source: file.source,
-          path: file.path,
-          ast: file.ast,
-          score: match_bm25(^schema, file.id, ^literal)
-        }
-      )
-    else
-      ilike_matched_files_query(index, field, pattern)
+      tokens ->
+        {files_table, _schema} = Schema.files_source(index.prefix)
+        schema = QuackDB.FTS.schema_name("main.#{files_table}")
+
+        from(file in Schema.files_source(index.prefix),
+          where: match_bm25(^schema, file.id, ^tokens) > 0,
+          where: ilike(field(file, ^field), ^pattern),
+          order_by: [desc: match_bm25(^schema, file.id, ^tokens), asc: file.path],
+          select: %{
+            id: file.id,
+            source: file.source,
+            path: file.path,
+            ast: file.ast,
+            score: match_bm25(^schema, file.id, ^tokens)
+          }
+        )
     end
   rescue
     _ in [QuackDB.Error, Ecto.QueryError] -> ilike_matched_files_query(index, field, pattern)
@@ -134,8 +136,6 @@ defmodule Exograph.DuckDB.TextSearch do
   defp bm25_unavailable?(%{message: message}) when is_binary(message) do
     String.contains?(message, "match_bm25") and String.contains?(message, "does not exist")
   end
-
-  defp simple_fts_literal?(literal), do: String.match?(literal, ~r/^\w+$/u)
 
   defp escape_like(value), do: value |> String.replace("%", "\\%") |> String.replace("_", "\\_")
 end

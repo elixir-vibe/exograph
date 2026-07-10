@@ -44,6 +44,7 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:source, :text, null: false)
       add(:ast, :binary)
       add(:comments_text, :text, null: false, default: "")
+      add(:identifier_tokens, :text, null: false, default: "")
       add(:sha256, :text, null: false)
       timestamps(type: :utc_datetime_usec)
     end
