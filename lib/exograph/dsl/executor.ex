@@ -587,16 +587,20 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp joined_fragments_from_builder(index, plan, opts, joins) do
-    index
-    |> then(fn index ->
-      JoinBuilder.build(
-        index,
-        plan,
-        Keyword.put(opts, :candidate_limit, candidate_limit(index, opts))
-      )
-      |> index.inverted.repo.all()
-    end)
-    |> Enum.map(fn row ->
+    rows =
+      index
+      |> then(fn index ->
+        JoinBuilder.build(
+          index,
+          plan,
+          Keyword.put(opts, :candidate_limit, candidate_limit(index, opts))
+        )
+        |> index.inverted.repo.all()
+      end)
+
+    records_by_assoc = joined_records(index, joins, rows)
+
+    Enum.map(rows, fn row ->
       fragment =
         hydrate_joined_fragment(
           row.fragment,
@@ -613,18 +617,41 @@ defmodule Exograph.DSL.Executor do
         joins
         |> Enum.with_index(1)
         |> Map.new(fn {join, position} ->
-          {join.binding,
-           joined_value(join.assoc, joined_record(index, join.assoc, join_id(row, position)))}
+          record =
+            records_by_assoc
+            |> Map.fetch!(join.assoc)
+            |> Map.fetch!(join_id(row, position))
+
+          {join.binding, joined_value(join.assoc, record)}
         end)
 
       {fragment, joined_by_binding}
     end)
   end
 
-  defp joined_record(index, assoc, id) do
-    source = Sources.join_source(assoc, index.inverted.prefix)
+  defp joined_records(index, joins, rows) do
+    joins
+    |> Enum.map(& &1.assoc)
+    |> Enum.uniq()
+    |> Map.new(fn assoc ->
+      ids =
+        rows
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {row, _row_position} ->
+          joins
+          |> Enum.with_index(1)
+          |> Enum.filter(fn {join, _join_position} -> join.assoc == assoc end)
+          |> Enum.map(fn {_join, join_position} -> join_id(row, join_position) end)
+        end)
+        |> Enum.uniq()
 
-    index.inverted.repo.one!(from(record in source, where: record.id == ^id))
+      source = Sources.join_source(assoc, index.inverted.prefix)
+
+      records =
+        index.inverted.repo.all(from(record in source, where: record.id in ^ids))
+
+      {assoc, Map.new(records, &{&1.id, &1})}
+    end)
   end
 
   defp join_id(row, 1), do: row.first_join_id
