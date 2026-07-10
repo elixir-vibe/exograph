@@ -7,6 +7,7 @@ defmodule Exograph.DSL.Executor do
 
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
   alias Exograph.DSL.{Compiler, JoinSemantics, Plan, Planner, Query, Sources}
+  alias Exograph.DSL.Executor.JoinBuilder
   alias Exograph.DSL.Plan.Join
   alias Exograph.Storage.{FragmentStore, Hydration, InvertedIndex}
   alias Exograph.StructuralQuery
@@ -752,6 +753,14 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
+    if Keyword.get(opts, :legacy_join_builder, false) do
+      legacy_joined_fragments_two(index, plan, opts)
+    else
+      joined_fragments_from_builder(index, plan, opts, [first_join, second_join])
+    end
+  end
+
+  defp legacy_joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
     candidate_limit = candidate_limit(index, opts)
     files_source = Schema.files_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
@@ -802,6 +811,18 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp joined_fragments_three(
+         index,
+         %Plan{joins: [first_join, second_join, third_join]} = plan,
+         opts
+       ) do
+    if Keyword.get(opts, :legacy_join_builder, false) do
+      legacy_joined_fragments_three(index, plan, opts)
+    else
+      joined_fragments_from_builder(index, plan, opts, [first_join, second_join, third_join])
+    end
+  end
+
+  defp legacy_joined_fragments_three(
          index,
          %Plan{joins: [first_join, second_join, third_join]} = plan,
          opts
@@ -864,6 +885,51 @@ defmodule Exograph.DSL.Executor do
       }
     end)
   end
+
+  defp joined_fragments_from_builder(index, plan, opts, joins) do
+    index
+    |> then(fn index ->
+      JoinBuilder.build(
+        index,
+        plan,
+        Keyword.put(opts, :candidate_limit, candidate_limit(index, opts))
+      )
+      |> index.inverted.repo.all()
+    end)
+    |> Enum.map(fn row ->
+      fragment =
+        hydrate_joined_fragment(
+          row.fragment,
+          row.source,
+          row.path,
+          row.package_version,
+          row.package,
+          row.ast,
+          index,
+          plan
+        )
+
+      joined_by_binding =
+        joins
+        |> Enum.with_index(1)
+        |> Map.new(fn {join, position} ->
+          {join.binding,
+           joined_value(join.assoc, joined_record(index, join.assoc, join_id(row, position)))}
+        end)
+
+      {fragment, joined_by_binding}
+    end)
+  end
+
+  defp joined_record(index, assoc, id) do
+    source = Sources.join_source(assoc, index.inverted.prefix)
+
+    index.inverted.repo.one!(from(record in source, where: record.id == ^id))
+  end
+
+  defp join_id(row, 1), do: row.first_join_id
+  defp join_id(row, 2), do: row.second_join_id
+  defp join_id(row, 3), do: row.third_join_id
 
   defp definition_calls_join_all(index, plan, call_edge_binding, opts) do
     limit = Keyword.get(opts, :limit, 50)

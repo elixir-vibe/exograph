@@ -1,6 +1,8 @@
 defmodule Exograph.Integration.DSLJoinExecutionTest do
   use ExUnit.Case, async: false
 
+  alias Exograph.DSL.Executor.JoinBuilder
+  alias Exograph.DSL.Planner
   alias Exograph.DuckDBSupport
   alias Exograph.Web.SafeEval
 
@@ -26,6 +28,22 @@ defmodule Exograph.Integration.DSLJoinExecutionTest do
       )
 
     %{index: index}
+  end
+
+  test "builds a named-binding candidate query for multiple joins", %{index: index} do
+    query =
+      query!(
+        ~s|from(f in Fragment, join: d in assoc(f, :definitions), join: r in assoc(f, :references), where: d.qualified_name == "Demo.run/1", where: r.qualified_name == "Enum.map/2")|
+      )
+
+    assert [%{fragment: fragment, first_join_id: definition_id, second_join_id: reference_id}] =
+             index.inverted.repo.all(
+               JoinBuilder.build(index, Planner.plan(query), candidate_limit: 10)
+             )
+
+    assert fragment.name == "run"
+    assert is_integer(definition_id)
+    assert is_integer(reference_id)
   end
 
   test "joins a function to only its contained reference", %{index: index} do
