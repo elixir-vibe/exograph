@@ -6,7 +6,7 @@ defmodule Exograph.DSL.Executor do
   import Exograph.DSL.Executor.Scope
 
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
-  alias Exograph.DSL.{Compiler, JoinSemantics, Plan, Planner, Query, Sources}
+  alias Exograph.DSL.{Compiler, Plan, Planner, Query, Sources}
   alias Exograph.DSL.Executor.JoinBuilder
   alias Exograph.DSL.Plan.Join
   alias Exograph.Storage.{FragmentStore, Hydration, InvertedIndex}
@@ -142,20 +142,6 @@ defmodule Exograph.DSL.Executor do
     :line,
     :end_line,
     :mass
-  ]
-  @light_reference_fields [
-    :id,
-    :package_id,
-    :package_version_id,
-    :file_id,
-    :fragment_id,
-    :kind,
-    :module,
-    :name,
-    :arity,
-    :qualified_name,
-    :line,
-    :column
   ]
   @candidate_fragment_fields @light_fragment_fields
 
@@ -578,14 +564,8 @@ defmodule Exograph.DSL.Executor do
     )
   end
 
-  defp joined_fragments(index, %Plan{joins: [join]} = plan, opts, offset) do
-    join_predicates = predicates(plan, join.binding)
-
-    if join_predicates != [] do
-      joined_fragments_fact_first(index, plan, join, opts, offset)
-    else
-      joined_fragments_fragment_first(index, plan, join, opts, offset)
-    end
+  defp joined_fragments(index, %Plan{joins: [join]} = plan, opts, cursor) do
+    joined_fragments_from_builder(index, plan, Keyword.put(opts, :cursor, cursor), [join])
   end
 
   defp joined_fragments(index, %Plan{joins: [_first, _second]} = plan, opts, _offset),
@@ -593,164 +573,6 @@ defmodule Exograph.DSL.Executor do
 
   defp joined_fragments(index, %Plan{joins: [_first, _second, _third]} = plan, opts, _offset),
     do: joined_fragments_three(index, plan, opts)
-
-  defp joined_fragments_fact_first(index, plan, join, opts, cursor) do
-    candidate_limit = candidate_limit(index, opts)
-    files_source = Schema.files_source(index.inverted.prefix)
-    versions_source = Schema.package_versions_source(index.inverted.prefix)
-    packages_source = Schema.packages_source(index.inverted.prefix)
-    fragments_source = Schema.fragments_source(index.inverted.prefix)
-    function_fragment_kinds = JoinSemantics.function_fragment_kinds()
-
-    {join_table, join_record} = Sources.primary_source(join.assoc, index.inverted.prefix)
-
-    containing_fragment =
-      if not light_join_projection?(index, plan) do
-        from(f in {fragments_source, FragmentRecord},
-          where:
-            f.file_id == parent_as(:joined).file_id and
-              f.kind in ^function_fragment_kinds and
-              f.line <= parent_as(:joined).line and
-              (is_nil(f.end_line) or f.end_line >= parent_as(:joined).line),
-          order_by: [desc: f.line],
-          limit: 1
-        )
-      else
-        from(f in {fragments_source, FragmentRecord},
-          where:
-            f.file_id == parent_as(:joined).file_id and
-              f.kind in ^function_fragment_kinds and
-              f.line <= parent_as(:joined).line and
-              (is_nil(f.end_line) or f.end_line >= parent_as(:joined).line),
-          order_by: [desc: f.line],
-          limit: 1,
-          select: map(f, @light_fragment_fields)
-        )
-      end
-
-    query =
-      from(joined in {join_table, join_record},
-        as: :joined,
-        inner_lateral_join: frag in subquery(containing_fragment),
-        as: :fragment,
-        on: true,
-        left_join: file in ^files_source,
-        on: file.id == frag.file_id,
-        left_join: version in ^versions_source,
-        on: version.id == frag.package_version_id,
-        left_join: package in ^packages_source,
-        on: package.id == version.package_id,
-        order_by: [asc: file.path, asc: frag.line, asc: frag.id],
-        limit: ^candidate_limit
-      )
-      |> maybe_distinct_joined_fragment(index, plan, :fact_first)
-      |> select_joined_fragment(index, plan, :fact_first, join.assoc)
-
-    query =
-      case cursor do
-        nil ->
-          query
-
-        {path, line, id} ->
-          where(
-            query,
-            [_joined, frag, file, _version, _package],
-            file.path > ^path or
-              (file.path == ^path and frag.line > ^line) or
-              (file.path == ^path and frag.line == ^line and frag.id > ^id)
-          )
-      end
-
-    query
-    |> where_first_binding_join_predicates(predicates(plan, join.binding), join.assoc)
-    |> where_fragment_text_contains_third(plan)
-    |> where_structural_terms_second(index, plan)
-    |> where_second_binding_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
-    |> where_fragment_scope_second(opts)
-    |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, package_version, package_name, file_ast, joined} ->
-      {
-        hydrate_joined_fragment(
-          fragment,
-          source,
-          path,
-          package_version,
-          package_name,
-          file_ast,
-          index,
-          plan
-        ),
-        %{join.binding => joined_value(join.assoc, joined)}
-      }
-    end)
-  end
-
-  defp joined_fragments_fragment_first(index, plan, join, opts, cursor) do
-    candidate_limit = candidate_limit(index, opts)
-    files_source = Schema.files_source(index.inverted.prefix)
-    versions_source = Schema.package_versions_source(index.inverted.prefix)
-    packages_source = Schema.packages_source(index.inverted.prefix)
-    fragments_source = Schema.fragments_source(index.inverted.prefix)
-    function_fragment_kinds = JoinSemantics.function_fragment_kinds()
-
-    query =
-      from(fragment in {fragments_source, FragmentRecord},
-        as: :fragment,
-        join: joined in ^Sources.join_source(join.assoc, index.inverted.prefix),
-        on: joined.file_id == fragment.file_id,
-        where:
-          fragment.kind in ^function_fragment_kinds and joined.line >= fragment.line and
-            (is_nil(fragment.end_line) or joined.line <= fragment.end_line),
-        left_join: file in ^files_source,
-        on: file.id == fragment.file_id,
-        left_join: version in ^versions_source,
-        on: version.id == fragment.package_version_id,
-        left_join: package in ^packages_source,
-        on: package.id == version.package_id,
-        order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
-        limit: ^candidate_limit
-      )
-      |> maybe_distinct_joined_fragment(index, plan, :fragment_first)
-      |> select_joined_fragment(index, plan, :fragment_first, join.assoc)
-
-    query =
-      case cursor do
-        nil ->
-          query
-
-        {path, line, id} ->
-          where(
-            query,
-            [fragment, _joined, file, _version, _package],
-            file.path > ^path or
-              (file.path == ^path and fragment.line > ^line) or
-              (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
-          )
-      end
-
-    query
-    |> where_fragment_text_contains_fourth(plan)
-    |> where_structural_terms(index, plan)
-    |> where_source_predicates(predicates(plan, plan.binding), nil, :fragment)
-    |> where_second_binding_predicates(predicates(plan, join.binding), join.binding, join.assoc)
-    |> where_fragment_scope(opts)
-    |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, package_version, package_name, file_ast, joined} ->
-      {
-        hydrate_joined_fragment(
-          fragment,
-          source,
-          path,
-          package_version,
-          package_name,
-          file_ast,
-          index,
-          plan
-        ),
-        %{join.binding => joined_value(join.assoc, joined)}
-      }
-    end)
-  end
 
   defp joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
     joined_fragments_from_builder(index, plan, opts, [first_join, second_join])
@@ -840,94 +662,6 @@ defmodule Exograph.DSL.Executor do
       |> Enum.map(&hit(&1, Schema.definitions_source(index.inverted.prefix)))
 
     {:ok, results}
-  end
-
-  defp maybe_distinct_joined_fragment(query, index, plan, binding) do
-    if light_join_projection?(index, plan) do
-      query
-    else
-      distinct_binding(query, binding)
-    end
-  end
-
-  defp distinct_binding(query, :fact_first), do: distinct(query, [_joined, frag], frag.id)
-  defp distinct_binding(query, :fragment_first), do: distinct(query, [fragment], fragment.id)
-
-  defp select_joined_fragment(query, index, plan, :fact_first, assoc) do
-    if light_join_projection?(index, plan) do
-      select_light_joined_fragment(query, :fact_first, assoc)
-    else
-      select(query, [joined, frag, file, version, package], {
-        frag,
-        file.source,
-        file.path,
-        version.version,
-        package.name,
-        file.ast,
-        joined
-      })
-    end
-  end
-
-  defp select_joined_fragment(query, index, plan, :fragment_first, assoc) do
-    if light_join_projection?(index, plan) do
-      select_light_joined_fragment(query, :fragment_first, assoc)
-    else
-      select(query, [fragment, joined, file, version, package], {
-        fragment,
-        file.source,
-        file.path,
-        version.version,
-        package.name,
-        file.ast,
-        joined
-      })
-    end
-  end
-
-  defp select_light_joined_fragment(query, :fact_first, :references) do
-    select(query, [joined, frag, file, version, package], {
-      map(frag, @light_fragment_fields),
-      file.source,
-      file.path,
-      version.version,
-      package.name,
-      file.ast,
-      map(joined, @light_reference_fields)
-    })
-  end
-
-  defp select_light_joined_fragment(query, :fragment_first, :references) do
-    select(query, [fragment, joined, file, version, package], {
-      map(fragment, @light_fragment_fields),
-      file.source,
-      file.path,
-      version.version,
-      package.name,
-      file.ast,
-      map(joined, @light_reference_fields)
-    })
-  end
-
-  defp select_light_joined_fragment(query, :fact_first, _assoc) do
-    select(
-      query,
-      [joined, frag, file, version, package],
-      {map(frag, @light_fragment_fields), file.source, file.path, version.version, package.name,
-       file.ast, joined}
-    )
-  end
-
-  defp select_light_joined_fragment(query, :fragment_first, _assoc) do
-    select(query, [fragment, joined, file, version, package], {
-      map(fragment, @light_fragment_fields),
-      file.source,
-      file.path,
-      version.version,
-      package.name,
-      file.ast,
-      joined
-    })
   end
 
   defp select_multi_fragment_join(%Plan{select: nil}, hit, _joined_by_binding), do: hit

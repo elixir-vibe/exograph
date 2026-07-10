@@ -10,7 +10,7 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
   @function_fragment_kinds JoinSemantics.function_fragment_kinds()
 
   def build(index, %Plan{source: :fragment, joins: joins} = plan, opts)
-      when length(joins) in 2..3 do
+      when length(joins) in 1..3 do
     root = plan.binding
     files_source = Schema.files_source(index.inverted.prefix)
     versions_source = Schema.package_versions_source(index.inverted.prefix)
@@ -46,10 +46,16 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
       |> where_predicates(plan)
       |> where_call_definition_pair(joins)
       |> where_scope(root, opts)
+      |> where_cursor(root, opts)
       |> where_text_contains(plan)
       |> where_structural_terms(index, plan, root)
 
     select_join_ids(query, joins)
+  end
+
+  defp select_join_ids(query, [first]) do
+    first_binding = first.binding
+    select_merge(query, [], %{first_join_id: field(as(^first_binding), :id)})
   end
 
   defp select_join_ids(query, [first, second]) do
@@ -149,6 +155,35 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
 
   defp maybe_where(query, root, field, value),
     do: where(query, [], field(as(^root), ^field) == ^value)
+
+  defp where_cursor(query, root, opts) do
+    case Keyword.get(opts, :cursor) do
+      nil ->
+        query
+
+      {path, line, id} ->
+        where(query, [], ^cursor_condition(root, path, line, id))
+    end
+  end
+
+  defp cursor_condition(root, path, line, id) do
+    path_after = cursor_path_after(path)
+    same_path = cursor_same_path(path)
+    line_after = cursor_line_after(root, line)
+    same_line = cursor_same_line(root, line)
+    id_after = cursor_id_after(root, id)
+
+    dynamic(
+      [],
+      ^path_after or (^same_path and ^line_after) or (^same_path and ^same_line and ^id_after)
+    )
+  end
+
+  defp cursor_path_after(path), do: dynamic([], field(as(:file), :path) > ^path)
+  defp cursor_same_path(path), do: dynamic([], field(as(:file), :path) == ^path)
+  defp cursor_line_after(root, line), do: dynamic([], field(as(^root), :line) > ^line)
+  defp cursor_same_line(root, line), do: dynamic([], field(as(^root), :line) == ^line)
+  defp cursor_id_after(root, id), do: dynamic([], field(as(^root), :id) > ^id)
 
   defp where_text_contains(query, plan) do
     Enum.reduce(Compiler.text_contains_patterns(plan.query), query, fn text, query ->

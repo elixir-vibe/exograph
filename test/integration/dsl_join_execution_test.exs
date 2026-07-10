@@ -58,6 +58,18 @@ defmodule Exograph.Integration.DSLJoinExecutionTest do
     end)
   end
 
+  test "resumes joined queries from a keyset cursor", %{index: index} do
+    query =
+      query!(
+        ~s|from(f in Fragment, join: r in assoc(f, :references), where: f.kind == :def, select: f)|
+      )
+
+    assert {:ok, [first]} = Exograph.all(index, query, limit: 1)
+    cursor = {first.fragment.file, first.fragment.line, first.fragment.id}
+    assert {:ok, [second]} = Exograph.all(index, query, limit: 1, cursor: cursor)
+    assert first.fragment.id != second.fragment.id
+  end
+
   test "applies predicates for multiple fact joins in one function scope", %{index: index} do
     query!(
       ~s|from(f in Fragment, join: d in assoc(f, :definitions), join: r in assoc(f, :references), where: f.kind == :def, where: d.qualified_name == "Demo.run/1", where: r.qualified_name == "Enum.map/2", select: {f, d, r})|
