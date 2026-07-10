@@ -91,8 +91,8 @@ logical query remains the source of truth and every physical plan ends in exact
 ExAST verification.
 
 `Exograph.explain/3` exposes DuckDB's `EXPLAIN ANALYZE` output for the
-candidate-retrieval SQL. The reported plan deliberately excludes hydration and
-ExAST verification because those run after DuckDB returns candidates.
+candidate-retrieval SQL. It also reports separate candidate retrieval,
+hydration, and ExAST verification metrics.
 
 ```elixir
 Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
@@ -102,7 +102,8 @@ Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
 #=>     sql: "SELECT ...",
 #=>     parameter_count: 2,
 #=>     analyze: %QuackDB.Profile{}
-#=>   }
+#=>   },
+#=>   metrics: %{candidate_rows: 150, hydrated_fragments: 150, matches: 12, ...}
 #=> }
 ```
 

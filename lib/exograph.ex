@@ -291,10 +291,12 @@ defmodule Exograph do
   def compile(pattern), do: StructuralQuery.pattern(pattern)
 
   @doc """
-  Returns DuckDB's analyzed candidate plan for a structural query.
+  Returns DuckDB's analyzed candidate plan and measured verification pipeline
+  for a structural query.
 
-  ExAST remains the semantic authority: this plan describes only candidate
-  retrieval, before AST hydration and exact verification.
+  ExAST remains the semantic authority. Candidate retrieval, hydration, and
+  exact verification are measured separately so plan changes can be evaluated
+  without conflating their costs.
   """
   @spec explain(Index.t(), ExAST.Pattern.pattern() | ExAST.Selector.t(), keyword()) :: map()
   def explain(%Index{} = index, pattern_or_selector, opts \\ []) do
@@ -303,6 +305,46 @@ defmodule Exograph do
     repo = index.inverted.repo
     {sql, params} = Ecto.Adapters.SQL.to_sql(:all, repo, query)
     analyzed = QuackDB.Profile.analyze!(repo, sql, params, timeout: :infinity)
+
+    {candidate_us, candidate_ids} = :timer.tc(fn -> repo.all(query) end)
+
+    {hydration_us, candidates} =
+      :timer.tc(fn ->
+        index
+        |> DSL.Executor.stream_structural(compiled, opts)
+        |> Enum.take(length(candidate_ids))
+      end)
+
+    {verification_us, verification} =
+      :timer.tc(fn ->
+        Enum.reduce(
+          candidates,
+          %{verified_fragments: 0, rejected_fragments: 0, matches: 0},
+          fn candidate, metrics ->
+            case StructuralQuery.verify(compiled, candidate) do
+              {:ok, matches} ->
+                %{
+                  metrics
+                  | verified_fragments: metrics.verified_fragments + 1,
+                    matches: metrics.matches + length(matches)
+                }
+
+              :error ->
+                %{metrics | rejected_fragments: metrics.rejected_fragments + 1}
+            end
+          end
+        )
+      end)
+
+    metrics =
+      Map.merge(verification, %{
+        candidate_rows: length(candidate_ids),
+        hydrated_fragments: length(candidates),
+        candidate_ms: milliseconds(candidate_us),
+        hydration_ms: milliseconds(hydration_us),
+        verification_ms: milliseconds(verification_us),
+        total_ms: milliseconds(candidate_us + hydration_us + verification_us)
+      })
 
     %{
       logical: %{
@@ -314,10 +356,14 @@ defmodule Exograph do
       physical: %{
         sql: sql,
         parameter_count: length(params),
-        analyze: analyzed
-      }
+        analyze: analyzed,
+        slowest_operators: QuackDB.Profile.slowest(analyzed)
+      },
+      metrics: metrics
     }
   end
+
+  defp milliseconds(microseconds), do: Float.round(microseconds / 1_000, 3)
 
   @doc false
   @spec tree_nodes(Index.t(), Exograph.Fragment.id()) :: [Exograph.Tree.Node.t()]

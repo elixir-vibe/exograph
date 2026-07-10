@@ -118,6 +118,10 @@ defmodule Exograph.DSL.ExecutorTest do
     assert "def.name:run" in explanation.logical.required_terms
     assert is_binary(explanation.physical.sql)
     assert %QuackDB.Profile{} = explanation.physical.analyze
+    assert explanation.metrics.candidate_rows > 0
+    assert explanation.metrics.hydrated_fragments > 0
+    assert explanation.metrics.matches > 0
+    assert is_number(explanation.metrics.total_ms)
   end
 
   test "fragment queries resume from a keyset cursor", %{index: index} do
