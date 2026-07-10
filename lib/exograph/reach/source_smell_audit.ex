@@ -152,7 +152,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
           shard_result =
             DuckDBShards.with_repo(shard, fn -> scan_index(shard.index, patterns, opts) end)
 
-          findings = Enum.take(acc.findings ++ shard_result.findings, limit)
+          findings = merge_findings(acc.findings, shard_result.findings, limit)
 
           next = %{
             acc
@@ -169,8 +169,16 @@ defmodule Exograph.Reach.SourceSmellAudit do
     {:ok, %{result | elapsed_ms: Float.round(elapsed_us / 1000, 1)}}
   end
 
+  defp merge_findings(existing, incoming, limit) do
+    incoming
+    |> Enum.reduce(Enum.reverse(existing), fn finding, findings ->
+      if length(findings) < limit, do: [finding | findings], else: findings
+    end)
+    |> Enum.reverse()
+  end
+
   defp merge_skipped_patterns(left, right),
-    do: Enum.uniq_by(left ++ right, &skipped_pattern_key/1)
+    do: Enum.uniq_by(Enum.concat(left, right), &skipped_pattern_key/1)
 
   defp scan_sharded_file_checks(shards, modules, opts) do
     limit = Keyword.get(opts, :limit, @default_limit)
@@ -184,7 +192,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
               scan_index_file_checks(shard.index, modules, opts)
             end)
 
-          findings = Enum.take(acc.findings ++ shard_result.findings, limit)
+          findings = merge_findings(acc.findings, shard_result.findings, limit)
 
           next = %{
             acc
@@ -231,10 +239,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
         {:cont, {next_findings, next_seen, next_count}}
       end
     end)
-    |> then(fn
-      {findings, count} -> {findings, count}
-      {findings, _seen, count} -> {findings, count}
-    end)
+    |> finish_findings()
   end
 
   defp source_prefilters(opts) do
@@ -309,7 +314,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
       _error -> []
     end
   rescue
-    _error -> []
+    ArgumentError -> []
   end
 
   defp write_temp_source(%{path: path, source: source}) when is_binary(source) do
@@ -355,7 +360,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
     if String.starts_with?(location, prefix) do
       location
       |> String.replace_prefix(prefix, "")
-      |> String.split(":")
+      |> String.split(":", parts: 2)
       |> hd()
       |> parse_line()
     else
@@ -495,23 +500,27 @@ defmodule Exograph.Reach.SourceSmellAudit do
         {:cont, {next_findings, next_seen, next_count}}
       end
     end)
-    |> then(fn
-      {findings, count} -> {findings, count}
-      {findings, _seen, count} -> {findings, count}
-    end)
+    |> finish_findings()
   end
 
   defp add_findings(findings, seen, new_findings) do
-    Enum.reduce(new_findings, {findings, seen}, fn finding, {findings, seen} ->
-      key = finding_key(finding)
+    {new_findings, seen} =
+      Enum.reduce(new_findings, {[], seen}, fn finding, {new_findings, seen} ->
+        key = finding_key(finding)
 
-      if MapSet.member?(seen, key) do
-        {findings, seen}
-      else
-        {findings ++ [finding], MapSet.put(seen, key)}
-      end
-    end)
+        if MapSet.member?(seen, key) do
+          {new_findings, seen}
+        else
+          {[finding | new_findings], MapSet.put(seen, key)}
+        end
+      end)
+
+    findings = Enum.reduce(Enum.reverse(new_findings), findings, &[&1 | &2])
+    {findings, seen}
   end
+
+  defp finish_findings({findings, count}), do: {Enum.reverse(findings), count}
+  defp finish_findings({findings, _seen, count}), do: {Enum.reverse(findings), count}
 
   defp finding_key(finding) do
     location_key = finding.range || finding.match_fingerprint || {:line, finding.line}
@@ -701,7 +710,7 @@ defmodule Exograph.Reach.SourceSmellAudit do
       []
     end
   rescue
-    _error -> []
+    ArgumentError -> []
   end
 
   defp finding(fragment, package, %Pattern{} = pattern, match) do

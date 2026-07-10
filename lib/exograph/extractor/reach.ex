@@ -37,7 +37,7 @@ defmodule Exograph.Extractor.Reach do
 
   defp extract_file(file, fragments) do
     with {:ok, ast} <-
-           Code.string_to_quoted(file.source,
+           Exograph.ElixirParser.string_to_quoted(file.source,
              columns: true,
              file: file.path,
              emit_warnings: false
@@ -82,7 +82,7 @@ defmodule Exograph.Extractor.Reach do
     |> Enum.filter(&(&1.kind in [:def, :defp, :defmacro, :defmacrop]))
     |> Map.new(fn definition -> {{definition.name, definition.arity}, definition} end)
   rescue
-    _ -> %{}
+    ArgumentError -> %{}
   end
 
   defp local_nodes(file, fragments, definitions, graph) do

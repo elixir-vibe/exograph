@@ -6,7 +6,7 @@ defmodule Exograph.DuckDB do
   import Ecto.Query
 
   alias Ecto.Migration.Runner
-  alias Exograph.Storage.{FragmentTermRecord, Schema}
+  alias Exograph.Storage.{FragmentTermRecord, IndexFormat, Schema}
   alias Exograph.Storage.Migrations.CreateSchema
 
   @doc "Configures DuckDB execution threads for the current connection."
@@ -22,6 +22,7 @@ defmodule Exograph.DuckDB do
     repo = Keyword.fetch!(opts, :repo)
     prefix = Keyword.get(opts, :prefix, "exograph")
 
+    reject_legacy_index!(repo, prefix)
     Application.put_env(:exograph, CreateSchema, prefix: prefix)
 
     Runner.run(
@@ -36,14 +37,27 @@ defmodule Exograph.DuckDB do
       log_migrations_sql: false
     )
 
+    IndexFormat.write_current!(repo, prefix)
     checkpoint(repo)
   end
 
+  defp reject_legacy_index!(repo, prefix) do
+    format_table = Schema.table_name(prefix, :index_format)
+    fragments_table = Schema.table_name(prefix, :fragments)
+
+    table_names = QuackDB.Meta.tables!(repo) |> Enum.map(& &1.name)
+
+    if fragments_table in table_names and format_table not in table_names do
+      raise ArgumentError,
+            "legacy Exograph index detected; rebuild it instead of migrating in place"
+    end
+  end
+
   defp checkpoint(repo) do
-    repo.query!("CHECKPOINT", [], timeout: :infinity)
+    QuackDB.Storage.checkpoint!(repo, timeout: :infinity)
     :ok
   rescue
-    _ -> :ok
+    QuackDB.Error -> :ok
   end
 
   @doc "Creates DuckDB FTS/BM25 indexes for searchable Exograph tables."

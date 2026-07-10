@@ -123,8 +123,7 @@ defmodule Exograph.Hex.QuackDBTelemetry do
 
   defp append_suffix(source) do
     source
-    |> String.split(".")
-    |> List.last()
+    |> String.replace(~r/^.*\./, "")
     |> normalize_table()
     |> source_suffix()
   end
@@ -157,10 +156,52 @@ defmodule Exograph.Hex.QuackDBTelemetry do
   defp known_suffix("terms"), do: :terms
   defp known_suffix(_suffix), do: :other
 
-  defp query_command(%{command: command}) when is_atom(command), do: command
+  @metric_kinds [
+    :calls,
+    :rows,
+    :batches,
+    :request_bytes,
+    :response_bytes,
+    :duration_us,
+    :append_duration_us,
+    :encode_duration_us,
+    :transport_duration_us,
+    :decode_duration_us,
+    :query_calls,
+    :query_rows,
+    :query_request_bytes,
+    :query_response_bytes,
+    :query_duration_us,
+    :query_encode_duration_us,
+    :query_transport_duration_us,
+    :query_decode_duration_us,
+    :query_normalize_duration_us
+  ]
+  @metric_suffixes [
+    :comments,
+    :definitions,
+    :files,
+    :fragments,
+    :packages,
+    :references,
+    :terms,
+    :call_edges,
+    :graph_nodes,
+    :fragment_terms,
+    :fragment_merge_stage,
+    :other,
+    :unknown
+  ]
+  @metrics Map.new(
+             for(kind <- @metric_kinds, suffix <- @metric_suffixes) do
+               {{kind, suffix}, :"quackdb_#{kind}_#{suffix}"}
+             end
+           )
+
+  defp query_command(%{command: command}) when command in @metric_suffixes, do: command
   defp query_command(_metadata), do: :unknown
 
-  defp metric(kind, suffix), do: String.to_atom("quackdb_#{kind}_#{suffix}")
+  defp metric(kind, suffix), do: Map.fetch!(@metrics, {kind, suffix})
 
   defp count(metric, amount \\ 1)
   defp count(_metric, 0), do: :ok

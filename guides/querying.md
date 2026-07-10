@@ -88,29 +88,22 @@ From the CLI:
 
 Exograph treats indexes like an RDBMS treats access paths: advisory only. The
 logical query remains the source of truth and every physical plan ends in exact
-ExAST verification unless you explicitly pass `verify: false`.
+ExAST verification.
+
+`Exograph.explain/3` exposes DuckDB's `EXPLAIN ANALYZE` output for the
+candidate-retrieval SQL. The reported plan deliberately excludes hydration and
+ExAST verification because those run after DuckDB returns candidates.
 
 ```elixir
-plan =
-  Exograph.plan(
-    index,
-    from("def _ do ... end") |> where(contains("Repo.get!(_, _)"))
-  )
-
-Exograph.explain(plan)
+Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
 #=> %{
 #=>   logical: %{required_terms: ["call.remote:Repo.get!/2"], ...},
-#=>   physical: %{scan: {:term_index_scan, [...]}, filters: [:hydrate_fragments, :ex_ast_verify]},
-#=>   estimated_candidates: 4,
-#=>   warnings: []
+#=>   physical: %{
+#=>     sql: "SELECT ...",
+#=>     parameter_count: 2,
+#=>     analyze: %QuackDB.Profile{}
+#=>   }
 #=> }
-```
-
-Standalone explanations are also available:
-
-```elixir
-Exograph.explain("Repo.get!(User, id)")
-#=> %{required: ["call.remote:Repo.get!/2", ...], verifier: :pattern, ...}
 ```
 
 ## Similarity search

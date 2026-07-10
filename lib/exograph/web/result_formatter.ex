@@ -81,10 +81,7 @@ defmodule Exograph.Web.ResultFormatter do
   defp url_segment(value), do: URI.encode(value, &URI.char_unreserved?/1)
 
   defp url_path(path) do
-    path
-    |> String.split("/")
-    |> Enum.map(&url_segment/1)
-    |> Enum.join("/")
+    Enum.map_join(String.split(path, "/"), "/", &url_segment/1)
   end
 
   defp package_key(package, nil), do: package

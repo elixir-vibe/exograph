@@ -63,6 +63,6 @@ defmodule Exograph.Storage.SQL do
     |> Keyword.get(:pool_size, System.schedulers_online())
     |> max(1)
   rescue
-    _ -> System.schedulers_online()
+    ArgumentError -> System.schedulers_online()
   end
 end

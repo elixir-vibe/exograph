@@ -36,7 +36,7 @@ defmodule Exograph.Hex.Downloader do
 
     {result, failures} =
       Enum.reduce_while(mirrors, {nil, []}, fn mirror, {_body, failures} ->
-        url = mirror <> path
+        url = IO.iodata_to_binary([mirror, path])
 
         case download_url(url, timeout) do
           {:ok, body} -> {:halt, {body, failures}}
@@ -54,7 +54,7 @@ defmodule Exograph.Hex.Downloader do
       {:error, reason} -> {:error, reason}
     end
   rescue
-    error -> {:error, error}
+    error in [ArgumentError, RuntimeError] -> {:error, error}
   end
 
   defp download_error(name, version, failures) do

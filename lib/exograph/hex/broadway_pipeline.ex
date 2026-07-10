@@ -5,6 +5,7 @@ defmodule Exograph.Hex.BroadwayPipeline do
 
   alias Broadway.Message
   alias Exograph.Hex.Progress
+  alias Exograph.Hex.IndexReport.{Failure, Result}
 
   require Logger
 
@@ -147,7 +148,7 @@ defmodule Exograph.Hex.BroadwayPipeline do
 
     put_result(message, result)
   rescue
-    error ->
+    error in [ArgumentError, RuntimeError] ->
       result = {:error, Exception.message(error)}
       Progress.package_done(message.data.entry, result)
       put_result(message, result)
@@ -203,7 +204,8 @@ defmodule Exograph.Hex.BroadwayPipeline do
   defp do_safe_index_entry(index_fun, entry, index, opts) do
     index_fun.(entry, index, opts)
   rescue
-    error -> {:error, {error.__struct__, Exception.message(error)}}
+    error in [ArgumentError, RuntimeError] ->
+      {:error, {error.__struct__, Exception.message(error)}}
   catch
     :exit, reason -> {:error, {:exit, reason}}
     kind, reason -> {:error, {kind, reason}}
@@ -229,7 +231,7 @@ defmodule Exograph.Hex.BroadwayPipeline do
   defp transient_error?(_result), do: false
 
   defp finish(name, pid, total, started, telemetry_id) do
-    results = await_results(total, %{ok: 0, skipped: 0, error: 0, failures: []})
+    results = await_results(total, %Result{})
     Exograph.Hex.BroadwayTelemetry.detach(telemetry_id)
     Broadway.stop(name)
     ref = Process.monitor(pid)
@@ -270,7 +272,7 @@ defmodule Exograph.Hex.BroadwayPipeline do
   end
 
   defp failure(entry, reason) do
-    %{name: entry.name, version: entry.version, reason: inspect(reason, limit: 50)}
+    %Failure{name: entry.name, version: entry.version, reason: inspect(reason, limit: 50)}
   end
 
   defp normalize_job({entry, index}), do: %{entry: entry, index: index}
@@ -284,20 +286,19 @@ defmodule Exograph.Hex.BroadwayPipeline do
             %{entry: entry, index: index, shard_id: shard.id}
           end)
 
-        {shard.id, jobs}
+        {shard.id, List.to_tuple(jobs)}
       end)
 
     max_count =
-      indexed_entries
-      |> Map.values()
-      |> Enum.map(&length/1)
-      |> Enum.max(fn -> 0 end)
+      Enum.reduce(indexed_entries, 0, fn {_shard_id, jobs}, max_count ->
+        max(tuple_size(jobs), max_count)
+      end)
 
     for index <- 0..max(max_count - 1, 0),
         shard <- shards,
-        job = Enum.at(Map.fetch!(indexed_entries, shard.id), index),
-        not is_nil(job) do
-      job
+        jobs = Map.fetch!(indexed_entries, shard.id),
+        index < tuple_size(jobs) do
+      elem(jobs, index)
     end
   end
 

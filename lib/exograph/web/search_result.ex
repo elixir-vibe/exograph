@@ -5,6 +5,11 @@ defmodule Exograph.Web.SearchResult do
 
   @definition_kinds [:def, :defp, :defmacro, :defmacrop]
 
+  defmodule MatchAttrs do
+    @moduledoc false
+    defstruct kind: nil, name: nil, arity: nil, line: nil
+  end
+
   defstruct [
     :type,
     :file,
@@ -196,28 +201,27 @@ defmodule Exograph.Web.SearchResult do
   defp format_joined(_), do: nil
 
   defp match_attrs(%{node: node}), do: node_attrs(node)
-  defp match_attrs(%{line: line}), do: %{kind: nil, name: nil, arity: nil, line: line}
-  defp match_attrs(_match), do: %{kind: nil, name: nil, arity: nil, line: nil}
+  defp match_attrs(%{line: line}), do: %MatchAttrs{line: line}
+  defp match_attrs(_match), do: %MatchAttrs{}
 
   defp node_attrs({kind, meta, args}) when kind in @definition_kinds and is_list(args) do
     {name, arity} = args |> List.first() |> definition_head_name_arity()
-    %{kind: kind, name: name, arity: arity, line: Keyword.get(meta, :line)}
+    %MatchAttrs{kind: kind, name: name, arity: arity, line: Keyword.get(meta, :line)}
   end
 
   defp node_attrs({:defmodule, meta, args}) when is_list(args) do
-    %{
+    %MatchAttrs{
       kind: :module,
       name: module_name(List.first(args)),
-      arity: nil,
       line: Keyword.get(meta, :line)
     }
   end
 
   defp node_attrs({kind, meta, _args}) when is_atom(kind) and is_list(meta) do
-    %{kind: kind, name: nil, arity: nil, line: Keyword.get(meta, :line)}
+    %MatchAttrs{kind: kind, line: Keyword.get(meta, :line)}
   end
 
-  defp node_attrs(_node), do: %{kind: nil, name: nil, arity: nil, line: nil}
+  defp node_attrs(_node), do: %MatchAttrs{}
 
   defp definition_head_name_arity({:when, _meta, [head | _guards]}),
     do: definition_head_name_arity(head)

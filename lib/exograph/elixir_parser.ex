@@ -67,13 +67,13 @@ defmodule Exograph.ElixirParser do
   def string_to_quoted(source, opts \\ []) do
     Code.string_to_quoted(source, parser_opts(opts))
   rescue
-    exception -> {:error, exception}
+    exception in ArgumentError -> {:error, exception}
   end
 
   def string_to_quoted_with_comments(source, opts \\ []) do
     Code.string_to_quoted_with_comments(source, parser_opts(opts))
   rescue
-    exception -> {:error, exception}
+    exception in ArgumentError -> {:error, exception}
   end
 
   defp parser_opts(opts) do

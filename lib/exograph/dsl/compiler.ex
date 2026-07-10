@@ -102,11 +102,12 @@ defmodule Exograph.DSL.Compiler do
 
   defp structural_predicate?(_predicate), do: false
 
-  defp ast_pattern?(pattern) when is_binary(pattern) do
+  @doc false
+  def ast_pattern?(pattern) when is_binary(pattern) do
     if plain_text_token?(pattern) do
       false
     else
-      case Code.string_to_quoted(pattern) do
+      case Exograph.ElixirParser.string_to_quoted(pattern) do
         {:ok, nil} -> false
         {:ok, {:__block__, _meta, []}} -> false
         {:ok, _ast} -> true
@@ -115,7 +116,7 @@ defmodule Exograph.DSL.Compiler do
     end
   end
 
-  defp ast_pattern?(_pattern), do: false
+  def ast_pattern?(_pattern), do: false
 
   defp plain_text_token?(pattern) do
     String.match?(pattern, ~r/^[[:alnum:]_#!?@.-]+$/u) and

@@ -109,7 +109,7 @@ defmodule Exograph.Web.Completion do
         try do
           mod.__info__(:functions) ++ mod.__info__(:macros)
         rescue
-          _ -> []
+          ArgumentError -> []
         end
 
       for {name, arity} <- funs,
@@ -148,23 +148,34 @@ defmodule Exograph.Web.Completion do
   end
 
   defp expand_dot_path({:var, _var}), do: :error
-  defp expand_dot_path({:alias, alias}), do: {:ok, expand_alias(List.to_string(alias))}
-  defp expand_dot_path({:unquoted_atom, atom}), do: {:ok, List.to_atom(atom)}
+  defp expand_dot_path({:alias, alias}), do: expand_alias(List.to_string(alias))
+  defp expand_dot_path({:unquoted_atom, _atom}), do: :error
 
   defp expand_dot_path({:dot, parent, call}) do
-    case expand_dot_path(parent) do
-      {:ok, mod} when is_atom(mod) -> {:ok, Module.concat(mod, List.to_atom(call))}
-      _ -> :error
+    with {:ok, mod} <- expand_dot_path(parent) do
+      find_known_module(Module.split(mod) ++ [List.to_string(call)])
     end
   end
 
   defp expand_alias(alias) do
-    [first | rest] = String.split(alias, ".") |> Enum.map(&String.to_atom/1)
+    case String.split(alias, ".", trim: true) do
+      [] ->
+        :error
 
-    case Keyword.fetch(@eval_env.aliases, Module.concat(Elixir, first)) do
-      {:ok, resolved} when rest == [] -> resolved
-      {:ok, resolved} -> Module.concat([resolved | rest])
-      :error -> Module.concat([first | rest])
+      [first | rest] ->
+        case Enum.find(@eval_env.aliases, fn {alias_mod, _resolved} ->
+               Module.split(alias_mod) == [first]
+             end) do
+          {_alias_mod, resolved} -> find_known_module(Module.split(resolved) ++ rest)
+          nil -> find_known_module([first | rest])
+        end
+    end
+  end
+
+  defp find_known_module(parts) do
+    case Enum.find(all_modules(), &(Module.split(&1) == parts)) do
+      nil -> :error
+      module -> {:ok, module}
     end
   end
 
@@ -219,7 +230,7 @@ defmodule Exograph.Web.Completion do
     repo.all(query, timeout: 10_000)
     |> Enum.map(fn name -> item(name, "variable", "#{source}") end)
   rescue
-    _ -> []
+    QuackDB.Error -> []
   end
 
   defp extract_partial(hint) do
@@ -259,7 +270,7 @@ defmodule Exograph.Web.Completion do
         nil
     end
   rescue
-    _ -> nil
+    ArgumentError -> nil
   end
 
   defp module_detail(mod) do
@@ -271,7 +282,7 @@ defmodule Exograph.Web.Completion do
         "module"
     end
   rescue
-    _ -> "module"
+    ArgumentError -> "module"
   end
 
   defp module_part(parts, index), do: parts |> Enum.drop(index) |> hd()

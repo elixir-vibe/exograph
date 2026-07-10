@@ -1,7 +1,8 @@
 defmodule Exograph.Hex.Corpus do
   @moduledoc false
 
-  alias Exograph.Hex.{Downloader, Progress, Registry}
+  alias Exograph.Hex.{Downloader, IndexReport, Progress, Registry}
+  alias Exograph.Hex.IndexReport.{Failure, Result}
 
   alias Exograph.{Package, PackageVersion}
 
@@ -93,12 +94,13 @@ defmodule Exograph.Hex.Corpus do
     shard_count = Keyword.fetch!(opts, :shards)
     mode = Keyword.get(opts, :mode, :latest)
     entries = list_entries(mode, opts)
+    total = length(entries)
     write_entries_snapshot(entries, opts)
     preflight_missing_tarballs(entries, opts)
     started = System.monotonic_time(:millisecond)
     Exograph.Hex.StageTimings.reset()
-    Progress.start_run(length(entries))
-    cli_header(length(entries), mode, 0)
+    Progress.start_run(total)
+    cli_header(total, mode, 0)
     entries_by_shard = entries_by_shard(entries, shard_count)
     prefix = Keyword.get(opts, :prefix, "hex")
     global_concurrency = Keyword.get(opts, :concurrency, 4)
@@ -229,7 +231,7 @@ defmodule Exograph.Hex.Corpus do
 
     results =
       stream
-      |> Enum.reduce(%{ok: 0, skipped: 0, error: 0, failures: []}, fn result, acc ->
+      |> Enum.reduce(%Result{}, fn result, acc ->
         reduce_entry_result(result, acc, counter, total, started, cli?)
       end)
       |> then(&%{&1 | failures: Enum.reverse(&1.failures)})
@@ -427,7 +429,7 @@ defmodule Exograph.Hex.Corpus do
 
       if sources == [], do: :skipped, else: {:ok, sources}
     rescue
-      error -> {:error, error}
+      error in [ArgumentError, File.Error, RuntimeError] -> {:error, error}
     end
   end
 
@@ -661,7 +663,7 @@ defmodule Exograph.Hex.Corpus do
     empty = Map.new(0..(shard_count - 1), &{&1, []})
 
     entries
-    |> Enum.with_index()
+    |> Stream.with_index()
     |> Enum.reduce(empty, fn {entry, index}, acc ->
       Map.update!(acc, rem(index, shard_count), &[entry | &1])
     end)
@@ -670,10 +672,10 @@ defmodule Exograph.Hex.Corpus do
 
   defp package_keys(entries), do: Enum.map(entries, &Map.take(&1, [:name, :version]))
 
-  defp failure(nil, reason), do: %{name: nil, version: nil, reason: inspect(reason, limit: 50)}
+  defp failure(nil, reason), do: %Failure{reason: inspect(reason, limit: 50)}
 
   defp failure(entry, reason) do
-    %{name: entry.name, version: entry.version, reason: inspect(reason, limit: 50)}
+    %Failure{name: entry.name, version: entry.version, reason: inspect(reason, limit: 50)}
   end
 
   defp write_manifest(_manifest, nil), do: :ok
@@ -687,14 +689,16 @@ defmodule Exograph.Hex.Corpus do
   end
 
   defp combine_results(results) do
-    Enum.reduce(results, %{ok: 0, skipped: 0, error: 0, failures: []}, fn result, acc ->
+    results
+    |> Enum.reduce(%Result{}, fn result, acc ->
       %{
         ok: acc.ok + result.ok,
         skipped: acc.skipped + result.skipped,
         error: acc.error + result.error,
-        failures: acc.failures ++ Map.get(result, :failures, [])
+        failures: Enum.reverse(Map.get(result, :failures, []), acc.failures)
       }
     end)
+    |> Map.update!(:failures, &Enum.reverse/1)
   end
 
   defp write_timings(_timings, nil), do: :ok
@@ -715,7 +719,7 @@ defmodule Exograph.Hex.Corpus do
   end
 
   defp write_report!(path, results, elapsed, opts) do
-    report = %Exograph.Hex.IndexReport{
+    report = %IndexReport{
       generated_at: DateTime.utc_now() |> DateTime.to_iso8601(),
       elapsed_ms: elapsed,
       ok: results.ok,
@@ -734,8 +738,10 @@ defmodule Exograph.Hex.Corpus do
 
   defp report_options(_opts), do: %{}
 
+  defp index_report_failure(%Failure{} = failure), do: failure
+
   defp index_report_failure(%{name: name, version: version, reason: reason}) do
-    %Exograph.Hex.IndexReport.Failure{name: name, version: version, reason: reason}
+    %Failure{name: name, version: version, reason: reason}
   end
 
   defp configure_backend!(repo, opts) do
@@ -780,6 +786,7 @@ defmodule Exograph.Hex.Corpus do
     from(pv in Schema.package_versions_source(prefix),
       join: p in subquery(pkgs),
       on: p.id == pv.package_id,
+      where: pv.index_state == "complete",
       select: {p.name, pv.version}
     )
     |> repo.all()
@@ -848,7 +855,7 @@ defmodule Exograph.Hex.Corpus do
           {:error, reason}
       end
     rescue
-      error -> {:error, error}
+      error in [ArgumentError, File.Error, RuntimeError] -> {:error, error}
     catch
       :no_elixir -> :skipped
     end

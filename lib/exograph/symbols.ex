@@ -130,7 +130,7 @@ defmodule Exograph.Symbols do
 
   defp alias_name({:__aliases__, _, parts}) when is_list(parts) do
     if Enum.all?(parts, &identifier?/1),
-      do: parts |> Enum.map(&identifier_name/1) |> Enum.join("."),
+      do: Enum.map_join(parts, ".", &identifier_name/1),
       else: nil
   end
 

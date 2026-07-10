@@ -70,12 +70,47 @@ defmodule Exograph.Storage.StorageV2Test do
 
   defp contains_atom?(_term), do: false
 
+  test "marks indexed package versions complete", %{prefix: prefix} do
+    assert {:ok, _index} =
+             Exograph.index_sources(
+               [{"lib/demo/status.ex", "defmodule Demo.Status do\n  def run, do: :ok\nend"}],
+               repo: Exograph.DuckDBRepo,
+               prefix: prefix,
+               migrate?: true,
+               min_mass: 1,
+               extractors: [:ex_ast],
+               package_version: %{name: "demo", version: "1.0.0"}
+             )
+
+    [state] =
+      Exograph.DuckDBRepo.all(
+        from(version in Schema.package_versions_source(prefix), select: version.index_state)
+      )
+
+    assert state == "complete"
+  end
+
+  test "refuses indexes with an incompatible format", %{prefix: prefix} do
+    Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
+
+    {1, nil} =
+      Exograph.DuckDBRepo.update_all(
+        Schema.index_format_source(prefix),
+        set: [format_version: -1]
+      )
+
+    assert_raise ArgumentError, ~r/unsupported Exograph index format/, fn ->
+      Exograph.index([], repo: Exograph.DuckDBRepo, prefix: prefix, migrate?: false)
+    end
+  end
+
   test "schema drops persisted fragment AST and tree node table", %{prefix: prefix} do
     Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
 
     columns =
-      Exograph.DuckDBRepo.query!("DESCRIBE #{Schema.table_name(prefix, :fragments)}", []).rows
-      |> Enum.map(fn [name | _] -> name end)
+      Exograph.DuckDBRepo
+      |> QuackDB.Meta.table_info!(Schema.table_name(prefix, :fragments))
+      |> Enum.map(& &1.name)
 
     refute "ast" in columns
     refute "terms" in columns
@@ -83,8 +118,9 @@ defmodule Exograph.Storage.StorageV2Test do
     assert "node_post" in columns
 
     table_names =
-      Exograph.DuckDBRepo.query!("SHOW TABLES", []).rows
-      |> List.flatten()
+      Exograph.DuckDBRepo
+      |> QuackDB.Meta.tables!()
+      |> Enum.map(& &1.name)
 
     refute "#{prefix}_tree_nodes" in table_names
   end

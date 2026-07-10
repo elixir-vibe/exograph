@@ -8,6 +8,14 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
   alias Exograph.Storage.Schema
 
   def up do
+    create_if_not_exists table(name(:index_format), table_opts(primary_key: false)) do
+      add(:id, :integer, primary_key: true)
+      add(:format_version, :integer, null: false)
+      add(:parser_version, :integer, null: false)
+    end
+
+    create_indexes(:index_format)
+
     create_if_not_exists table(name(:packages), table_opts()) do
       add(:ecosystem, :text, null: false)
       add(:name, :text, null: false)
@@ -22,6 +30,7 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:version, :text, null: false)
       add(:source_ref, :text)
       add(:checksum, :text)
+      add(:index_state, :text, null: false, default: "pending")
       add(:metadata, :map, null: false, default: %{})
       timestamps(type: :utc_datetime_usec)
     end

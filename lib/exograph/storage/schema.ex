@@ -16,6 +16,7 @@ defmodule Exograph.Storage.Schema do
     FragmentRecord,
     FragmentTermRecord,
     GraphNodeRecord,
+    IndexFormatRecord,
     PackageRecord,
     PackageVersionRecord,
     ReferenceRecord,
@@ -23,6 +24,9 @@ defmodule Exograph.Storage.Schema do
   }
 
   @tables [
+    table(:index_format, IndexFormatRecord) do
+      unique_index([:id], name: :singleton)
+    end,
     table(:packages, PackageRecord) do
       unique_index([:ecosystem, :name], name: :ecosystem_name)
     end,
@@ -31,7 +35,7 @@ defmodule Exograph.Storage.Schema do
     end,
     table(:files, FileRecord) do
       index([:package_version_id, :path], name: :package_path)
-      unique_index([:package_version_id, :sha256], name: :package_version_sha256)
+      unique_index([:package_version_id, :path], name: :package_version_path)
     end,
     table(:terms, TermRecord, primary_key: false) do
       unique_index([:term], name: :term)
@@ -89,6 +93,8 @@ defmodule Exograph.Storage.Schema do
     do: index_name(prefix, Atom.to_string(table!(table).name), suffix)
 
   def index_name(prefix, table, suffix), do: "#{prefix}_#{table}_#{to_string(suffix)}_idx"
+
+  def index_format_source(prefix), do: source(:index_format, prefix)
 
   def packages_source(prefix), do: source(:packages, prefix)
 

@@ -5,11 +5,9 @@ defmodule Exograph.Web.IndexStats do
   alias Exograph.Storage.Schema
 
   def package_count(%ShardedIndex{shards: shards}) do
-    shards
-    |> Enum.map(&shard_package_count/1)
-    |> Enum.sum()
+    Enum.sum_by(shards, &shard_package_count/1)
   rescue
-    _ -> 0
+    QuackDB.Error -> 0
   end
 
   def package_count(index) do
@@ -18,7 +16,7 @@ defmodule Exograph.Web.IndexStats do
 
     repo.aggregate(Schema.packages_source(prefix), :count)
   rescue
-    _ -> 0
+    QuackDB.Error -> 0
   end
 
   defp shard_package_count(%{index: index} = shard) do

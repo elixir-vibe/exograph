@@ -63,11 +63,11 @@ defmodule Exograph.Storage.InvertedIndex do
   end
 
   def search_text(%__MODULE__{} = index, literal, opts \\ []) when is_binary(literal) do
-    search_file_field(index, literal, :source, opts)
+    Exograph.DuckDB.TextSearch.search_file_field(index, literal, :source, opts)
   end
 
   def search_comments(%__MODULE__{} = index, literal, opts \\ []) when is_binary(literal) do
-    search_file_field(index, literal, :comments_text, opts)
+    Exograph.DuckDB.TextSearch.search_file_field(index, literal, :comments_text, opts)
   end
 
   def search_definitions(%__MODULE__{} = index, literal, opts \\ []) when is_binary(literal) do
@@ -88,11 +88,13 @@ defmodule Exograph.Storage.InvertedIndex do
 
   defp search_call_edges(index, field, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
 
     records =
       from(edge in call_edges_source(index),
         where: field(edge, ^field) == ^literal or ilike(field(edge, ^field), ^"%#{literal}%"),
         order_by: [asc: edge.file_id, asc: edge.line, asc: edge.id],
+        offset: ^skip,
         limit: ^limit
       )
       |> Scope.where_scope(opts)
@@ -107,7 +109,7 @@ defmodule Exograph.Storage.InvertedIndex do
     from(t in Schema.terms_source(index.prefix), where: t.term in ^terms, select: t.id)
     |> index.repo.all(timeout: :infinity)
   rescue
-    _ -> []
+    QuackDB.Error -> []
   end
 
   defp include_source?(%StructuralQuery{verifier: {:selector, _selector}} = query),
@@ -117,6 +119,7 @@ defmodule Exograph.Storage.InvertedIndex do
 
   def search_text_regex(%__MODULE__{} = index, %Regex{source: pattern}, opts) do
     limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
     files = files_source(index)
     versions = package_versions_source(index)
 
@@ -128,6 +131,7 @@ defmodule Exograph.Storage.InvertedIndex do
         on: version.id == fragment.package_version_id,
         where: regexp_matches(file.source, ^pattern),
         order_by: [asc: file.path, asc: fragment.line],
+        offset: ^skip,
         limit: ^limit,
         select: {fragment, file.source, file.path, version.version, file.ast}
       )
@@ -143,10 +147,6 @@ defmodule Exograph.Storage.InvertedIndex do
       end)
 
     {:ok, hits}
-  end
-
-  defp search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
-    Exograph.DuckDB.TextSearch.search_file_field(index, literal, field, opts)
   end
 
   defp with_file(queryable, index, true) do
@@ -201,15 +201,21 @@ defmodule Exograph.Storage.InvertedIndex do
     )
   end
 
-  defp required_term_candidates(index, ids) do
-    required_count = length(ids)
+  defp required_term_candidates(index, [first_id | rest_ids]) do
+    source = Schema.fragment_terms_source(index.prefix)
 
-    from(term in Schema.fragment_terms_source(index.prefix),
-      where: term.term_id in ^ids,
-      group_by: term.fragment_id,
-      having: count(term.term_id, :distinct) == ^required_count,
-      select: term.fragment_id
-    )
+    query =
+      from(term in source,
+        as: :term,
+        where: term.term_id == ^first_id,
+        select: term.fragment_id
+      )
+
+    Enum.reduce(rest_ids, query, fn term_id, query ->
+      join(query, :inner, [term, ...], next_term in ^source,
+        on: next_term.fragment_id == term.fragment_id and next_term.term_id == ^term_id
+      )
+    end)
   end
 
   defp any_term_candidates(index, ids) do

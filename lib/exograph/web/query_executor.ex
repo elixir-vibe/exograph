@@ -13,7 +13,11 @@ defmodule Exograph.Web.QueryExecutor do
     mode = Keyword.get(opts, :mode, "structural")
     limit = Keyword.get(opts, :limit, @default_limit)
     skip = Keyword.get(opts, :skip, 0)
-    query_opts = Keyword.merge(Keyword.drop(opts, [:mode]), limit: limit, skip: skip)
+    cursor = Keyword.get(opts, :cursor)
+
+    query_opts =
+      Keyword.merge(Keyword.drop(opts, [:mode]), limit: limit, skip: skip)
+      |> Keyword.put(:cursor, cursor)
 
     {elapsed_us, result} =
       :timer.tc(fn ->

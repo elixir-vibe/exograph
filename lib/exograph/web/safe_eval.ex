@@ -4,18 +4,28 @@ defmodule Exograph.Web.SafeEval do
   alias Exograph.DSL.Query
 
   @source_names %{
-    Fragment => :fragment,
-    Definition => :definition,
-    Reference => :reference,
-    CallEdge => :call_edge,
-    Exograph.Fragment => :fragment,
-    Exograph.Definition => :definition,
-    Exograph.Reference => :reference,
-    Exograph.CallEdge => :call_edge
+    "Fragment" => :fragment,
+    "Definition" => :definition,
+    "Reference" => :reference,
+    "CallEdge" => :call_edge,
+    "Exograph.Fragment" => :fragment,
+    "Exograph.Definition" => :definition,
+    "Exograph.Reference" => :reference,
+    "Exograph.CallEdge" => :call_edge
+  }
+  @identifier_tag :__exograph_query_identifier__
+  @associations %{
+    "definitions" => :definitions,
+    "references" => :references,
+    "calls" => :calls
   }
 
   def eval(query_string) do
-    case Code.string_to_quoted(query_string, file: "query", columns: true) do
+    case Code.string_to_quoted(query_string,
+           file: "query",
+           columns: true,
+           static_atoms_encoder: &tag_identifier/2
+         ) do
       {:ok, ast} -> interpret(ast)
       {:error, {location, msg_info, token}} -> parse_error(location, msg_info, token)
     end
@@ -47,11 +57,16 @@ defmodule Exograph.Web.SafeEval do
     {:error, %{message: "Expected from(binding in Source, ...) or a pattern string", markers: []}}
   end
 
-  defp extract_binding({name, _meta, nil}) when is_atom(name), do: {:ok, name}
+  defp extract_binding({name, _meta, nil}) when is_atom(name) or is_binary(name), do: {:ok, name}
+
+  defp extract_binding({{@identifier_tag, name}, _meta, nil}) when is_binary(name),
+    do: {:ok, name}
+
+  defp extract_binding({@identifier_tag, name}) when is_binary(name), do: {:ok, name}
   defp extract_binding(_), do: {:error, error("Invalid binding")}
 
   defp extract_source({:__aliases__, _, parts}) do
-    mod = Module.concat(parts)
+    mod = Enum.map_join(parts, ".", &identifier_name/1)
 
     case Map.fetch(@source_names, mod) do
       {:ok, source} ->
@@ -63,18 +78,11 @@ defmodule Exograph.Web.SafeEval do
     end
   end
 
-  defp extract_source(atom) when is_atom(atom) do
-    case Map.fetch(@source_names, atom) do
-      {:ok, source} -> {:ok, source}
-      :error -> {:error, error("Unknown source #{inspect(atom)}")}
-    end
-  end
-
   defp extract_source(_), do: {:error, error("Invalid source")}
 
   defp extract_joins(clauses, parent_binding) do
     clauses
-    |> Keyword.get_values(:join)
+    |> clause_values(:join)
     |> Enum.reduce_while({:ok, []}, fn join_ast, {:ok, acc} ->
       case extract_join(join_ast, parent_binding) do
         {:ok, join} -> {:cont, {:ok, [join | acc]}}
@@ -90,8 +98,8 @@ defmodule Exograph.Web.SafeEval do
        ) do
     with {:ok, binding} <- extract_binding(binding_ast),
          {:ok, parent} <- extract_binding(parent_ast),
-         true <- is_atom(assoc_name) do
-      {:ok, {:assoc, parent, binding, assoc_name}}
+         {:ok, association} <- extract_association(assoc_name) do
+      {:ok, {:assoc, parent, binding, association}}
     else
       _ -> {:error, error("Invalid join syntax. Use: join: b in assoc(f, :name)")}
     end
@@ -106,7 +114,7 @@ defmodule Exograph.Web.SafeEval do
     all_bindings = MapSet.new([binding | join_bindings])
 
     clauses
-    |> Keyword.get_values(:where)
+    |> clause_values(:where)
     |> Enum.reduce_while({:ok, []}, fn where_ast, {:ok, acc} ->
       case extract_predicate(where_ast, all_bindings) do
         {:ok, pred} -> {:cont, {:ok, [pred | acc]}}
@@ -134,8 +142,9 @@ defmodule Exograph.Web.SafeEval do
          {:prefix_search, _, [{{:., _, [binding_ast, field]}, _, _}, value]},
          _bindings
        )
-       when is_atom(field) and is_binary(value) do
-    with {:ok, binding} <- extract_binding(binding_ast) do
+       when is_binary(value) do
+    with {:ok, binding} <- extract_binding(binding_ast),
+         {:ok, field} <- existing_atom(field) do
       {:ok, {:prefix_search, binding, field, value}}
     end
   end
@@ -175,9 +184,9 @@ defmodule Exograph.Web.SafeEval do
     {:error, error("Unsupported predicate: #{Macro.to_string(ast)}")}
   end
 
-  defp extract_field_access({{:., _, [binding_ast, field]}, _, _}, bindings)
-       when is_atom(field) do
-    with {:ok, binding} <- extract_binding(binding_ast) do
+  defp extract_field_access({{:., _, [binding_ast, field]}, _, _}, bindings) do
+    with {:ok, binding} <- extract_binding(binding_ast),
+         {:ok, field} <- existing_atom(field) do
       if MapSet.member?(bindings, binding) do
         {:ok, {binding, field}}
       else
@@ -194,6 +203,7 @@ defmodule Exograph.Web.SafeEval do
   defp extract_value(value) when is_integer(value), do: {:ok, value}
   defp extract_value(value) when is_float(value), do: {:ok, value}
   defp extract_value(value) when is_atom(value), do: {:ok, value}
+  defp extract_value({@identifier_tag, _name} = value), do: existing_atom(value)
   defp extract_value(value) when is_list(value), do: extract_values(value)
 
   defp extract_value(ast) do
@@ -219,20 +229,80 @@ defmodule Exograph.Web.SafeEval do
   end
 
   defp extract_select(clauses) do
-    case Keyword.get(clauses, :select) do
+    case clause_value(clauses, :select) do
       nil -> {:ok, nil}
-      {binding, _meta, nil} when is_atom(binding) -> {:ok, binding}
-      {:{}, _, bindings} -> {:ok, {:tuple, Enum.map(bindings, &elem(&1, 0))}}
-      {b1, b2} -> {:ok, {:tuple, [elem(b1, 0), elem(b2, 0)]}}
-      _ -> {:error, error("Invalid select")}
+      binding -> extract_select_binding(binding)
     end
   end
 
+  defp extract_select_binding({:{}, _, bindings}) do
+    bindings
+    |> Enum.map(&extract_binding/1)
+    |> collect_ok_tuple()
+  end
+
+  defp extract_select_binding({left, right}) do
+    [left, right]
+    |> Enum.map(&extract_binding/1)
+    |> collect_ok_tuple()
+  end
+
+  defp extract_select_binding(binding), do: extract_binding(binding)
+
   defp extract_limit(clauses) do
-    case Keyword.get(clauses, :limit) do
+    case clause_value(clauses, :limit) do
       nil -> {:ok, nil}
       n when is_integer(n) and n > 0 -> {:ok, n}
       _ -> {:error, error("Limit must be a positive integer")}
+    end
+  end
+
+  @syntax_atoms Map.new(
+                  ~w(from where join select limit assoc matches contains prefix_search),
+                  fn name ->
+                    {name, String.to_existing_atom(name)}
+                  end
+                )
+
+  defp tag_identifier(name, _metadata) do
+    {:ok, Map.get(@syntax_atoms, name, {@identifier_tag, name})}
+  end
+
+  defp identifier_name({@identifier_tag, name}), do: name
+  defp identifier_name(atom) when is_atom(atom), do: Atom.to_string(atom)
+  defp identifier_name(binary) when is_binary(binary), do: binary
+
+  defp existing_atom({@identifier_tag, name}) do
+    {:ok, String.to_existing_atom(name)}
+  rescue
+    ArgumentError -> {:error, error("Unsupported atom #{inspect(name)}")}
+  end
+
+  defp existing_atom(atom) when is_atom(atom), do: {:ok, atom}
+  defp existing_atom(_value), do: {:error, error("Expected an atom")}
+
+  defp extract_association(value) do
+    case Map.fetch(@associations, identifier_name(value)) do
+      {:ok, association} -> {:ok, association}
+      :error -> {:error, error("Invalid join association")}
+    end
+  end
+
+  defp clause_values(clauses, key) do
+    for {clause_key, value} <- clauses, clause_key == key, do: value
+  end
+
+  defp clause_value(clauses, key) do
+    case clause_values(clauses, key) do
+      [value | _] -> value
+      [] -> nil
+    end
+  end
+
+  defp collect_ok_tuple(results) do
+    case Enum.find(results, &match?({:error, _}, &1)) do
+      nil -> {:ok, {:tuple, Enum.map(results, fn {:ok, value} -> value end)}}
+      error -> error
     end
   end
 

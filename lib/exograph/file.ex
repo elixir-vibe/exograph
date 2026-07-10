@@ -36,7 +36,7 @@ defmodule Exograph.File do
     |> comments()
     |> Enum.map_join("\n", & &1.text)
   rescue
-    _ -> ""
+    ArgumentError -> ""
   end
 
   def comments(source) do

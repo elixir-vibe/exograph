@@ -112,6 +112,25 @@ defmodule Exograph.DSL.ExecutorTest do
     end)
   end
 
+  test "explains structural candidate retrieval", %{index: index} do
+    explanation = Exograph.explain(index, "def run(_) do ... end", limit: 5)
+
+    assert "def.name:run" in explanation.logical.required_terms
+    assert is_binary(explanation.physical.sql)
+    assert %QuackDB.Profile{} = explanation.physical.analyze
+  end
+
+  test "fragment queries resume from a keyset cursor", %{index: index} do
+    query = query!(~s|from(f in Fragment, where: matches(f, "def _ do ... end"), limit: 1)|)
+
+    assert {:ok, [first]} = Exograph.all(index, query, limit: 1)
+
+    cursor = {first.fragment.file, first.fragment.line, first.fragment.id}
+
+    assert {:ok, [second]} = Exograph.all(index, query, limit: 1, cursor: cursor)
+    assert second.fragment.id != first.fragment.id
+  end
+
   test "counts named function patterns exactly", %{index: index} do
     query = query!(~s|from(f in Fragment, where: matches(f, "def run(_) do ... end"), limit: 1)|)
 

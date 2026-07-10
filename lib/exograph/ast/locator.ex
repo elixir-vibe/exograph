@@ -3,7 +3,7 @@ defmodule Exograph.AST.Locator do
 
   def index(ast) do
     {_ast, next, entries} = do_index(ast, 1, [])
-    %{entries: Enum.reverse(entries), size: next - 1}
+    %{ast: ast, entries: Enum.reverse(entries), size: next - 1}
   end
 
   def locate(%{entries: entries}, target) when is_list(entries) do
@@ -41,15 +41,21 @@ defmodule Exograph.AST.Locator do
 
   defp locate_synthetic_block(_entries, _target), do: {nil, nil}
 
+  def slice(%{ast: ast}, nil, nil), do: ast
+
   def slice(ast, nil, nil), do: ast
 
-  def slice(ast, pre, post) when is_integer(pre) and is_integer(post) do
-    entries = index(ast).entries
-
+  def slice(%{entries: entries}, pre, post) when is_integer(pre) and is_integer(post) do
     case Enum.find(entries, &(&1.pre == pre and &1.post == post)) do
       %{node: node} -> node
       nil -> block_for_interval(entries, pre, post)
     end
+  end
+
+  def slice(ast, pre, post) when is_integer(pre) and is_integer(post) do
+    ast
+    |> index()
+    |> slice(pre, post)
   end
 
   defp block_for_interval(entries, pre, post) do

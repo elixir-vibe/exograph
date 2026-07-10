@@ -77,8 +77,6 @@ defmodule Exograph do
   end
 
   defp do_index(fragments, opts) do
-    store_opts = store_opts(opts)
-
     Exograph.DuckDB.configure_threads!(
       Keyword.fetch!(opts, :repo),
       Keyword.get(opts, :duckdb_threads)
@@ -88,16 +86,15 @@ defmodule Exograph do
       Exograph.DuckDB.migrate!(opts)
     end
 
-    store_opts = Keyword.put(store_opts, :migrate?, false)
-
-    store_opts_without_migration = Keyword.put(store_opts, :migrate?, false)
+    store_opts_without_migration = store_opts(opts) |> Keyword.put(:migrate?, false)
     batch_size = Keyword.get(opts, :index_batch_size, 2_000)
 
-    with {:ok, inverted} <- InvertedIndex.new(store_opts),
+    with {:ok, inverted} <- InvertedIndex.new(store_opts_without_migration),
          {:ok, fragment_store} <- FragmentStore.new(store_opts_without_migration),
          {:ok, tree_store} <- TreeStore.new(store_opts_without_migration),
          {:ok, {inverted, fragment_store, tree_store}} <-
-           put_fragment_stream(fragments, batch_size, inverted, fragment_store, tree_store) do
+           put_fragment_stream(fragments, batch_size, inverted, fragment_store, tree_store),
+         :ok <- FragmentStore.mark_package_version_complete(fragment_store) do
       {:ok,
        %Index{
          inverted: inverted,
@@ -293,6 +290,35 @@ defmodule Exograph do
   def compile(%ExAST.Selector{} = selector), do: StructuralQuery.selector(selector)
   def compile(pattern), do: StructuralQuery.pattern(pattern)
 
+  @doc """
+  Returns DuckDB's analyzed candidate plan for a structural query.
+
+  ExAST remains the semantic authority: this plan describes only candidate
+  retrieval, before AST hydration and exact verification.
+  """
+  @spec explain(Index.t(), ExAST.Pattern.pattern() | ExAST.Selector.t(), keyword()) :: map()
+  def explain(%Index{} = index, pattern_or_selector, opts \\ []) do
+    compiled = compile(pattern_or_selector)
+    query = DSL.Executor.structural_candidate_query(index, compiled, opts)
+    repo = index.inverted.repo
+    {sql, params} = Ecto.Adapters.SQL.to_sql(:all, repo, query)
+    analyzed = QuackDB.Profile.analyze!(repo, sql, params, timeout: :infinity)
+
+    %{
+      logical: %{
+        required_terms: compiled.required_terms |> MapSet.to_list() |> Enum.sort(),
+        optional_terms: compiled.optional_terms |> MapSet.to_list() |> Enum.sort(),
+        negative_terms: compiled.negative_terms |> MapSet.to_list() |> Enum.sort(),
+        verifier: compiled.verifier
+      },
+      physical: %{
+        sql: sql,
+        parameter_count: length(params),
+        analyze: analyzed
+      }
+    }
+  end
+
   @doc false
   @spec tree_nodes(Index.t(), Exograph.Fragment.id()) :: [Exograph.Tree.Node.t()]
   def tree_nodes(%Index{} = index, fragment_id) do
@@ -386,7 +412,12 @@ defmodule Exograph do
           :timer.tc(fn ->
             Exograph.DuckDBShards.with_repo(shard, fn ->
               shard_opts = shard_opts(shard, opts, limit + skip)
-              apply(__MODULE__, function, [shard_index(shard) | args] ++ [shard_opts])
+
+              apply(
+                __MODULE__,
+                function,
+                List.insert_at([shard_index(shard) | args], length(args) + 1, shard_opts)
+              )
             end)
           end)
 
@@ -398,11 +429,15 @@ defmodule Exograph do
       ordered: false
     )
     |> Enum.reduce_while({:ok, []}, fn
-      {:ok, {:ok, hits}}, {:ok, acc} when is_list(hits) -> {:cont, {:ok, hits ++ acc}}
+      {:ok, {:ok, hits}}, {:ok, acc} when is_list(hits) -> {:cont, {:ok, [hits | acc]}}
       {:ok, {:ok, count}}, {:ok, acc} when is_integer(count) -> {:cont, {:ok, [count | acc]}}
       {:ok, :unknown}, _acc -> {:halt, :unknown}
       {:ok, {:error, reason}}, _acc -> {:halt, {:error, reason}}
       {:exit, reason}, _acc -> {:halt, {:error, reason}}
+    end)
+    |> then(fn
+      {:ok, results} -> {:ok, results |> Enum.reverse() |> List.flatten()}
+      result -> result
     end)
   end
 

@@ -26,6 +26,15 @@ defmodule Exograph.AST.CodecTest do
     assert :error = try_existing_atom(name)
   end
 
+  test "refuses persisted atoms that are not already known" do
+    name = "DefinitelyNotAnExistingAtom#{System.unique_integer([:positive])}"
+    encoded = :erlang.term_to_binary({"__exograph_atom__", name})
+
+    assert :error = try_existing_atom(name)
+    assert_raise ArgumentError, fn -> Exograph.AST.Codec.load(encoded) end
+    assert :error = try_existing_atom(name)
+  end
+
   defp contains_atom?(term) when is_atom(term), do: true
 
   defp contains_atom?(term) when is_tuple(term) do

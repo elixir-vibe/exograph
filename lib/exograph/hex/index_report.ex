@@ -17,6 +17,12 @@ defmodule Exograph.Hex.IndexReport do
           }
   end
 
+  defmodule Result do
+    @moduledoc false
+
+    defstruct ok: 0, skipped: 0, error: 0, failures: []
+  end
+
   defstruct generated_at: nil,
             elapsed_ms: 0,
             ok: 0,

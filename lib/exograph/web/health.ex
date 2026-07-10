@@ -69,10 +69,12 @@ defmodule Exograph.Web.Health do
   end
 
   defp index_health(%ShardedIndex{shards: shards, manifest: manifest}) do
+    shard_count = length(shards)
+
     %{
       kind: "sharded_duckdb",
-      shard_count: length(shards),
-      opened_shards: length(shards),
+      shard_count: shard_count,
+      opened_shards: shard_count,
       manifest: inspect(manifest)
     }
   end

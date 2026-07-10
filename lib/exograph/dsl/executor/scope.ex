@@ -80,32 +80,29 @@ defmodule Exograph.DSL.Executor.Scope do
 
   @doc false
   def where_fragment_text_contains(queryable, plan) do
-    plan.query
-    |> Compiler.text_contains_patterns()
-    |> Enum.reduce(queryable, fn pattern, query ->
-      like = "%#{escape_like(pattern)}%"
+    Enum.reduce(text_contains_patterns(plan), queryable, fn like, query ->
       where(query, [_fragment, file, _version], ilike(file.source, ^like))
     end)
   end
 
   @doc false
   def where_fragment_text_contains_third(queryable, plan) do
-    plan.query
-    |> Compiler.text_contains_patterns()
-    |> Enum.reduce(queryable, fn pattern, query ->
-      like = "%#{escape_like(pattern)}%"
+    Enum.reduce(text_contains_patterns(plan), queryable, fn like, query ->
       where(query, [_first, _fragment, file], ilike(file.source, ^like))
     end)
   end
 
   @doc false
   def where_fragment_text_contains_fourth(queryable, plan) do
-    plan.query
-    |> Compiler.text_contains_patterns()
-    |> Enum.reduce(queryable, fn pattern, query ->
-      like = "%#{escape_like(pattern)}%"
+    Enum.reduce(text_contains_patterns(plan), queryable, fn like, query ->
       where(query, [_fragment, _joined, file], ilike(file.source, ^like))
     end)
+  end
+
+  defp text_contains_patterns(plan) do
+    plan.query
+    |> Compiler.text_contains_patterns()
+    |> Enum.map(&"%#{escape_like(&1)}%")
   end
 
   defp escape_like(value), do: value |> String.replace("%", "\\%") |> String.replace("_", "\\_")
@@ -150,15 +147,21 @@ defmodule Exograph.DSL.Executor.Scope do
     )
   end
 
-  defp duckdb_term_candidates(index, ids) do
-    required_count = length(ids)
+  defp duckdb_term_candidates(index, [first_id | rest_ids]) do
+    source = Schema.fragment_terms_source(index.inverted.prefix)
 
-    from(term in Schema.fragment_terms_source(index.inverted.prefix),
-      where: term.term_id in ^ids,
-      group_by: term.fragment_id,
-      having: count(term.term_id, :distinct) == ^required_count,
-      select: term.fragment_id
-    )
+    query =
+      from(term in source,
+        as: :term,
+        where: term.term_id == ^first_id,
+        select: term.fragment_id
+      )
+
+    Enum.reduce(rest_ids, query, fn term_id, query ->
+      join(query, :inner, [term, ...], next_term in ^source,
+        on: next_term.fragment_id == term.fragment_id and next_term.term_id == ^term_id
+      )
+    end)
   end
 
   defp resolve_structural_term_ids(index, plan) do

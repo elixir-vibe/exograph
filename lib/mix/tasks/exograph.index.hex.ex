@@ -135,7 +135,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       if Keyword.get(opts, :reach, false), do: [:ex_ast, :reach], else: [:ex_ast]
 
     corpus_opts = [
-      mode: String.to_atom(Keyword.get(opts, :mode, "latest")),
+      mode: mode!(Keyword.get(opts, :mode, "latest")),
       limit: Keyword.get(opts, :limit),
       prefix: prefix,
       concurrency: Keyword.get(opts, :concurrency, 4),
@@ -223,6 +223,11 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
   end
 
   defp iex_running?, do: Code.ensure_loaded?(IEx) and IEx.started?()
+
+  defp mode!("latest"), do: :latest
+  defp mode!("top"), do: :top
+  defp mode!("all"), do: :all
+  defp mode!(mode), do: Mix.raise("Unsupported index mode: #{inspect(mode)}")
 
   defp pipeline(nil), do: :task
   defp pipeline("task"), do: :task

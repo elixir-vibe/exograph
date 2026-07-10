@@ -215,6 +215,17 @@ defmodule Exograph.Storage.FragmentStore do
   @spec rebuild_fragment_terms(t()) :: :ok
   def rebuild_fragment_terms(%__MODULE__{} = _store), do: :ok
 
+  @doc false
+  def mark_package_version_complete(%__MODULE__{package_version: %{id: id}} = store)
+      when is_integer(id) do
+    from(version in Schema.package_versions_source(store.prefix), where: version.id == ^id)
+    |> store.repo.update_all(set: [index_state: "complete"])
+
+    :ok
+  end
+
+  def mark_package_version_complete(%__MODULE__{}), do: :ok
+
   defp ensure_package_context(%__MODULE__{package: nil, package_version: nil} = store, _now),
     do: store
 
@@ -306,26 +317,26 @@ defmodule Exograph.Storage.FragmentStore do
         files_source(store),
         entries,
         chunk_size: 2_000,
-        conflict_target: [:package_version_id, :sha256],
+        conflict_target: [:package_version_id, :path],
         on_conflict: :nothing,
         timeout: :infinity
       )
 
-      fetch_files_by_package_version_and_sha256(store, raw_files)
+      fetch_files_by_package_version_and_path(store, raw_files)
     end
   end
 
-  defp fetch_files_by_package_version_and_sha256(store, raw_files) do
-    keys = MapSet.new(raw_files, &{&1.package_version_id, &1.sha256})
-    sha256s = raw_files |> Enum.map(& &1.sha256) |> Enum.uniq()
+  defp fetch_files_by_package_version_and_path(store, raw_files) do
+    keys = MapSet.new(raw_files, &{&1.package_version_id, &1.path})
+    paths = raw_files |> Enum.map(& &1.path) |> Enum.uniq()
 
     from(f in files_source(store),
-      where: f.sha256 in ^sha256s,
+      where: f.path in ^paths,
       select: {f.id, f.path, f.source, f.ast, f.package_id, f.package_version_id, f.sha256}
     )
     |> store.repo.all()
-    |> Enum.filter(fn {_id, _path, _source, _ast, _package_id, package_version_id, sha256} ->
-      MapSet.member?(keys, {package_version_id, sha256})
+    |> Enum.filter(fn {_id, path, _source, _ast, _package_id, package_version_id, _sha256} ->
+      MapSet.member?(keys, {package_version_id, path})
     end)
     |> Enum.map(fn {id, path, source, ast, package_id, package_version_id, sha256} ->
       %File{
@@ -614,6 +625,7 @@ defmodule Exograph.Storage.FragmentStore do
   defp upsert_code_facts(_store, [], _fragments, _now), do: :ok
 
   defp upsert_code_facts(store, files, fragments, now) do
+    replace_code_facts_for_files(store, files)
     fragments_by_file_id = Enum.group_by(fragments, & &1.file_id)
 
     %{comments: comments, definitions: definitions, references: references} =
@@ -662,6 +674,26 @@ defmodule Exograph.Storage.FragmentStore do
         insert_graph_nodes_and_edges(store, graph_nodes, call_edges, now)
       end)
     end
+  end
+
+  defp replace_code_facts_for_files(store, files) do
+    file_ids = Enum.map(files, & &1.id)
+
+    Enum.each(
+      [
+        call_edges_source(store),
+        comments_source(store),
+        definitions_source(store),
+        references_source(store),
+        graph_nodes_source(store)
+      ],
+      fn source ->
+        from(fact in source, where: fact.file_id in ^file_ids)
+        |> store.repo.delete_all()
+      end
+    )
+
+    :ok
   end
 
   defp extract_code_facts(store, files, fragments) do
@@ -819,19 +851,19 @@ defmodule Exograph.Storage.FragmentStore do
   defp extract_comments(source) do
     Exograph.File.comments(source)
   rescue
-    _ -> []
+    ArgumentError -> []
   end
 
   defp symbols_from(nil, source, fun) do
     fun.(source)
   rescue
-    _ -> []
+    ArgumentError -> []
   end
 
   defp symbols_from(ast, _source, fun) do
     fun.(ast)
   rescue
-    _ -> []
+    ArgumentError -> []
   end
 
   defp noise_reference?(ref) do

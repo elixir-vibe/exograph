@@ -172,7 +172,8 @@ defmodule Exograph.DSL.Planner do
     Enum.each(bindings, &validate_select_binding!(plan, &1))
   end
 
-  defp validate_select!(%Plan{select: binding} = plan) when is_atom(binding) do
+  defp validate_select!(%Plan{select: binding} = plan)
+       when is_atom(binding) or is_binary(binding) do
     validate_select_binding!(plan, binding)
   end
 

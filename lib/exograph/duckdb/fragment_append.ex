@@ -29,7 +29,7 @@ defmodule Exograph.DuckDB.FragmentAppend do
       ecto_insert_by_hash(repo, target, rows)
     end)
   rescue
-    error ->
+    error in QuackDB.Error ->
       if retries_left > 0 and unique_constraint_race?(error) do
         Exograph.Hex.StageTimings.count(:fragment_append_retries)
         Process.sleep(retry_backoff_ms(retries_left))

@@ -39,7 +39,7 @@ defmodule Exograph.AST.Codec do
   defp decode({@atom_tag, "false"}), do: false
 
   defp decode({@atom_tag, name}) when is_binary(name) do
-    String.to_atom(name)
+    String.to_existing_atom(name)
   end
 
   defp decode({@tuple_tag, encoded}) do

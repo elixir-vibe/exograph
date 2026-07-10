@@ -24,9 +24,12 @@ defmodule Exograph.DuckDB.TextSearch do
   end
 
   defp search_query(index, literal, field, pattern, opts, limit) do
+    skip = Keyword.get(opts, :skip, 0)
+
     matched_files =
       index
       |> matched_files_query(literal, field, pattern, opts)
+      |> offset(^skip)
       |> limit(^limit)
 
     first_fragment =

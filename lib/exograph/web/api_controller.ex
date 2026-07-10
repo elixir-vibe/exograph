@@ -29,10 +29,10 @@ defmodule Exograph.Web.APIController do
     pattern = params["pattern"] || ""
     mode = search_mode(params["mode"], pattern)
     limit = parse_limit(params["limit"])
-    skip = decode_cursor(params["cursor"])
+    cursor = decode_cursor(params["cursor"])
     package_id = params["package_id"]
 
-    opts = [limit: limit, skip: skip, timeout: @search_timeout_ms] ++ scope_opts(package_id)
+    opts = search_opts(mode, cursor, limit, package_id)
 
     {elapsed_us, result} =
       :timer.tc(fn ->
@@ -75,7 +75,7 @@ defmodule Exograph.Web.APIController do
 
     case result do
       {:ok, hits, meta} ->
-        next_cursor = if length(hits) == limit, do: encode_cursor(skip + limit), else: nil
+        next_cursor = next_search_cursor(mode, hits, cursor, limit)
 
         payload = %{
           results: Enum.map(hits, &serialize_result/1),
@@ -94,10 +94,10 @@ defmodule Exograph.Web.APIController do
   def query(conn, params) do
     index = index()
     query_string = params["query"] || ""
-    skip = decode_cursor(params["cursor"])
+    cursor = decode_cursor(params["cursor"])
 
     {elapsed_us, result} =
-      :timer.tc(fn -> QueryExecutor.execute(index, query_string, skip: skip) end)
+      :timer.tc(fn -> QueryExecutor.execute(index, query_string, query_cursor_opts(cursor)) end)
 
     case result do
       {:ok, hits, elapsed_ms, effective_limit, _total, meta} ->
@@ -105,8 +105,7 @@ defmodule Exograph.Web.APIController do
           endpoint: "/api/query"
         })
 
-        next_cursor =
-          if length(hits) >= effective_limit, do: encode_cursor(skip + effective_limit), else: nil
+        next_cursor = next_query_cursor(hits, cursor, effective_limit)
 
         json(conn, %{
           results: Enum.map(hits, &serialize_result/1),
@@ -192,18 +191,34 @@ defmodule Exograph.Web.APIController do
   defp expand_shorthand_query!(pattern, opts) do
     limit = Keyword.get(opts, :limit, QueryExecutor.default_limit())
 
-    case Code.string_to_quoted(pattern) do
-      {:ok, {kind, _meta, [{binding, _, nil}, ast_pattern]}}
-      when kind in [:matches, :contains] and is_atom(binding) ->
-        pattern = if is_binary(ast_pattern), do: ast_pattern, else: Macro.to_string(ast_pattern)
+    case Regex.run(
+           ~r/^\s*(matches|contains)\(\s*([[:alpha:]_][[:alnum:]_]*)\s*,\s*(.*)\)\s*$/s,
+           pattern
+         ) do
+      [_, kind, binding, ast_pattern] ->
+        ast_pattern = shorthand_pattern(ast_pattern)
 
-        ~s|from(#{binding} in Fragment, where: #{kind}(#{binding}, #{inspect(pattern)}), limit: #{limit})|
+        ~s|from(#{binding} in Fragment, where: #{kind}(#{binding}, #{inspect(ast_pattern)}), limit: #{limit})|
 
-      {:ok, _other} ->
+      _ ->
         pattern
+    end
+  end
 
-      {:error, _reason} ->
-        pattern
+  defp shorthand_pattern(pattern) do
+    pattern = String.trim(pattern)
+
+    if String.starts_with?(pattern, "\"") do
+      case Code.string_to_quoted(pattern,
+             static_atoms_encoder: fn name, _metadata ->
+               {:ok, {:__exograph_query_identifier__, name}}
+             end
+           ) do
+        {:ok, value} when is_binary(value) -> value
+        _ -> pattern
+      end
+    else
+      pattern
     end
   end
 
@@ -245,7 +260,7 @@ defmodule Exograph.Web.APIController do
       |> Enum.group_by(& &1.name)
       |> Enum.map(fn {_name, rows} ->
         first = hd(rows)
-        %{id: first.id, name: first.name, fragments: Enum.sum(Enum.map(rows, & &1.fragments))}
+        %{id: first.id, name: first.name, fragments: Enum.sum_by(rows, & &1.fragments)}
       end)
       |> Enum.sort_by(& &1.fragments, :desc)
 
@@ -293,32 +308,96 @@ defmodule Exograph.Web.APIController do
     prefix = index.inverted.prefix
     repo = index.inverted.repo
 
-    counts =
-      Map.new(@stats_tables, fn table ->
-        {Atom.to_string(table),
-         repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
-      end)
-
-    counts
+    Map.new(@stats_tables, fn table ->
+      {Atom.to_string(table),
+       repo.aggregate(Schema.source(table, prefix), :count, timeout: 30_000)}
+    end)
   end
 
   defp shard_index(%{index: index}), do: index
   defp shard_index(index), do: index
 
-  defp encode_cursor(offset) when is_integer(offset),
+  defp search_opts(mode, cursor, limit, package_id) do
+    [limit: limit, timeout: @search_timeout_ms]
+    |> Keyword.merge(cursor_opts(mode, cursor))
+    |> Kernel.++(scope_opts(package_id))
+  end
+
+  defp cursor_opts(mode, {:keyset, cursor}) when mode not in ["text", "regex"],
+    do: [cursor: cursor, skip: 0]
+
+  defp cursor_opts(_mode, {:offset, skip}), do: [skip: skip]
+  defp cursor_opts(_mode, _cursor), do: [skip: 0]
+
+  defp query_cursor_opts({:keyset, cursor}), do: [cursor: cursor, skip: 0]
+  defp query_cursor_opts({:offset, skip}), do: [skip: skip]
+
+  defp next_search_cursor(mode, hits, cursor, limit) when mode in ["text", "regex"] do
+    if length(hits) == limit, do: encode_offset_cursor(offset(cursor) + limit), else: nil
+  end
+
+  defp next_search_cursor(_mode, hits, _cursor, limit) do
+    if length(hits) == limit, do: hits |> List.last() |> encode_keyset_cursor(), else: nil
+  end
+
+  defp next_query_cursor(hits, _cursor, limit) do
+    if length(hits) >= limit, do: hits |> List.last() |> encode_keyset_cursor(), else: nil
+  end
+
+  defp encode_offset_cursor(offset) when is_integer(offset),
     do: Base.url_encode64("#{offset}", padding: false)
 
-  defp decode_cursor(nil), do: 0
-  defp decode_cursor(""), do: 0
+  defp encode_keyset_cursor(hit) do
+    case cursor_fragment(hit) do
+      %{file: path, line: line, id: id}
+      when is_binary(path) and is_integer(line) and is_integer(id) ->
+        {path, line, id}
+        |> :erlang.term_to_binary()
+        |> Base.url_encode64(padding: false)
 
-  defp decode_cursor(encoded) do
-    with {:ok, decoded} <- Base.url_decode64(encoded, padding: false),
-         {offset, ""} <- Integer.parse(decoded) do
-      offset
-    else
-      _ -> 0
+      _ ->
+        nil
     end
   end
+
+  defp decode_cursor(nil), do: {:offset, 0}
+  defp decode_cursor(""), do: {:offset, 0}
+
+  defp decode_cursor(encoded) do
+    with {:ok, binary} <- Base.url_decode64(encoded, padding: false) do
+      decode_cursor_binary(binary)
+    else
+      _ -> {:offset, 0}
+    end
+  end
+
+  defp decode_cursor_binary(binary) do
+    case Integer.parse(binary) do
+      {offset, ""} -> {:offset, offset}
+      _ -> decode_keyset_cursor(binary)
+    end
+  end
+
+  defp decode_keyset_cursor(binary) do
+    case :erlang.binary_to_term(binary, [:safe]) do
+      {path, line, id} when is_binary(path) and is_integer(line) and is_integer(id) ->
+        {:keyset, {path, line, id}}
+
+      _ ->
+        {:offset, 0}
+    end
+  rescue
+    ArgumentError -> {:offset, 0}
+  end
+
+  defp offset({:offset, value}) when is_integer(value), do: value
+  defp offset(_cursor), do: 0
+
+  defp cursor_fragment(%{fragment: fragment}), do: fragment
+  defp cursor_fragment({first, _joined}), do: cursor_fragment(first)
+  defp cursor_fragment({first, _one, _two}), do: cursor_fragment(first)
+  defp cursor_fragment({first, _one, _two, _three}), do: cursor_fragment(first)
+  defp cursor_fragment(_hit), do: nil
 
   defp parse_limit(nil), do: 50
   defp parse_limit(n) when is_integer(n), do: min(n, 200)

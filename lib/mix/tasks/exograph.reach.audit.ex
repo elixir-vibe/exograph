@@ -188,9 +188,10 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
 
   defp sample(findings, count) do
     last = length(findings) - 1
+    findings = List.to_tuple(findings)
 
     0..(count - 1)
-    |> Enum.map(fn index -> Enum.at(findings, round(index * last / max(count - 1, 1))) end)
+    |> Enum.map(fn index -> elem(findings, round(index * last / max(count - 1, 1))) end)
   end
 
   defp maybe_save_result!(result, opts) do

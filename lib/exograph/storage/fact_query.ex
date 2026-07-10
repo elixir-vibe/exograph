@@ -10,16 +10,26 @@ defmodule Exograph.Storage.FactQuery do
 
   def search(index, table_source, literal, opts) do
     limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
     files_source = Schema.files_source(index.prefix)
     versions_source = Schema.package_versions_source(index.prefix)
 
     results =
-      ilike_search(index, table_source, literal, opts, limit, files_source, versions_source)
+      ilike_search(index, table_source, literal, opts, skip, limit, files_source, versions_source)
 
     {:ok, Enum.map(results, &hit(&1, table_source))}
   end
 
-  defp ilike_search(index, table_source, literal, opts, limit, files_source, versions_source) do
+  defp ilike_search(
+         index,
+         table_source,
+         literal,
+         opts,
+         skip,
+         limit,
+         files_source,
+         versions_source
+       ) do
     query =
       from(fragment in {Schema.fragments_source(index.prefix), FragmentRecord},
         join: fact in ^table_source,
@@ -30,6 +40,7 @@ defmodule Exograph.Storage.FactQuery do
         on: version.id == fragment.package_version_id,
         where: ilike(fact.qualified_name, ^"%#{escape_like(literal)}%"),
         order_by: [asc: fact.qualified_name, asc: fact.line],
+        offset: ^skip,
         limit: ^limit,
         select: {fragment, nil, file.path, version.version, fact, file.ast}
       )

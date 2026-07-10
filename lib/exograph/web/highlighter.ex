@@ -25,6 +25,6 @@ defmodule Exograph.Web.Highlighter do
       Phoenix.HTML.html_escape(text) |> Phoenix.HTML.safe_to_string()
     end
   rescue
-    _ -> Phoenix.HTML.html_escape(text) |> Phoenix.HTML.safe_to_string()
+    ArgumentError -> Phoenix.HTML.html_escape(text) |> Phoenix.HTML.safe_to_string()
   end
 end

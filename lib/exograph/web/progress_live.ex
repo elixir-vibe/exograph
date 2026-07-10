@@ -164,15 +164,13 @@ defmodule Exograph.Web.ProgressLive do
   defp stage_messages(progress, stage) do
     progress
     |> stage_metrics(stage)
-    |> Enum.map(fn {_key, metric} -> metric.messages end)
-    |> Enum.sum()
+    |> Enum.sum_by(fn {_key, metric} -> metric.messages end)
   end
 
   defp stage_batches(progress, stage) do
     progress
     |> stage_metrics(stage)
-    |> Enum.map(fn {_key, metric} -> metric.batches end)
-    |> Enum.sum()
+    |> Enum.sum_by(fn {_key, metric} -> metric.batches end)
   end
 
   defp pct(%{total: 0}), do: 0

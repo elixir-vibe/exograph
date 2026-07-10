@@ -1,8 +1,10 @@
 defmodule Exograph.Hex.CorpusTest do
   use ExUnit.Case, async: false
 
+  import Ecto.Query
+
   alias Exograph.DuckDBSupport
-  alias Exograph.Storage.SQL
+  alias Exograph.Storage.Schema
   alias Exograph.Web.SafeEval
 
   @moduletag :integration
@@ -52,6 +54,67 @@ defmodule Exograph.Hex.CorpusTest do
 
     assert table_count(duplicate_prefix, "references") == table_count(single_prefix, "references")
     assert table_count(duplicate_prefix, "comments") == table_count(single_prefix, "comments")
+  end
+
+  test "reindexing a package version replaces code facts" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_idempotent_facts_#{System.unique_integer([:positive])}"
+
+    opts =
+      DuckDBSupport.opts(prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        package_version: duplicate_source_package_version()
+      )
+
+    source =
+      "defmodule Idempotent.Facts do\n  # stable comment\n  def run, do: Enum.map([], & &1)\nend"
+
+    assert {:ok, _index} = Exograph.index_sources([{"lib/idempotent.ex", source}], opts)
+
+    counts =
+      for table <- ["comments", "definitions", "references"], into: %{} do
+        {table, table_count(prefix, table)}
+      end
+
+    assert {:ok, _index} =
+             Exograph.index_sources(
+               [{"lib/idempotent.ex", source}],
+               Keyword.put(opts, :migrate?, false)
+             )
+
+    assert counts ==
+             Map.new(counts, fn {table, _count} -> {table, table_count(prefix, table)} end)
+  end
+
+  test "identical sources at different paths remain distinct files" do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+    DuckDBSupport.start_managed_repo!(endpoint: endpoint)
+    prefix = "exograph_duckdb_duplicate_content_#{System.unique_integer([:positive])}"
+
+    source = "defmodule Shared.Source do\n  def hello, do: :ok\nend\n"
+
+    assert {:ok, _index} =
+             Exograph.index_sources(
+               [
+                 {"lib/first.ex", source},
+                 {"lib/second.ex", source}
+               ],
+               DuckDBSupport.opts(prefix,
+                 extractors: [:ex_ast],
+                 min_mass: 1,
+                 package_version: duplicate_source_package_version()
+               )
+             )
+
+    assert table_count(prefix, "files") == 2
+
+    unresolved_fragments =
+      from(fragment in Schema.source(:fragments, prefix), where: is_nil(fragment.file_id))
+      |> Exograph.DuckDBRepo.aggregate(:count)
+
+    assert unresolved_fragments == 0
   end
 
   test "duckdb file lookup stays scoped to package version for duplicate file hashes" do
@@ -202,25 +265,25 @@ defmodule Exograph.Hex.CorpusTest do
   end
 
   defp package_version_fact_counts(prefix, suffix) do
-    %{rows: rows} =
-      Exograph.DuckDBRepo.query!(
-        [
-          "SELECT count(*) FROM ",
-          SQL.table(prefix, suffix),
-          " GROUP BY package_version_id ORDER BY package_version_id"
-        ],
-        []
-      )
-
-    Enum.map(rows, fn [count] -> count end)
+    from(fact in table_source(prefix, suffix),
+      group_by: fact.package_version_id,
+      order_by: fact.package_version_id,
+      select: count(fact.id)
+    )
+    |> Exograph.DuckDBRepo.all()
   end
 
   defp table_count(prefix, suffix) do
-    %{rows: [[count]]} =
-      Exograph.DuckDBRepo.query!(["SELECT count(*) FROM ", SQL.table(prefix, suffix)], [])
-
-    count
+    Exograph.DuckDBRepo.aggregate(table_source(prefix, suffix), :count)
   end
+
+  defp table_source(prefix, "comments"), do: Schema.source(:comments, prefix)
+  defp table_source(prefix, "definitions"), do: Schema.source(:definitions, prefix)
+  defp table_source(prefix, "files"), do: Schema.source(:files, prefix)
+  defp table_source(prefix, "fragments"), do: Schema.source(:fragments, prefix)
+  defp table_source(prefix, "references"), do: Schema.source(:references, prefix)
+  defp table_source(prefix, "terms"), do: Schema.source(:terms, prefix)
+  defp table_source(prefix, "fragment_terms"), do: Schema.source(:fragment_terms, prefix)
 
   defp indexed_fragments(prefix) do
     prefix

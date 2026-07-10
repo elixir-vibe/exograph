@@ -16,6 +16,7 @@ defmodule Exograph.Storage.PackageVersionRecord do
     field(:version, :string)
     field(:source_ref, :string)
     field(:checksum, :string)
+    field(:index_state, :string, default: "pending")
     field(:metadata, :map, default: %{})
 
     timestamps(type: :utc_datetime_usec)
@@ -23,7 +24,7 @@ defmodule Exograph.Storage.PackageVersionRecord do
 
   def changeset(record, attrs) do
     record
-    |> cast(attrs, [:package_id, :version, :source_ref, :checksum, :metadata])
+    |> cast(attrs, [:package_id, :version, :source_ref, :checksum, :index_state, :metadata])
     |> validate_required([:package_id, :version])
   end
 

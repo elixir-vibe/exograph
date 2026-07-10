@@ -7,6 +7,7 @@ defmodule Exograph.Storage.Config do
   """
 
   alias Exograph.{DuckDB, Package, PackageVersion}
+  alias Exograph.Storage.IndexFormat
 
   def repo(opts), do: Keyword.fetch!(opts, :repo)
 
@@ -32,6 +33,7 @@ defmodule Exograph.Storage.Config do
 
   def store(module, opts) do
     migrate(opts)
+    IndexFormat.ensure_compatible!(repo(opts), prefix(opts))
 
     attrs = %{
       repo: repo(opts),

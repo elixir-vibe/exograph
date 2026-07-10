@@ -8,6 +8,26 @@ defmodule Exograph.DuckDBTest do
 
   @moduletag :integration
 
+  test "text search applies skip to matching files" do
+    DuckDBSupport.start_managed_repo!()
+    prefix = "exograph_duckdb_text_pagination_#{System.unique_integer([:positive])}"
+
+    assert {:ok, index} =
+             Exograph.index_sources(
+               [
+                 {"lib/alpha.ex",
+                  "defmodule Alpha do\n  # pagination needle\n  def run, do: :ok\nend"},
+                 {"lib/beta.ex",
+                  "defmodule Beta do\n  # pagination needle\n  def run, do: :ok\nend"}
+               ],
+               DuckDBSupport.opts(prefix, extractors: [:ex_ast], min_mass: 1)
+             )
+
+    assert {:ok, [first]} = Exograph.search_text(index, "pagination needle", limit: 1)
+    assert {:ok, [second]} = Exograph.search_text(index, "pagination needle", limit: 1, skip: 1)
+    refute first.fragment.file == second.fragment.file
+  end
+
   test "structural optimization preserves fragment term rows" do
     DuckDBSupport.start_managed_repo!()
     prefix = "exograph_duckdb_optimize_#{System.unique_integer([:positive])}"

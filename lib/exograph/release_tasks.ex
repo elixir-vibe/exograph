@@ -99,13 +99,6 @@ defmodule Exograph.ReleaseTasks do
     File.rename!(temporary_destination, destination)
   end
 
-  defp env(name, default), do: System.get_env(name) || default
-
-  defp env_integer(name, default) do
-    case System.get_env(name) do
-      nil -> default
-      "" -> default
-      value -> String.to_integer(value)
-    end
-  end
+  defp env(name, default), do: Exograph.Environment.get(name, default)
+  defp env_integer(name, default), do: Exograph.Environment.integer(name, default)
 end

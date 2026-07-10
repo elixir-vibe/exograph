@@ -122,7 +122,7 @@ defmodule Exograph.Web.QueryLive do
     formatted = Code.format_string!(query, line_length: 80) |> IO.iodata_to_binary()
     {:noreply, push_event(socket, "set_editor_value", %{value: formatted})}
   rescue
-    _ -> {:noreply, socket}
+    ArgumentError -> {:noreply, socket}
   end
 
   @impl true
