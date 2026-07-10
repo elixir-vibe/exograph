@@ -24,6 +24,11 @@ defmodule Exograph.DuckDBTest do
              )
 
     assert {:ok, [first]} = Exograph.search_text(index, "pagination needle", limit: 1)
+    assert first.match == [%{line: 2, column: 5}]
+
+    assert {:ok, [regex_hit]} = Exograph.search_text(index, ~r/pagination needle/, limit: 1)
+    assert regex_hit.match == [%{line: 2, column: 5}]
+
     assert {:ok, [second]} = Exograph.search_text(index, "pagination needle", limit: 1, skip: 1)
     refute first.fragment.file == second.fragment.file
   end

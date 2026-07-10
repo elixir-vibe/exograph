@@ -217,7 +217,10 @@ defmodule Exograph do
 
   def search_text(%Index{} = index, %Regex{} = regex, opts) do
     {:ok, hits} = InvertedIndex.search_text_regex(index.inverted, regex, opts)
-    typed_hits(hits, TextHit)
+
+    hits
+    |> annotate_text_hits(&Text.regex_locations(&1, regex))
+    |> typed_hits(TextHit)
   end
 
   def search_text(%Index{} = index, literal, opts) when is_binary(literal) do
@@ -225,6 +228,7 @@ defmodule Exograph do
 
     hits
     |> Enum.filter(&text_match?(&1.fragment.source || "", literal))
+    |> annotate_text_hits(&Text.literal_locations(&1, literal))
     |> typed_hits(TextHit)
   end
 
@@ -691,6 +695,12 @@ defmodule Exograph do
     do: Map.get(fragment, :path) || Map.get(fragment, :file) || ""
 
   defp fragment_sort_value(fragment, :line), do: Map.get(fragment, :line) || 0
+
+  defp annotate_text_hits(hits, locations) do
+    Enum.map(hits, fn hit ->
+      %{hit | match: locations.(hit.fragment.source || "")}
+    end)
+  end
 
   defp typed_hits(hits, module) do
     {:ok,

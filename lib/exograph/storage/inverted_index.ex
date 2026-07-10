@@ -135,6 +135,7 @@ defmodule Exograph.Storage.InvertedIndex do
         limit: ^limit,
         select: {fragment, file.source, file.path, version.version, file.ast}
       )
+      |> maybe_where_regex_literal(regex_literal(pattern))
       |> Scope.where_scope(opts)
 
     hits =
@@ -148,6 +149,20 @@ defmodule Exograph.Storage.InvertedIndex do
 
     {:ok, hits}
   end
+
+  defp maybe_where_regex_literal(queryable, nil), do: queryable
+
+  defp maybe_where_regex_literal(queryable, literal) do
+    where(queryable, [_fragment, file], ilike(file.source, ^"%#{escape_like(literal)}%"))
+  end
+
+  defp regex_literal(pattern) do
+    Regex.scan(~r/(?<!\\)[[:alnum:]_]{3,}/u, pattern)
+    |> List.flatten()
+    |> Enum.max_by(&String.length/1, fn -> nil end)
+  end
+
+  defp escape_like(value), do: value |> String.replace("%", "\\%") |> String.replace("_", "\\_")
 
   defp with_file(queryable, index, true) do
     from(fragment in queryable,
