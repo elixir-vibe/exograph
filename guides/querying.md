@@ -110,8 +110,9 @@ Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
 ## Benchmark baseline
 
 The deterministic query baseline is an opt-in integration test. It emits JSON
-with `Exograph.explain/3` metrics and measured structural, joined, keyset,
-text, and regex scenarios:
+with `Exograph.explain/3` metrics and measured structural, one-/two-/three-join,
+joined-keyset, text, and regex scenarios. Join cases also assert the expected
+batched Ecto query count:
 
 ```bash
 mix test test/integration/query_benchmark_test.exs --include benchmark

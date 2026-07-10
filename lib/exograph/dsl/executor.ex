@@ -645,10 +645,15 @@ defmodule Exograph.DSL.Executor do
         end)
         |> Enum.uniq()
 
-      source = Sources.join_source(assoc, index.inverted.prefix)
-
       records =
-        index.inverted.repo.all(from(record in source, where: record.id in ^ids))
+        case ids do
+          [] ->
+            []
+
+          _ ->
+            source = Sources.join_source(assoc, index.inverted.prefix)
+            index.inverted.repo.all(from(record in source, where: record.id in ^ids))
+        end
 
       {assoc, Map.new(records, &{&1.id, &1})}
     end)
