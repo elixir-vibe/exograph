@@ -107,6 +107,19 @@ Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
 #=> }
 ```
 
+## Benchmark baseline
+
+The deterministic query baseline is an opt-in integration test. It emits JSON
+with `Exograph.explain/3` metrics and measured structural, joined, keyset,
+text, and regex scenarios:
+
+```bash
+mix test test/integration/query_benchmark_test.exs --include benchmark
+```
+
+Use it before and after planner changes; candidate counts and verification
+ratios are stable assertions, while elapsed times are informational.
+
 ## Similarity search
 
 Exograph stores ExDNA structural fingerprints for fragments and can rerank
