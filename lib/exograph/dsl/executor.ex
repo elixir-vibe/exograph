@@ -753,61 +753,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
-    if Keyword.get(opts, :legacy_join_builder, false) do
-      legacy_joined_fragments_two(index, plan, opts)
-    else
-      joined_fragments_from_builder(index, plan, opts, [first_join, second_join])
-    end
-  end
-
-  defp legacy_joined_fragments_two(index, %Plan{joins: [first_join, second_join]} = plan, opts) do
-    candidate_limit = candidate_limit(index, opts)
-    files_source = Schema.files_source(index.inverted.prefix)
-    fragments_source = Schema.fragments_source(index.inverted.prefix)
-    function_fragment_kinds = JoinSemantics.function_fragment_kinds()
-
-    from(fragment in {fragments_source, FragmentRecord},
-      as: :fragment,
-      join: first in ^Sources.join_source(first_join.assoc, index.inverted.prefix),
-      on:
-        first.file_id == fragment.file_id and first.line >= fragment.line and
-          (is_nil(fragment.end_line) or first.line <= fragment.end_line),
-      join: second in ^Sources.join_source(second_join.assoc, index.inverted.prefix),
-      on:
-        second.file_id == fragment.file_id and second.line >= fragment.line and
-          (is_nil(fragment.end_line) or second.line <= fragment.end_line),
-      left_join: file in ^files_source,
-      on: file.id == fragment.file_id,
-      where: fragment.kind in ^function_fragment_kinds,
-      distinct: fragment.id,
-      order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
-      limit: ^candidate_limit,
-      select: {fragment, file.source, file.path, file.ast, first, second}
-    )
-    |> JoinSemantics.where_call_definition_pairs(plan)
-    |> where_structural_terms(index, plan)
-    |> where_source_predicates(predicates(plan, plan.binding), nil, :fragment)
-    |> where_second_binding_predicates(
-      predicates(plan, first_join.binding),
-      first_join.binding,
-      first_join.assoc
-    )
-    |> where_third_binding_predicates(
-      predicates(plan, second_join.binding),
-      second_join.binding,
-      second_join.assoc
-    )
-    |> where_fragment_scope(opts)
-    |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, file_ast, first, second} ->
-      {
-        Hydration.fragment(fragment, source, path, nil, nil, file_ast),
-        %{
-          first_join.binding => joined_value(first_join.assoc, first),
-          second_join.binding => joined_value(second_join.assoc, second)
-        }
-      }
-    end)
+    joined_fragments_from_builder(index, plan, opts, [first_join, second_join])
   end
 
   defp joined_fragments_three(
@@ -815,75 +761,7 @@ defmodule Exograph.DSL.Executor do
          %Plan{joins: [first_join, second_join, third_join]} = plan,
          opts
        ) do
-    if Keyword.get(opts, :legacy_join_builder, false) do
-      legacy_joined_fragments_three(index, plan, opts)
-    else
-      joined_fragments_from_builder(index, plan, opts, [first_join, second_join, third_join])
-    end
-  end
-
-  defp legacy_joined_fragments_three(
-         index,
-         %Plan{joins: [first_join, second_join, third_join]} = plan,
-         opts
-       ) do
-    candidate_limit = candidate_limit(index, opts)
-    files_source = Schema.files_source(index.inverted.prefix)
-    fragments_source = Schema.fragments_source(index.inverted.prefix)
-    function_fragment_kinds = JoinSemantics.function_fragment_kinds()
-
-    from(fragment in {fragments_source, FragmentRecord},
-      as: :fragment,
-      join: first in ^Sources.join_source(first_join.assoc, index.inverted.prefix),
-      on:
-        first.file_id == fragment.file_id and first.line >= fragment.line and
-          (is_nil(fragment.end_line) or first.line <= fragment.end_line),
-      join: second in ^Sources.join_source(second_join.assoc, index.inverted.prefix),
-      on:
-        second.file_id == fragment.file_id and second.line >= fragment.line and
-          (is_nil(fragment.end_line) or second.line <= fragment.end_line),
-      join: third in ^Sources.join_source(third_join.assoc, index.inverted.prefix),
-      on:
-        third.file_id == fragment.file_id and third.line >= fragment.line and
-          (is_nil(fragment.end_line) or third.line <= fragment.end_line),
-      left_join: file in ^files_source,
-      on: file.id == fragment.file_id,
-      where: fragment.kind in ^function_fragment_kinds,
-      distinct: fragment.id,
-      order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
-      limit: ^candidate_limit,
-      select: {fragment, file.source, file.path, file.ast, first, second, third}
-    )
-    |> JoinSemantics.where_call_definition_pairs(plan)
-    |> where_structural_terms(index, plan)
-    |> where_source_predicates(predicates(plan, plan.binding), nil, :fragment)
-    |> where_second_binding_predicates(
-      predicates(plan, first_join.binding),
-      first_join.binding,
-      first_join.assoc
-    )
-    |> where_third_binding_predicates(
-      predicates(plan, second_join.binding),
-      second_join.binding,
-      second_join.assoc
-    )
-    |> where_fourth_binding_predicates(
-      predicates(plan, third_join.binding),
-      third_join.binding,
-      third_join.assoc
-    )
-    |> where_fragment_scope(opts)
-    |> index.inverted.repo.all()
-    |> Enum.map(fn {fragment, source, path, file_ast, first, second, third} ->
-      {
-        Hydration.fragment(fragment, source, path, nil, nil, file_ast),
-        %{
-          first_join.binding => joined_value(first_join.assoc, first),
-          second_join.binding => joined_value(second_join.assoc, second),
-          third_join.binding => joined_value(third_join.assoc, third)
-        }
-      }
-    end)
+    joined_fragments_from_builder(index, plan, opts, [first_join, second_join, third_join])
   end
 
   defp joined_fragments_from_builder(index, plan, opts, joins) do
