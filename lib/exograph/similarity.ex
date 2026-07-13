@@ -93,7 +93,15 @@ defmodule Exograph.Similarity do
   end
 
   defp query_fragment(source, opts) when is_binary(source) do
-    with {:ok, ast} <- Code.string_to_quoted(source, line: 1, columns: true) do
+    parser_opts = [
+      line: 1,
+      columns: true,
+      token_metadata: true,
+      file: "<query>",
+      emit_warnings: false
+    ]
+
+    with {:ok, ast} <- Exograph.ElixirParser.string_to_quoted(source, parser_opts) do
       query_fragment(ast, opts)
     end
   end
