@@ -60,6 +60,19 @@ defmodule Exograph.DuckDBSupport do
     database
   end
 
+  def start_index!(prefix, sources, opts \\ []) do
+    endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
+    database = start_managed_repo!(endpoint: endpoint)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      File.rm(database)
+      File.rm(database <> ".wal")
+    end)
+
+    {:ok, index} = Exograph.index_sources(sources, opts(prefix, opts))
+    index
+  end
+
   def opts(prefix, opts \\ []) do
     Keyword.merge(
       [repo: Exograph.DuckDBRepo, prefix: prefix, migrate?: true],

@@ -1,4 +1,4 @@
-defmodule Exograph.PatternAuditTest.LocalCheck do
+defmodule Exograph.Integrations.Reach.PatternAuditTest.LocalCheck do
   @moduledoc "Test-only Reach source-pattern smell check."
 
   use Reach.Smell.Check.Source
@@ -10,7 +10,7 @@ defmodule Exograph.PatternAuditTest.LocalCheck do
   )
 end
 
-defmodule Exograph.PatternAuditTest.PipeEquivalentCheck do
+defmodule Exograph.Integrations.Reach.PatternAuditTest.PipeEquivalentCheck do
   @moduledoc "Test-only pipe-equivalent Reach source-pattern smell check."
 
   use Reach.Smell.Check.Source
@@ -22,7 +22,7 @@ defmodule Exograph.PatternAuditTest.PipeEquivalentCheck do
   )
 end
 
-defmodule Exograph.PatternAuditTest.LiteralArgumentCheck do
+defmodule Exograph.Integrations.Reach.PatternAuditTest.LiteralArgumentCheck do
   @moduledoc "Test-only Reach source-pattern smell check for literal arguments."
 
   use Reach.Smell.Check.Source
@@ -58,12 +58,12 @@ defmodule Exograph.PatternAuditTest.LiteralArgumentCheck do
   )
 end
 
-defmodule Exograph.PatternAuditTest do
+defmodule Exograph.Integrations.Reach.PatternAuditTest do
   use ExUnit.Case, async: false
 
   alias Exograph.Integrations.Reach.PatternAudit, as: SourceSmellAudit
 
-  alias Exograph.PatternAuditTest.{
+  alias Exograph.Integrations.Reach.PatternAuditTest.{
     LiteralArgumentCheck,
     LocalCheck,
     PipeEquivalentCheck
