@@ -124,6 +124,12 @@ mix test test/integration/query_benchmark_test.exs --include benchmark
 Use it before and after planner changes; candidate counts and verification
 ratios are stable assertions, while elapsed times are informational.
 
+To validate BM25 itself against a DuckDB server with the `fts` extension:
+
+```bash
+QUACKDB_FTS_TEST_URI=quack://host:port mix test test/integration/fts_text_search_test.exs --include fts
+```
+
 ## Similarity search
 
 Exograph stores ExDNA structural fingerprints for fragments and can rerank

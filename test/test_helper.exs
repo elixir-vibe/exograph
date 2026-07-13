@@ -1,1 +1,1 @@
-ExUnit.start(exclude: [:feature, :benchmark])
+ExUnit.start(exclude: [:feature, :benchmark, :fts])
