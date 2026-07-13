@@ -12,14 +12,35 @@ defmodule Exograph.Similarity do
 
   @spec search(Index.t(), String.t() | Macro.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def search(%Index{} = index, source_or_ast, opts \\ []) do
+    with {:ok, results, _diagnostics} <- run(index, source_or_ast, opts), do: {:ok, results}
+  end
+
+  @spec explain(Index.t(), String.t() | Macro.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def explain(%Index{} = index, source_or_ast, opts \\ []) do
+    {elapsed_us, result} = :timer.tc(fn -> run(index, source_or_ast, opts) end)
+
+    case result do
+      {:ok, results, diagnostics} ->
+        {:ok,
+         Map.merge(diagnostics, %{
+           returned_results: length(results),
+           elapsed_ms: Float.round(elapsed_us / 1_000, 3)
+         })}
+
+      error ->
+        error
+    end
+  end
+
+  defp run(index, source_or_ast, opts) do
     opts = Keyword.merge(@default_opts, opts)
 
     with {:ok, query_fragment} <- query_fragment(source_or_ast, opts) do
       query_norm = Normalizer.normalize(query_fragment.ast)
+      {fragments, fallback?} = candidate_fragments(index, query_fragment)
 
       results =
-        index
-        |> candidate_fragments(query_fragment)
+        fragments
         |> Enum.map(fn fragment ->
           overlap = subhash_overlap(fragment, query_fragment)
           similarity = EditDistance.similarity(query_norm, Normalizer.normalize(fragment.ast))
@@ -35,7 +56,13 @@ defmodule Exograph.Similarity do
         |> Enum.sort_by(&{&1.similarity, &1.subhash_overlap}, :desc)
         |> Enum.take(opts[:limit])
 
-      {:ok, results}
+      {:ok, results,
+       %{
+         query_subhashes: MapSet.size(query_fragment.sub_hashes),
+         candidate_fragments: length(fragments),
+         exact_scored_fragments: length(fragments),
+         fallback_to_full_scan: fallback?
+       }}
     end
   end
 
@@ -60,8 +87,8 @@ defmodule Exograph.Similarity do
       end)
 
     case candidates do
-      [] -> FragmentStore.all(index.fragment_store)
-      _ -> candidates
+      [] -> {FragmentStore.all(index.fragment_store), true}
+      _ -> {candidates, false}
     end
   end
 

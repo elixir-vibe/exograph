@@ -199,6 +199,13 @@ defmodule Exograph do
     InvertedIndex.search_callees(index.inverted, caller, opts)
   end
 
+  @doc "Explains similarity candidate retrieval and exact scoring work."
+  @spec explain_similarity(Index.t(), String.t() | Macro.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def explain_similarity(%Index{} = index, source_or_ast, opts \\ []) do
+    Similarity.explain(index, source_or_ast, opts)
+  end
+
   @doc false
   @spec similar(Index.t(), String.t() | Macro.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def similar(%Index{} = index, source_or_ast, opts \\ []) do

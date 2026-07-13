@@ -36,5 +36,24 @@ defmodule Exograph.SimilarityTest do
 
     assert fragment.name == "target"
     assert similarity >= 0.5
+
+    assert {:ok, diagnostics} =
+             Exograph.explain_similarity(
+               index,
+               """
+               def target(value) do
+                 Enum.map([value], fn item -> item + 1 end)
+               end
+               """,
+               min_mass: 1,
+               min_similarity: 0.5
+             )
+
+    assert diagnostics.query_subhashes > 0
+    assert diagnostics.candidate_fragments > 0
+    assert diagnostics.exact_scored_fragments == diagnostics.candidate_fragments
+    assert is_boolean(diagnostics.fallback_to_full_scan)
+    assert diagnostics.returned_results > 0
+    assert is_number(diagnostics.elapsed_ms)
   end
 end

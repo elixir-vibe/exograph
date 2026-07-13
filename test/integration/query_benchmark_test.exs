@@ -14,6 +14,26 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
     selective = Exograph.explain(index, "Repo.get!(_, _)", limit: 5)
     broad = Exograph.explain(index, "def _ do ... end", limit: 5)
 
+    similarity =
+      QueryBenchmarkFixture.measure(fn ->
+        Exograph.explain_similarity(
+          index,
+          "def run(value), do: helper(value)",
+          min_mass: 1,
+          min_similarity: 0.0
+        )
+      end)
+
+    similarity_fallback =
+      QueryBenchmarkFixture.measure(fn ->
+        Exograph.explain_similarity(
+          index,
+          "def unrelated(value), do: :unindexed",
+          min_mass: 1,
+          min_similarity: 0.0
+        )
+      end)
+
     one_join = measure_join(index, one_join_query())
     two_join = measure_join(index, two_join_query())
     three_join = measure_join(index, three_join_query())
@@ -73,6 +93,8 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
     report = %{
       selective: explain_metrics(selective),
       broad: explain_metrics(broad),
+      similarity: similarity.result |> elem(1),
+      similarity_fallback: similarity_fallback.result |> elem(1),
       one_join: join_metrics(one_join),
       two_join: join_metrics(two_join),
       three_join: join_metrics(three_join),
@@ -91,6 +113,10 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
     assert selective.metrics.candidate_rows > 0
     assert selective.metrics.matches > 0
     assert broad.metrics.candidate_rows >= selective.metrics.candidate_rows
+    assert {:ok, similarity_diagnostics} = similarity.result
+    assert similarity_diagnostics.exact_scored_fragments > 0
+    assert {:ok, fallback_diagnostics} = similarity_fallback.result
+    assert fallback_diagnostics.fallback_to_full_scan
     assert {:ok, [_ | _]} = one_join.result
     assert one_join.query_count == 3
     assert {:ok, [_ | _]} = two_join.result
