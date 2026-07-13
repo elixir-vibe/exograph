@@ -449,9 +449,8 @@ defmodule Exograph.Web.APIController do
 
   defp encode_keyset_cursor(hit) do
     case cursor_fragment(hit) do
-      %{file: path, line: line, id: id}
-      when is_binary(path) and is_integer(line) and is_integer(id) ->
-        {path, line, id}
+      %{file_id: file_id, id: id} when is_integer(file_id) and is_integer(id) ->
+        {file_id, id}
         |> :erlang.term_to_binary()
         |> Base.url_encode64(padding: false)
 
@@ -480,8 +479,8 @@ defmodule Exograph.Web.APIController do
 
   defp decode_keyset_cursor(binary) do
     case :erlang.binary_to_term(binary, [:safe]) do
-      {path, line, id} when is_binary(path) and is_integer(line) and is_integer(id) ->
-        {:keyset, {path, line, id}}
+      {file_id, id} when is_integer(file_id) and is_integer(id) ->
+        {:keyset, {file_id, id}}
 
       _ ->
         {:offset, 0}

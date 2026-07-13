@@ -1,6 +1,8 @@
 defmodule Exograph.AST.Codec do
   @moduledoc false
 
+  alias Exograph.Ident
+
   @atom_tag "__exograph_atom__"
   @tuple_tag "__exograph_tuple__"
   @map_tag "__exograph_map__"
@@ -38,9 +40,7 @@ defmodule Exograph.AST.Codec do
   defp decode({@atom_tag, "true"}), do: true
   defp decode({@atom_tag, "false"}), do: false
 
-  defp decode({@atom_tag, name}) when is_binary(name) do
-    String.to_existing_atom(name)
-  end
+  defp decode({@atom_tag, name}) when is_binary(name), do: Ident.static_atom(name)
 
   defp decode({@tuple_tag, encoded}) do
     encoded

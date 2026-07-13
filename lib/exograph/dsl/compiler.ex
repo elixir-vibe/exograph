@@ -58,13 +58,17 @@ defmodule Exograph.DSL.Compiler do
 
     selector =
       case matches do
-        [{:matches, _binding, pattern} | _rest] -> ExAST.Query.from(pattern)
-        [] -> ExAST.Query.from("_")
+        [{:matches, _binding, pattern} | _rest] ->
+          ExAST.Query.from(Exograph.PatternParser.parse!(pattern))
+
+        [] ->
+          ExAST.Query.from("_")
       end
 
     Enum.reduce(filters, selector, fn
       {:contains, _binding, pattern}, selector ->
         if ast_pattern?(pattern) do
+          pattern = Exograph.PatternParser.parse!(pattern)
           ExAST.Selector.where_predicate(selector, ExAST.Query.contains(pattern))
         else
           selector

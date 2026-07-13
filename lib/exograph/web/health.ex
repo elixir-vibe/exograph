@@ -27,6 +27,8 @@ defmodule Exograph.Web.Health do
         site_name: Application.get_env(:exograph, :web_site_name),
         prefix: Application.get_env(:exograph, :web_prefix),
         node: Atom.to_string(node()),
+        atom_count: :erlang.system_info(:atom_count),
+        atom_limit: :erlang.system_info(:atom_limit),
         otp_release: System.otp_release(),
         elixir_version: System.version()
       }

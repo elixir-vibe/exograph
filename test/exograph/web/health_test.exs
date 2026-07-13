@@ -11,6 +11,8 @@ defmodule Exograph.Web.HealthTest do
     assert payload.status == "unavailable"
     assert payload.index.opened_shards == 0
     assert payload.application.name == "exograph"
+    assert payload.runtime.atom_count > 0
+    assert payload.runtime.atom_limit > payload.runtime.atom_count
   end
 
   test "reports sharded DuckDB manifest metadata" do

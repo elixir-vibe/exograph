@@ -66,7 +66,7 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
       end)
 
     {:ok, [first | _]} = first_page.result
-    cursor = {first.fragment.file, first.fragment.line, first.fragment.id}
+    cursor = {first.fragment.file_id, first.fragment.id}
 
     next_page =
       QueryBenchmarkFixture.measure(fn ->

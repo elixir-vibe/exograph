@@ -31,7 +31,7 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
         on: package.id == version.package_id,
         where: fragment.kind in ^@function_fragment_kinds,
         distinct: fragment.id,
-        order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
+        order_by: [asc: fragment.file_id, asc: fragment.id],
         limit: ^Keyword.get(opts, :candidate_limit, 50),
         select: %{
           fragment: fragment,
@@ -161,29 +161,15 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
       nil ->
         query
 
-      {path, line, id} ->
-        where(query, [], ^cursor_condition(root, path, line, id))
+      {file_id, id} ->
+        where(
+          query,
+          [],
+          field(as(^root), :file_id) > ^file_id or
+            (field(as(^root), :file_id) == ^file_id and field(as(^root), :id) > ^id)
+        )
     end
   end
-
-  defp cursor_condition(root, path, line, id) do
-    path_after = cursor_path_after(path)
-    same_path = cursor_same_path(path)
-    line_after = cursor_line_after(root, line)
-    same_line = cursor_same_line(root, line)
-    id_after = cursor_id_after(root, id)
-
-    dynamic(
-      [],
-      ^path_after or (^same_path and ^line_after) or (^same_path and ^same_line and ^id_after)
-    )
-  end
-
-  defp cursor_path_after(path), do: dynamic([], field(as(:file), :path) > ^path)
-  defp cursor_same_path(path), do: dynamic([], field(as(:file), :path) == ^path)
-  defp cursor_line_after(root, line), do: dynamic([], field(as(^root), :line) > ^line)
-  defp cursor_same_line(root, line), do: dynamic([], field(as(^root), :line) == ^line)
-  defp cursor_id_after(root, id), do: dynamic([], field(as(^root), :id) > ^id)
 
   defp where_text_contains(query, plan) do
     Enum.reduce(Compiler.text_contains_patterns(plan.query), query, fn text, query ->

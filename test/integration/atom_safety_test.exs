@@ -25,6 +25,19 @@ defmodule Exograph.Integration.AtomSafetyTest do
     assert :erlang.system_info(:atom_count) - before_count < 100
   end
 
+  test "compiling unique structural queries has bounded atom growth" do
+    _warmup = Exograph.compile("Warmup.Module.call(_)")
+    before_count = :erlang.system_info(:atom_count)
+
+    for index <- 1..1_000 do
+      query = "UniqueQuery#{index}.call_#{index}(_)"
+      compiled = Exograph.compile(query)
+      assert "call.remote:UniqueQuery#{index}.call_#{index}/1" in compiled.required_terms
+    end
+
+    assert :erlang.system_info(:atom_count) - before_count < 20
+  end
+
   test "lib code does not use unguarded binary_to_term" do
     matches =
       "lib/**/*.ex"

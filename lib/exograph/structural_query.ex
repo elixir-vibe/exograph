@@ -21,7 +21,8 @@ defmodule Exograph.StructuralQuery do
 
   @spec pattern(ExAST.Pattern.pattern()) :: t()
   def pattern(pattern) do
-    plan = ExAST.Index.plan(pattern)
+    compiled_pattern = compile_pattern(pattern)
+    plan = ExAST.Index.plan(compiled_pattern)
 
     %__MODULE__{
       source: pattern,
@@ -29,9 +30,14 @@ defmodule Exograph.StructuralQuery do
       optional_terms: plan.optional_terms,
       negative_terms: plan.negative_terms,
       candidate_groups: plan.candidate_groups,
-      verifier: {:pattern, pattern}
+      verifier: {:pattern, compiled_pattern}
     }
   end
+
+  defp compile_pattern(pattern) when is_binary(pattern),
+    do: Exograph.PatternParser.parse!(pattern)
+
+  defp compile_pattern(pattern), do: pattern
 
   @spec selector(ExAST.Selector.t()) :: t()
   def selector(%ExAST.Selector{} = selector) do

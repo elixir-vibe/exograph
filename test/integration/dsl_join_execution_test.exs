@@ -65,7 +65,7 @@ defmodule Exograph.Integration.DSLJoinExecutionTest do
       )
 
     assert {:ok, [first]} = Exograph.all(index, query, limit: 1)
-    cursor = {first.fragment.file, first.fragment.line, first.fragment.id}
+    cursor = {first.fragment.file_id, first.fragment.id}
     assert {:ok, [second]} = Exograph.all(index, query, limit: 1, cursor: cursor)
     assert first.fragment.id != second.fragment.id
   end

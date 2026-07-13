@@ -47,7 +47,7 @@ defmodule Exograph.DSL.ExecutorTest do
     |> then(&Exograph.all(index, &1, limit: 20))
     |> assert_ok_hits(fn hits ->
       assert Enum.map(hits, & &1.fragment.kind) == [:def, :def]
-      assert Enum.map(hits, & &1.fragment.name) == ["run", "other"]
+      assert Enum.map(hits, & &1.fragment.name) |> Enum.sort() == ["other", "run"]
     end)
   end
 
@@ -102,6 +102,18 @@ defmodule Exograph.DSL.ExecutorTest do
     assert {:ok, []} = Exograph.all(index, query, limit: 20)
   end
 
+  test "missing required structural terms produce no candidates", %{index: index} do
+    query =
+      query!(
+        ~s|from(f in Fragment, where: matches(f, "NeverIndexed.Module.call_987654321(_)"), limit: 20)|
+      )
+
+    assert {:ok, []} = Exograph.all(index, query, limit: 20)
+
+    assert {:ok, %Exograph.Query.Estimate{value: 0, relation: :eq}} =
+             Exograph.estimate_candidates(index, query)
+  end
+
   test "named function patterns return only matching function fragments", %{index: index} do
     query!(~s|from(f in Fragment, where: matches(f, "def run(_) do ... end"), limit: 20)|)
     |> then(&Exograph.all(index, &1, limit: 20))
@@ -129,7 +141,7 @@ defmodule Exograph.DSL.ExecutorTest do
 
     assert {:ok, [first]} = Exograph.all(index, query, limit: 1)
 
-    cursor = {first.fragment.file, first.fragment.line, first.fragment.id}
+    cursor = {first.fragment.file_id, first.fragment.id}
 
     assert {:ok, [second]} = Exograph.all(index, query, limit: 1, cursor: cursor)
     assert second.fragment.id != first.fragment.id

@@ -5,7 +5,7 @@ defmodule Exograph.DSL.Executor do
   import Exograph.DSL.Executor.Predicates
   import Exograph.DSL.Executor.Scope
 
-  alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
+  alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, Ident, ReferenceHit}
   alias Exograph.DSL.{Compiler, Plan, Planner, Sources}
   alias Exograph.Query
   alias Exograph.DSL.Executor.JoinBuilder
@@ -209,7 +209,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp pattern_kind({:matches, _binding, pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile_ast(pattern) do
+    case Exograph.PatternParser.parse!(pattern) do
       {kind, _, _} when kind in @def_kinds -> kind
       _ -> nil
     end
@@ -233,7 +233,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp pattern_name_arity({:matches, _binding, pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile_ast(pattern) do
+    case Exograph.PatternParser.parse!(pattern) do
       ast -> def_pattern_name_arity(ast)
     end
   rescue
@@ -243,11 +243,13 @@ defmodule Exograph.DSL.Executor do
   defp pattern_name_arity(_), do: nil
 
   defp def_pattern_name_arity({kind, _, [{name, _, args} | _]})
-       when kind in @def_kinds and is_atom(name) and is_list(args) do
+       when kind in @def_kinds and is_list(args) do
+    name = Ident.name(name)
+
     if Enum.all?(args, &match?({:_, _, _}, &1)) or args == [] do
-      {Atom.to_string(name), length(args)}
+      {name, length(args)}
     else
-      {Atom.to_string(name), nil}
+      {name, nil}
     end
   end
 
@@ -271,7 +273,7 @@ defmodule Exograph.DSL.Executor do
   @doc false
   def structural_candidate_query(index, %Exograph.StructuralQuery{} = compiled_query, opts \\ []) do
     term_strings = MapSet.to_list(compiled_query.required_terms)
-    term_ids = InvertedIndex.resolve_term_ids(index.inverted, term_strings)
+    term_ids = resolve_required_term_ids(index, term_strings)
     kind_filter = structural_query_kind(compiled_query)
     {name_filter, arity_filter} = structural_query_name_arity(compiled_query)
     has_column_filters? = kind_filter != nil and name_filter != nil
@@ -284,7 +286,7 @@ defmodule Exograph.DSL.Executor do
       |> exclude(:select)
       |> select([fragment], fragment.id)
 
-    query = where_fragment_term_ids(query, index, if(has_column_filters?, do: [], else: term_ids))
+    query = where_required_term_ids(query, index, if(has_column_filters?, do: [], else: term_ids))
 
     query =
       if kind_filter, do: where(query, [fragment], fragment.kind == ^kind_filter), else: query
@@ -300,7 +302,7 @@ defmodule Exograph.DSL.Executor do
 
   def stream_structural(index, %Exograph.StructuralQuery{} = compiled_query, opts) do
     term_strings = MapSet.to_list(compiled_query.required_terms)
-    term_ids = InvertedIndex.resolve_term_ids(index.inverted, term_strings)
+    term_ids = resolve_required_term_ids(index, term_strings)
     kind_filter = structural_query_kind(compiled_query)
     {name_filter, arity_filter} = structural_query_name_arity(compiled_query)
 
@@ -332,8 +334,18 @@ defmodule Exograph.DSL.Executor do
     )
   end
 
+  defp resolve_required_term_ids(_index, []), do: []
+
+  defp resolve_required_term_ids(index, terms) do
+    ids = InvertedIndex.resolve_term_ids(index.inverted, terms)
+    if length(ids) == length(Enum.uniq(terms)), do: ids, else: :missing
+  end
+
+  defp where_required_term_ids(query, _index, :missing), do: where(query, false)
+  defp where_required_term_ids(query, index, ids), do: where_fragment_term_ids(query, index, ids)
+
   defp structural_query_kind(%StructuralQuery{source: pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile_ast(pattern) do
+    case Exograph.PatternParser.parse!(pattern) do
       {kind, _, _} when kind in @def_kinds -> kind
       _ -> nil
     end
@@ -344,7 +356,7 @@ defmodule Exograph.DSL.Executor do
   defp structural_query_kind(_), do: nil
 
   defp structural_query_name_arity(%StructuralQuery{source: pattern}) when is_binary(pattern) do
-    case ExAST.Pattern.compile_ast(pattern) do
+    case Exograph.PatternParser.parse!(pattern) do
       ast -> def_pattern_name_arity(ast) || {nil, nil}
     end
   rescue
@@ -364,7 +376,7 @@ defmodule Exograph.DSL.Executor do
        ) do
     query = base_fragment_query(index, cursor, fragment_candidate_limit(opts))
 
-    query = where_fragment_term_ids(query, index, term_ids)
+    query = where_required_term_ids(query, index, term_ids)
 
     query =
       if kind_filter,
@@ -400,7 +412,7 @@ defmodule Exograph.DSL.Executor do
         on: version.id == fragment.package_version_id,
         left_join: package in ^packages_source,
         on: package.id == version.package_id,
-        order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
+        order_by: [asc: fragment.file_id, asc: fragment.id],
         limit: ^candidate_limit,
         select: {fragment, file.source, file.path, version.version, package.name, file.ast}
       )
@@ -426,7 +438,7 @@ defmodule Exograph.DSL.Executor do
         on: version.id == fragment.package_version_id,
         left_join: package in ^packages_source,
         on: package.id == version.package_id,
-        order_by: [asc: file.path, asc: fragment.line, asc: fragment.id],
+        order_by: [asc: fragment.file_id, asc: fragment.id],
         limit: ^candidate_limit
       )
       |> select_fragment_candidate(include_source?)
@@ -458,19 +470,18 @@ defmodule Exograph.DSL.Executor do
 
   defp where_after_cursor(query, nil), do: query
 
-  defp where_after_cursor(query, {path, line, id}) do
+  defp where_after_cursor(query, {file_id, id}) do
     where(
       query,
-      [fragment, file, _version, _package],
-      file.path > ^path or
-        (file.path == ^path and fragment.line > ^line) or
-        (file.path == ^path and fragment.line == ^line and fragment.id > ^id)
+      [fragment, _file, _version, _package],
+      fragment.file_id > ^file_id or
+        (fragment.file_id == ^file_id and fragment.id > ^id)
     )
   end
 
   defp last_cursor(batch) do
     last = List.last(batch)
-    {last.file || "", last.line, last.id}
+    {last.file_id, last.id}
   end
 
   defp hydrate_fragment_batch(query, index) do
