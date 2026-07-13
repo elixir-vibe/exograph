@@ -55,5 +55,29 @@ defmodule Exograph.SimilarityTest do
     refute diagnostics.fallback_to_full_scan
     assert diagnostics.returned_results > 0
     assert is_number(diagnostics.elapsed_ms)
+
+    query = """
+    def target(value) do
+      Enum.map([value], fn item -> item + 1 end)
+    end
+    """
+
+    assert {:ok, prefiltered} =
+             Exograph.similar(index, query, min_mass: 1, min_similarity: 0.5)
+
+    assert {:ok, full_scan} =
+             Exograph.similar(
+               index,
+               query,
+               min_mass: 1,
+               min_similarity: 0.5,
+               force_full_scan: true
+             )
+
+    assert similarity_signature(prefiltered) == similarity_signature(full_scan)
+  end
+
+  defp similarity_signature(results) do
+    Enum.map(results, &{&1.fragment.id, &1.similarity})
   end
 end

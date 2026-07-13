@@ -37,7 +37,7 @@ defmodule Exograph.Similarity do
 
     with {:ok, query_fragment} <- query_fragment(source_or_ast, opts) do
       query_norm = Normalizer.normalize(query_fragment.ast)
-      {fragments, fallback?} = candidate_fragments(index, query_fragment)
+      {fragments, fallback?} = candidate_fragments(index, query_fragment, opts)
 
       results =
         fragments
@@ -66,7 +66,15 @@ defmodule Exograph.Similarity do
     end
   end
 
-  defp candidate_fragments(index, query_fragment) do
+  defp candidate_fragments(index, query_fragment, opts) do
+    if Keyword.get(opts, :force_full_scan, false) do
+      {FragmentStore.all(index.fragment_store), true}
+    else
+      prefiltered_candidates(index, query_fragment)
+    end
+  end
+
+  defp prefiltered_candidates(index, query_fragment) do
     hashes = MapSet.to_list(query_fragment.sub_hashes)
     source = Schema.fragments_source(index.fragment_store.prefix)
     files_source = Schema.files_source(index.fragment_store.prefix)
