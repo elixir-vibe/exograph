@@ -53,6 +53,18 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
         Exograph.search_text(index, "benchmark marker", limit: 5)
       end)
 
+    identifier_explanation = Exograph.explain_text(index, "Enum.map")
+
+    identifier_fts =
+      QueryBenchmarkFixture.measure(fn ->
+        Exograph.search_text(index, "Enum.map", limit: 5)
+      end)
+
+    identifier_ilike =
+      QueryBenchmarkFixture.measure(fn ->
+        Exograph.search_text(index, "Enum.map", limit: 5, force_ilike: true)
+      end)
+
     regex =
       QueryBenchmarkFixture.measure(fn ->
         Exograph.search_text(index, ~r/benchmark marker/, limit: 5)
@@ -67,6 +79,10 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
       page_one_ms: first_page.elapsed_ms,
       page_two_ms: next_page.elapsed_ms,
       text_ms: text.elapsed_ms,
+      identifier:
+        Map.take(identifier_explanation, [:strategy, :identifier_tokens, :candidate_file_count]),
+      identifier_fts_ms: identifier_fts.elapsed_ms,
+      identifier_ilike_ms: identifier_ilike.elapsed_ms,
       regex_ms: regex.elapsed_ms
     }
 
@@ -83,6 +99,15 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
     assert three_join.query_count == 6
     assert {:ok, [_ | _]} = next_page.result
     assert {:ok, [_ | _]} = text.result
+    assert identifier_explanation.strategy in [:bm25, :ilike]
+    assert identifier_explanation.identifier_tokens == ["enum", "map"]
+    assert identifier_explanation.candidate_file_count > 0
+    assert {:ok, identifier_fts_hits} = identifier_fts.result
+    assert {:ok, identifier_ilike_hits} = identifier_ilike.result
+
+    assert Enum.map(identifier_fts_hits, & &1.fragment.id) ==
+             Enum.map(identifier_ilike_hits, & &1.fragment.id)
+
     assert {:ok, [_ | _]} = regex.result
   end
 

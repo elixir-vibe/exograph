@@ -9,6 +9,35 @@ defmodule Exograph.DuckDB.TextSearch do
   alias Exograph.{Hit, IdentifierTokens}
   alias Exograph.Storage.{FragmentRecord, Hydration, Schema}
 
+  def explain_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
+    pattern = "%#{escape_like(literal)}%"
+    tokens = IdentifierTokens.from_source(literal)
+    query = matched_files_query(index, literal, field, pattern, opts)
+    {sql, params} = Ecto.Adapters.SQL.to_sql(:all, index.repo, query)
+
+    candidate_file_count =
+      index.repo.one(from(file in subquery(query), select: count(file.id)))
+
+    %{
+      strategy:
+        if(index.bm25? and tokens != "" and not Keyword.get(opts, :force_ilike, false),
+          do: :bm25,
+          else: :ilike
+        ),
+      identifier_tokens: String.split(tokens, " ", trim: true),
+      candidate_file_count: candidate_file_count,
+      sql: sql,
+      parameter_count: length(params)
+    }
+  rescue
+    error in QuackDB.Error ->
+      if bm25_unavailable?(error) and not Keyword.get(opts, :force_ilike, false) do
+        explain_file_field(index, literal, field, Keyword.put(opts, :force_ilike, true))
+      else
+        reraise(error, __STACKTRACE__)
+      end
+  end
+
   def search_file_field(index, literal, field, opts) when field in [:source, :comments_text] do
     limit = Keyword.get(opts, :limit, 50)
     pattern = "%#{escape_like(literal)}%"
