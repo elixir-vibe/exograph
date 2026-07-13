@@ -47,7 +47,6 @@ result =
     mode: :latest,
     shards: 4,
     duckdb_threads: 1,
-    recovery_mode: :no_wal_writes,
     manifest_path: "priv/exograph/hex.etf"
   )
 
@@ -66,7 +65,7 @@ The manifest is an internal ETF file containing `%Exograph.DuckDBShards.Manifest
 {:ok, index} = Exograph.open_sharded("priv/exograph/hex.etf", duckdb_threads: 1)
 ```
 
-Do not run two QuackDB servers against the same DuckDB shard file at once; DuckDB correctly protects writable database files with locks. `recovery_mode: :no_wal_writes` is intended for rebuildable indexes: if a run crashes, delete/rebuild the affected shard rather than expecting WAL recovery.
+Do not run two QuackDB servers against the same DuckDB shard file at once; DuckDB correctly protects writable database files with locks. Corpus builds use DuckDB's normal WAL-backed persistence so completed shard manifests always reopen with durable data.
 
 ## CLI
 
@@ -75,7 +74,6 @@ mix exograph.index.hex \
   --mode latest \
   --duckdb-shards 4 \
   --duckdb-threads 1 \
-  --duckdb-recovery-mode no_wal_writes \
   --manifest-path priv/exograph/hex.etf \
   --shard-dir priv/exograph/shards
 ```

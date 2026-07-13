@@ -35,7 +35,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--duckdb-memory-limit` - DuckDB memory limit per shard/server, e.g. `2GB`
     * `--duckdb-queue-target` - DBConnection queue target in milliseconds for DuckDB shard repos (default: `60000`)
     * `--duckdb-queue-interval` - DBConnection queue interval in milliseconds for DuckDB shard repos (default: `120000`)
-    * `--duckdb-recovery-mode` - DuckDB managed-server recovery mode (`no_wal_writes` for rebuildable indexes)
     * `--duckdb-insert-buffer-size` - buffered DuckDB fact rows per table before flushing (default: `50000`)
     * `--manifest-path` - write a sharded DuckDB manifest to this path for `mix exograph.web --manifest-path ...`
     * `--report-path` - write indexing totals and failures as JSON
@@ -86,7 +85,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           duckdb_memory_limit: :string,
           duckdb_queue_target: :integer,
           duckdb_queue_interval: :integer,
-          duckdb_recovery_mode: :string,
           duckdb_insert_buffer_size: :integer,
           manifest_path: :string,
           report_path: :string,
@@ -148,7 +146,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       duckdb_memory_limit: Keyword.get(opts, :duckdb_memory_limit),
       duckdb_queue_target: Keyword.get(opts, :duckdb_queue_target, 60_000),
       duckdb_queue_interval: Keyword.get(opts, :duckdb_queue_interval, 120_000),
-      recovery_mode: recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)),
       duckdb_insert_buffer_size: Keyword.get(opts, :duckdb_insert_buffer_size, 50_000),
       manifest_path: Keyword.get(opts, :manifest_path),
       report_path: Keyword.get(opts, :report_path),
@@ -234,10 +231,6 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
   defp pipeline("broadway"), do: :broadway
   defp pipeline(value), do: Mix.raise("Unknown pipeline #{inspect(value)}")
 
-  defp recovery_mode(nil), do: nil
-  defp recovery_mode("no_wal_writes"), do: :no_wal_writes
-  defp recovery_mode(value), do: Mix.raise("Unknown DuckDB recovery mode #{inspect(value)}")
-
   defp resolve_repo(opts) do
     case Keyword.get(opts, :repo) do
       nil ->
@@ -280,15 +273,11 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
         token: token,
         settings: Mix.Exograph.DuckDBOptions.duckdb_settings(Keyword.get(opts, :duckdb_threads))
       ]
-      |> put_optional(:recovery_mode, recovery_mode(Keyword.get(opts, :duckdb_recovery_mode)))
 
     {:ok, server} = QuackDB.Server.start_link(server_opts)
 
     QuackDB.Server.uri(server)
   end
-
-  defp put_optional(opts, _key, nil), do: opts
-  defp put_optional(opts, key, value), do: Keyword.put(opts, key, value)
 
   defp start_web!(repo, prefix, opts) do
     port = Keyword.get(opts, :port, 4200)

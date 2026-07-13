@@ -13,10 +13,19 @@ defmodule Exograph.Hex.Corpus do
   @default_generated_min_mass 20_000
 
   def index(opts \\ []) do
+    reject_ephemeral_storage!(opts)
+
     if Keyword.get(opts, :shards, 1) > 1 do
       index_sharded(opts)
     else
       index_single(opts)
+    end
+  end
+
+  defp reject_ephemeral_storage!(opts) do
+    if Keyword.get(opts, :recovery_mode) do
+      raise ArgumentError,
+            "Hex corpus indexes require durable DuckDB storage; recovery_mode is unsupported"
     end
   end
 
@@ -42,6 +51,7 @@ defmodule Exograph.Hex.Corpus do
 
     if progress_lifecycle? do
       Exograph.Hex.StageTimings.reset()
+      record_atom_count(:beam_atom_count_before)
       Progress.start_run(total)
       if cli?, do: cli_header(total, mode, MapSet.size(existing))
     end
@@ -54,12 +64,16 @@ defmodule Exograph.Hex.Corpus do
     started = System.monotonic_time(:millisecond)
     {opts, insert_buffer} = maybe_start_insert_buffer(repo, opts)
 
+    if progress_lifecycle?, do: record_atom_count(:beam_atom_count_before_packages)
+
     {results, elapsed} =
       if Keyword.get(opts, :pipeline) == :broadway do
         index_with_broadway(entries, existing, opts)
       else
         index_with_tasks(entries, existing, opts, total, started, cli?, concurrency)
       end
+
+    if progress_lifecycle?, do: record_atom_count(:beam_atom_count_after_packages)
 
     Exograph.Hex.StageTimings.measure(:duckdb_insert_buffer_flush, fn ->
       Exograph.DuckDB.InsertBuffer.flush(insert_buffer)
@@ -72,11 +86,32 @@ defmodule Exograph.Hex.Corpus do
     Exograph.DuckDB.InsertBuffer.stop(insert_buffer)
     Exograph.Hex.QuackDBTelemetry.detach(telemetry)
 
+    if progress_lifecycle?, do: record_atom_count(:beam_atom_count_after)
     write_report(results, elapsed, opts)
     write_timings(Exograph.Hex.StageTimings.snapshot(), Keyword.get(opts, :timings_path))
     if progress_lifecycle?, do: Progress.finish_run()
     if cli?, do: cli_summary(results, elapsed)
     results
+  end
+
+  @doc false
+  def shard_worker_opts(opts, shard_concurrency) do
+    opts
+    |> Keyword.drop([
+      :entries_output_path,
+      :report_path,
+      :timings_path,
+      :missing_tarballs_report_path
+    ])
+    |> Keyword.put(:migrate?, false)
+    |> Keyword.put(:shards, 1)
+    |> Keyword.put(:concurrency, shard_concurrency)
+    |> Keyword.put(:progress_lifecycle?, false)
+    |> Keyword.put(:cli?, false)
+  end
+
+  defp record_atom_count(stage) do
+    Exograph.Hex.StageTimings.count(stage, :erlang.system_info(:atom_count))
   end
 
   defp maybe_start_insert_buffer(repo, opts) do
@@ -99,6 +134,7 @@ defmodule Exograph.Hex.Corpus do
     preflight_missing_tarballs(entries, opts)
     started = System.monotonic_time(:millisecond)
     Exograph.Hex.StageTimings.reset()
+    record_atom_count(:beam_atom_count_before)
     Progress.start_run(total)
     cli_header(total, mode, 0)
     entries_by_shard = entries_by_shard(entries, shard_count)
@@ -140,13 +176,9 @@ defmodule Exograph.Hex.Corpus do
       end)
     end)
 
-    shard_opts =
-      opts
-      |> Keyword.put(:migrate?, false)
-      |> Keyword.put(:shards, 1)
-      |> Keyword.put(:concurrency, shard_concurrency)
-      |> Keyword.put(:progress_lifecycle?, false)
-      |> Keyword.put(:cli?, false)
+    shard_opts = shard_worker_opts(opts, shard_concurrency)
+
+    record_atom_count(:beam_atom_count_before_packages)
 
     {combined_results, elapsed} =
       if Keyword.get(opts, :pipeline) == :broadway do
@@ -175,6 +207,7 @@ defmodule Exograph.Hex.Corpus do
         {combine_results(results), System.monotonic_time(:millisecond) - started}
       end
 
+    record_atom_count(:beam_atom_count_after_packages)
     results = [combined_results]
 
     finalize_sharded_structural_indexes!(shards)
@@ -187,6 +220,7 @@ defmodule Exograph.Hex.Corpus do
     write_manifest(manifest, Keyword.get(opts, :manifest_path))
 
     combined_results = combine_results(results)
+    record_atom_count(:beam_atom_count_after)
     write_report(combined_results, elapsed, opts)
     write_timings(Exograph.Hex.StageTimings.snapshot(), Keyword.get(opts, :timings_path))
     cli_summary(combined_results, elapsed)

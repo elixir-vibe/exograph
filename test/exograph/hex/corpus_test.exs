@@ -9,6 +9,32 @@ defmodule Exograph.Hex.CorpusTest do
 
   @moduletag :integration
 
+  test "shard workers do not overwrite run-level artifacts" do
+    opts = [
+      entries_output_path: "entries.ndjson",
+      report_path: "report.json",
+      timings_path: "timings.json",
+      missing_tarballs_report_path: "missing.json",
+      retry_count: 2
+    ]
+
+    shard_opts = Exograph.Hex.Corpus.shard_worker_opts(opts, 3)
+
+    refute Keyword.has_key?(shard_opts, :entries_output_path)
+    refute Keyword.has_key?(shard_opts, :report_path)
+    refute Keyword.has_key?(shard_opts, :timings_path)
+    refute Keyword.has_key?(shard_opts, :missing_tarballs_report_path)
+    assert shard_opts[:retry_count] == 2
+    assert shard_opts[:concurrency] == 3
+    assert shard_opts[:progress_lifecycle?] == false
+  end
+
+  test "rejects ephemeral recovery modes for corpus indexes" do
+    assert_raise ArgumentError, ~r/require durable DuckDB storage/, fn ->
+      Exograph.Hex.Corpus.index(recovery_mode: :no_wal_writes)
+    end
+  end
+
   test "duckdb duplicate source paths are indexed once per package version" do
     endpoint = "quack:127.0.0.1:#{Mix.Exograph.DuckDBOptions.free_tcp_port!()}"
     DuckDBSupport.start_managed_repo!(endpoint: endpoint)

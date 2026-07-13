@@ -71,7 +71,6 @@ Download and index Hex.pm packages in a streaming DuckDB pipeline.
 | `--concurrency` | `4` | Parallel download+index workers |
 | `--duckdb-shards` | `1` | DuckDB shard count for corpus indexing |
 | `--duckdb-threads` | — | DuckDB execution threads per server/shard |
-| `--duckdb-recovery-mode` | — | Managed DuckDB recovery mode; use `no_wal_writes` for rebuildable indexes |
 | `--manifest-path` | — | Write sharded DuckDB manifest ETF |
 | `--shard-dir` | system temp | Directory for managed DuckDB shard files |
 | `--min-mass` | `8` | Minimum AST fragment mass |
