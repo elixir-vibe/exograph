@@ -67,7 +67,8 @@ defmodule Exograph.Similarity do
   end
 
   defp candidate_fragments(index, query_fragment, opts) do
-    if Keyword.get(opts, :force_full_scan, false) do
+    if Keyword.get(opts, :force_full_scan, false) or
+         opts[:min_similarity] < @default_opts[:min_similarity] do
       {FragmentStore.all(index.fragment_store), true}
     else
       prefiltered_candidates(index, query_fragment)
