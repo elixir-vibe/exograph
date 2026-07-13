@@ -20,15 +20,19 @@ defmodule Exograph.Web.Plugs.RateLimit do
           |> put_resp_header("x-ratelimit-remaining", to_string(max(limit - count, 0)))
 
         {:deny, retry_after} ->
+          response =
+            Exograph.API.ErrorResponse.new(
+              "rate_limit_exceeded",
+              "Rate limit exceeded",
+              %{"retry_after_ms" => retry_after}
+            )
+
           conn
           |> put_resp_header("x-ratelimit-limit", to_string(limit))
           |> put_resp_header("x-ratelimit-remaining", "0")
           |> put_resp_header("retry-after", to_string(div(retry_after, 1000)))
           |> put_resp_content_type("application/json")
-          |> send_resp(
-            429,
-            JSON.encode!(%{error: "Rate limit exceeded", retry_after_ms: retry_after})
-          )
+          |> send_resp(429, JSON.encode!(JSONCodec.dump(response)))
           |> halt()
       end
     else

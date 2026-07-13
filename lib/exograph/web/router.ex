@@ -28,6 +28,7 @@ defmodule Exograph.Web.Router do
 
     post("/search", APIController, :search)
     post("/query", APIController, :query)
+    post("/plan", APIController, :plan)
     post("/hydrate", APIController, :hydrate)
     get("/capabilities", APIController, :capabilities)
     get("/health", APIController, :health)

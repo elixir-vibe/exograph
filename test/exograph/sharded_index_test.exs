@@ -79,6 +79,50 @@ defmodule Exograph.ShardedIndexTest do
     assert metadata.shard_prefix in ["telemetry_alpha", "telemetry_beta"]
   end
 
+  test "public entity queries and hydration work across shards" do
+    {:ok, alpha_index} =
+      Exograph.index_sources(
+        [{"lib/alpha.ex", "defmodule Alpha do\nend\n"}],
+        DuckDBSupport.opts("public_alpha",
+          extractors: [:ex_ast],
+          min_mass: 1,
+          package: %{name: "alpha"},
+          package_version: %{name: "alpha", version: "1.0.0"}
+        )
+      )
+
+    {:ok, beta_index} =
+      Exograph.index_sources(
+        [{"lib/beta.ex", "defmodule Beta do\nend\n"}],
+        DuckDBSupport.opts("public_beta",
+          extractors: [:ex_ast],
+          min_mass: 1,
+          package: %{name: "beta"},
+          package_version: %{name: "beta", version: "2.0.0"}
+        )
+      )
+
+    sharded =
+      ShardedIndex.new([
+        %{index: alpha_index, packages: [%{name: "alpha", version: "1.0.0"}]},
+        %{index: beta_index, packages: [%{name: "beta", version: "2.0.0"}]}
+      ])
+
+    package_query = %Exograph.Query{source: :package, binding: "p"}
+
+    assert {:ok, packages} = Exograph.all(sharded, package_query, limit: 10)
+    assert Enum.map(packages, & &1.name) |> Enum.sort() == ["alpha", "beta"]
+    assert {:ok, 2} = Exograph.count(sharded, package_query)
+
+    assert {:ok, %Exograph.Query.Estimate{value: 2, relation: :eq}} =
+             Exograph.estimate_candidates(sharded, package_query)
+
+    version = Exograph.PackageVersion.new(name: "beta", version: "2.0.0")
+    assert {:ok, snapshot} = Exograph.hydrate(sharded, version)
+    assert snapshot.package_version.package_name == "beta"
+    assert Enum.map(snapshot.files, & &1.path) == ["lib/beta.ex"]
+  end
+
   test "package-scoped sharded search routes to the matching shard" do
     alpha_path =
       fixture("alpha.ex", """

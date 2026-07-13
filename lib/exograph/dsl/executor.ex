@@ -276,9 +276,11 @@ defmodule Exograph.DSL.Executor do
     {name_filter, arity_filter} = structural_query_name_arity(compiled_query)
     has_column_filters? = kind_filter != nil and name_filter != nil
 
+    candidate_limit = Keyword.get(opts, :candidate_limit, fragment_candidate_limit(opts))
+
     query =
       index
-      |> base_fragment_query(Keyword.get(opts, :cursor), fragment_candidate_limit(opts))
+      |> base_fragment_query(Keyword.get(opts, :cursor), candidate_limit)
       |> exclude(:select)
       |> select([fragment], fragment.id)
 

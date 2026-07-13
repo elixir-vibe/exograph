@@ -157,8 +157,66 @@ defmodule Exograph do
     %Exograph.Query.Plan{
       query: query,
       execution: execution,
+      hydration: if(query.source == :fragment, do: :indexed_fragments, else: :none),
       required_terms: required_terms
     }
+  end
+
+  @doc "Returns a bounded estimate of rows selected by the indexed candidate plan."
+  @spec estimate_candidates(Index.t() | ShardedIndex.t(), Query.t(), keyword()) ::
+          {:ok, Exograph.Query.Estimate.t()} | {:error, term()}
+  def estimate_candidates(index, query, opts \\ [])
+
+  def estimate_candidates(%Index{} = index, %Query{source: :fragment} = query, opts) do
+    max_candidates = Keyword.get(opts, :max_candidates, 10_000)
+    compiled = query |> DSL.Compiler.compile() |> compile()
+
+    candidate_count =
+      index
+      |> DSL.Executor.structural_candidate_query(compiled,
+        candidate_limit: max_candidates + 1
+      )
+      |> index.inverted.repo.all(timeout: :infinity)
+      |> length()
+
+    estimate =
+      if candidate_count > max_candidates do
+        %Exograph.Query.Estimate{value: max_candidates, relation: :gte}
+      else
+        %Exograph.Query.Estimate{value: candidate_count, relation: :eq}
+      end
+
+    {:ok, estimate}
+  end
+
+  def estimate_candidates(%Index{} = index, %Query{} = query, opts) do
+    case count(index, query, opts) do
+      {:ok, count} -> {:ok, %Exograph.Query.Estimate{value: count, relation: :eq}}
+      :unknown -> {:error, :estimate_unavailable}
+    end
+  end
+
+  def estimate_candidates(%ShardedIndex{shards: shards}, %Query{} = query, opts) do
+    Enum.reduce_while(shards, {:ok, []}, fn shard, {:ok, estimates} ->
+      result =
+        Exograph.DuckDBShards.with_repo(shard, fn ->
+          estimate_candidates(shard.index, query, opts)
+        end)
+
+      case result do
+        {:ok, estimate} -> {:cont, {:ok, [estimate | estimates]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, estimates} ->
+        relation = if Enum.any?(estimates, &(&1.relation == :gte)), do: :gte, else: :eq
+        value = Enum.sum_by(estimates, & &1.value)
+        {:ok, %Exograph.Query.Estimate{value: value, relation: relation}}
+
+      {:error, _reason} = error ->
+        error
+    end
   end
 
   @doc "Hydrates an immutable source snapshot for a package version."

@@ -69,6 +69,9 @@ defmodule Exograph.Query do
   def capabilities do
     %{
       version: 1,
+      api_version: 1,
+      error_version: 1,
+      endpoints: [:query, :plan, :hydrate, :capabilities],
       sources: [:package, :package_version, :file, :fragment, :definition, :reference, :call_edge],
       predicates: [:matches, :contains, :prefix_search, :eq, :cmp, :in],
       associations: %{

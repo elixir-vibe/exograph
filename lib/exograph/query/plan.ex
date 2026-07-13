@@ -5,14 +5,16 @@ defmodule Exograph.Query.Plan do
 
   alias Exograph.Query
 
-  @enforce_keys [:query, :execution, :required_terms]
-  defstruct [:query, :execution, required_terms: []]
+  @enforce_keys [:query, :execution, :hydration, :required_terms]
+  defstruct [:query, :execution, :hydration, required_terms: []]
 
   @type t :: %__MODULE__{
           query: Query.t(),
           execution: :indexed_structural | :relational,
+          hydration: :indexed_fragments | :none,
           required_terms: [String.t()]
         }
 
   codec(:execution, atom: :existing)
+  codec(:hydration, atom: :existing)
 end

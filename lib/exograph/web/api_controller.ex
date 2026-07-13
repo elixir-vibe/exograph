@@ -4,7 +4,7 @@ defmodule Exograph.Web.APIController do
 
   import Ecto.Query
 
-  alias Exograph.ShardedIndex
+  alias Exograph.{Index, ShardedIndex}
 
   alias Exograph.Storage.Schema
 
@@ -87,7 +87,7 @@ defmodule Exograph.Web.APIController do
         json(conn, maybe_put_meta(payload, meta))
 
       {:error, reason} ->
-        conn |> put_status(400) |> json(%{error: error_payload(reason)})
+        api_error(conn, 400, "invalid_search", reason)
     end
   end
 
@@ -121,7 +121,7 @@ defmodule Exograph.Web.APIController do
           meta: meta
         })
 
-      {:error, message} ->
+      {:error, reason} ->
         QueryTelemetry.record(
           "dsl",
           query_label,
@@ -133,22 +133,44 @@ defmodule Exograph.Web.APIController do
           }
         )
 
-        conn |> put_status(400) |> json(%{error: message})
+        api_error(conn, 400, "invalid_query", reason)
     end
   end
+
+  def plan(conn, %{"query" => query_input}) do
+    index = index()
+
+    with {:ok, query} <- decode_query_object(query_input),
+         {:ok, estimate} <- Exograph.estimate_candidates(index, query) do
+      response = %Exograph.API.PlanResponse{
+        plan: Exograph.plan(query),
+        estimate: estimate,
+        index: plan_index(index)
+      }
+
+      json(conn, JSONCodec.dump(response))
+    else
+      {:error, reason} -> api_error(conn, 400, "invalid_query", reason)
+    end
+  rescue
+    error in ArgumentError -> api_error(conn, 400, "invalid_query", Exception.message(error))
+  end
+
+  def plan(conn, _params), do: api_error(conn, 400, "invalid_query", "query is required")
 
   defp decode_query_input(query) when is_binary(query), do: {:ok, query}
 
-  defp decode_query_input(query) when is_map(query) do
+  defp decode_query_input(query) when is_map(query), do: decode_query_object(query)
+  defp decode_query_input(_query), do: {:error, "query must be a DSL string or query object"}
+
+  defp decode_query_object(query) when is_map(query) do
     with {:ok, decoded} <- Exograph.Query.from_map(query),
          {:ok, validated} <- Exograph.Query.validate(decoded) do
       {:ok, validated}
-    else
-      {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
-  defp decode_query_input(_query), do: {:error, "query must be a DSL string or query object"}
+  defp decode_query_object(_query), do: {:error, "query must be a versioned query object"}
 
   def hydrate(conn, params) do
     with {:ok, request} <- Exograph.Web.HydrateRequest.from_map(params),
@@ -162,10 +184,10 @@ defmodule Exograph.Web.APIController do
       json(conn, JSONCodec.dump(snapshot))
     else
       {:error, :package_version_not_found} ->
-        conn |> put_status(404) |> json(%{error: "package version not found"})
+        api_error(conn, 404, "package_version_not_found", "package version not found")
 
       {:error, reason} ->
-        conn |> put_status(400) |> json(%{error: inspect(reason)})
+        api_error(conn, 400, "invalid_hydration_request", reason)
     end
   end
 
@@ -264,8 +286,26 @@ defmodule Exograph.Web.APIController do
     end
   end
 
-  defp error_payload(%{} = reason), do: reason
-  defp error_payload(reason), do: to_string(reason)
+  defp api_error(conn, status, code, reason) do
+    {message, details} = error_description(reason)
+    response = Exograph.API.ErrorResponse.new(code, message, details)
+    conn |> put_status(status) |> json(JSONCodec.dump(response))
+  end
+
+  defp error_description(%{message: message} = reason) when is_binary(message),
+    do: {message, Map.delete(reason, :message)}
+
+  defp error_description(%{"message" => message} = reason) when is_binary(message),
+    do: {message, Map.delete(reason, "message")}
+
+  defp error_description(reason) when is_binary(reason), do: {reason, %{}}
+  defp error_description(reason), do: {inspect(reason), %{}}
+
+  defp plan_index(%Index{} = index),
+    do: %{kind: :single, prefix: index.inverted.prefix, shard_count: 1}
+
+  defp plan_index(%ShardedIndex{shards: shards}),
+    do: %{kind: :sharded, shard_count: length(shards)}
 
   defp maybe_put_meta(payload, nil), do: payload
   defp maybe_put_meta(payload, meta), do: Map.put(payload, :meta, meta)

@@ -148,6 +148,8 @@ defmodule Exograph.Features.APITest do
 
       assert resp.status == 400
       body = json_body(resp)
+      assert body["version"] == 1
+      assert body["error"]["code"] == "invalid_query"
       assert body["error"]["message"] =~ "Expected from"
     end
 
@@ -157,6 +159,42 @@ defmodule Exograph.Features.APITest do
       assert resp.status == 400
       body = json_body(resp)
       assert body["error"]["message"] =~ "missing terminator"
+    end
+  end
+
+  describe "POST /api/plan" do
+    test "returns a versioned logical plan" do
+      body =
+        api_post("/api/plan", %{
+          query: %{
+            version: 1,
+            source: "fragment",
+            binding: "f",
+            predicates: [%{op: "contains", binding: "f", value: "Enum.map(_, _)"}],
+            joins: []
+          }
+        })
+        |> json_body()
+
+      assert body["version"] == 1
+      assert body["plan"]["execution"] == "indexed_structural"
+      assert body["plan"]["hydration"] == "indexed_fragments"
+      assert body["estimate"]["relation"] in ["eq", "gte"]
+      assert is_integer(body["estimate"]["value"])
+      assert body["index"]["kind"] == "single"
+    end
+
+    test "rejects unsupported query versions with the public error envelope" do
+      resp =
+        api_post("/api/plan", %{
+          query: %{version: 2, source: "package", binding: "p", predicates: [], joins: []}
+        })
+
+      assert resp.status == 400
+      body = json_body(resp)
+      assert body["version"] == 1
+      assert body["error"]["code"] == "invalid_query"
+      assert body["error"]["message"] =~ "unsupported_query_version"
     end
   end
 
@@ -194,6 +232,9 @@ defmodule Exograph.Features.APITest do
       body = api_get("/api/capabilities") |> json_body()
 
       assert body["version"] == 1
+      assert body["api_version"] == 1
+      assert body["error_version"] == 1
+      assert "plan" in body["endpoints"]
       assert "package_version" in body["sources"]
       assert "matches" in body["predicates"]
       assert body["hydration"] == ["package_version"]

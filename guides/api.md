@@ -42,6 +42,19 @@ Parameters:
 - `query` (required) — versioned `Exograph.Query` object or interactive DSL string
 - `cursor` — pagination cursor
 
+### POST /api/plan
+
+Validate a versioned query and return its storage-independent logical plan:
+
+    curl -X POST http://localhost:4200/api/plan \
+      -H "Content-Type: application/json" \
+      -d '{"query":{"version":1,"source":"fragment","binding":"f","predicates":[{"op":"contains","binding":"f","value":"Enum.map(_, _)"}],"joins":[]}}'
+
+The response identifies the execution class, required indexed terms, internal
+hydration requirement, bounded candidate estimate, and index shape without
+exposing physical SQL or storage schemas. Estimate relation `eq` is exact;
+`gte` means the configured planning bound was reached.
+
 ### POST /api/hydrate
 
 Hydrate an immutable package-version source snapshot:
@@ -75,6 +88,22 @@ List indexed packages sorted by fragment count.
 Index statistics.
 
     curl http://localhost:4200/api/stats
+
+## Error responses
+
+API failures use a versioned envelope:
+
+    {
+      "version": 1,
+      "error": {
+        "code": "invalid_query",
+        "message": "query is invalid",
+        "details": {}
+      }
+    }
+
+Consumers should branch on `error.code`; messages are intended for people and
+may become more specific without changing the envelope version.
 
 ## Telemetry
 

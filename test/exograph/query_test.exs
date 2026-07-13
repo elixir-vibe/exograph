@@ -53,6 +53,19 @@ defmodule Exograph.QueryTest do
     assert_raise ArgumentError, fn -> Exograph.plan(query) end
   end
 
+  test "estimates relational and indexed structural candidates", %{index: index} do
+    package_query = from(p in Exograph.Package, where: p.name == "demo")
+    fragment_query = from(f in Exograph.Fragment, where: contains(f, "def run, do: _"))
+
+    assert {:ok, %Exograph.Query.Estimate{value: 1, relation: :eq}} =
+             Exograph.estimate_candidates(index, package_query)
+
+    assert {:ok, %Exograph.Query.Estimate{value: candidates, relation: :eq}} =
+             Exograph.estimate_candidates(index, fragment_query)
+
+    assert candidates >= 1
+  end
+
   test "produces serializable logical plans and explanations", %{index: index} do
     query = from(f in Exograph.Fragment, where: contains(f, "Enum.map(_, _)"))
 
