@@ -103,6 +103,7 @@ defmodule Exograph.MixProject do
         "guides/mix-tasks.md",
         "guides/web-ui.md",
         "guides/api.md",
+        "guides/public-query-architecture.md",
         "guides/comparisons.md",
         "guides/architecture.md"
       ]

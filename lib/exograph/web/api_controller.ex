@@ -93,15 +93,21 @@ defmodule Exograph.Web.APIController do
 
   def query(conn, params) do
     index = index()
-    query_string = params["query"] || ""
+    query_input = params["query"] || ""
     cursor = decode_cursor(params["cursor"])
+    query = decode_query_input(query_input)
+    query_label = if is_binary(query_input), do: query_input, else: Jason.encode!(query_input)
 
     {elapsed_us, result} =
-      :timer.tc(fn -> QueryExecutor.execute(index, query_string, query_cursor_opts(cursor)) end)
+      :timer.tc(fn ->
+        with {:ok, decoded_query} <- query do
+          QueryExecutor.execute(index, decoded_query, query_cursor_opts(cursor))
+        end
+      end)
 
     case result do
       {:ok, hits, elapsed_ms, effective_limit, _total, meta} ->
-        QueryTelemetry.record("dsl", query_string, elapsed_ms, :ok, length(hits), %{
+        QueryTelemetry.record("dsl", query_label, elapsed_ms, :ok, length(hits), %{
           endpoint: "/api/query"
         })
 
@@ -118,7 +124,7 @@ defmodule Exograph.Web.APIController do
       {:error, message} ->
         QueryTelemetry.record(
           "dsl",
-          query_string,
+          query_label,
           Float.round(elapsed_us / 1000, 1),
           :error,
           0,
@@ -129,6 +135,42 @@ defmodule Exograph.Web.APIController do
 
         conn |> put_status(400) |> json(%{error: message})
     end
+  end
+
+  defp decode_query_input(query) when is_binary(query), do: {:ok, query}
+
+  defp decode_query_input(query) when is_map(query) do
+    with {:ok, decoded} <- Exograph.Query.from_map(query),
+         {:ok, validated} <- Exograph.Query.validate(decoded) do
+      {:ok, validated}
+    else
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
+  defp decode_query_input(_query), do: {:error, "query must be a DSL string or query object"}
+
+  def hydrate(conn, params) do
+    with {:ok, request} <- Exograph.Web.HydrateRequest.from_map(params),
+         version <-
+           Exograph.PackageVersion.new(
+             ecosystem: request.ecosystem,
+             name: request.package_name,
+             version: request.version
+           ),
+         {:ok, snapshot} <- Exograph.hydrate(index(), version, paths: request.paths) do
+      json(conn, JSONCodec.dump(snapshot))
+    else
+      {:error, :package_version_not_found} ->
+        conn |> put_status(404) |> json(%{error: "package version not found"})
+
+      {:error, reason} ->
+        conn |> put_status(400) |> json(%{error: inspect(reason)})
+    end
+  end
+
+  def capabilities(conn, _params) do
+    json(conn, Exograph.Query.capabilities())
   end
 
   def health(conn, _params) do
@@ -411,6 +453,11 @@ defmodule Exograph.Web.APIController do
       {int, ""} -> [package_id: int]
       _ -> []
     end
+  end
+
+  defp serialize_result(%module{} = entity)
+       when module in [Exograph.Package, Exograph.PackageVersion, Exograph.FileRef] do
+    JSONCodec.dump(entity)
   end
 
   defp serialize_result(hit) do

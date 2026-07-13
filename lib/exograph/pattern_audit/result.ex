@@ -1,7 +1,7 @@
-defmodule Exograph.Reach.SourceSmellAudit.Result do
+defmodule Exograph.PatternAudit.Result do
   @moduledoc "Summary and findings returned by a Reach source smell audit scan."
 
-  alias Exograph.Reach.SourceSmellAudit.Finding
+  alias Exograph.PatternAudit.Finding
 
   defstruct findings: [],
             elapsed_ms: 0.0,

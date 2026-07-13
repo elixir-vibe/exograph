@@ -10,7 +10,6 @@
 
 ### Added
 
-- Add Reach file-local smell audit support for checks that do not expose source-pattern metadata, with `--source-prefilter` for narrowing indexed source scans.
 
 ## 0.9.11 - 2026-07-07
 

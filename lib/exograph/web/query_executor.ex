@@ -9,7 +9,22 @@ defmodule Exograph.Web.QueryExecutor do
 
   def default_limit, do: @default_limit
 
-  def execute(index, query_string, opts \\ []) do
+  def execute(index, query, opts \\ [])
+
+  def execute(index, %Exograph.Query{} = query, opts) do
+    limit = Keyword.get(opts, :limit, @default_limit)
+    skip = Keyword.get(opts, :skip, 0)
+    cursor = Keyword.get(opts, :cursor)
+
+    query_opts =
+      Keyword.merge(Keyword.drop(opts, [:mode]), limit: limit, skip: skip)
+      |> Keyword.put(:cursor, cursor)
+
+    {elapsed_us, result} = :timer.tc(fn -> run_parsed(index, query, query_opts) end)
+    format_result(index, result, elapsed_us)
+  end
+
+  def execute(index, query_string, opts) when is_binary(query_string) do
     mode = Keyword.get(opts, :mode, "structural")
     limit = Keyword.get(opts, :limit, @default_limit)
     skip = Keyword.get(opts, :skip, 0)
@@ -34,6 +49,10 @@ defmodule Exograph.Web.QueryExecutor do
         end
       end)
 
+    format_result(index, result, elapsed_us)
+  end
+
+  defp format_result(index, result, elapsed_us) do
     elapsed_ms = Float.round(elapsed_us / 1000, 1)
 
     case result do
@@ -46,7 +65,7 @@ defmodule Exograph.Web.QueryExecutor do
     end
   end
 
-  defp run_parsed(index, %Exograph.DSL.Query{} = query, opts) do
+  defp run_parsed(index, %Exograph.Query{} = query, opts) do
     default_limit = Keyword.fetch!(opts, :limit)
     effective_limit = query.limit || default_limit
     query_opts = Keyword.put(opts, :limit, effective_limit)

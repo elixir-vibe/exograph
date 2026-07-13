@@ -3,13 +3,15 @@ defmodule Exograph.File do
   Source file stored once per package version.
   """
 
+  use JSONCodec
+
   @type t :: %__MODULE__{
           id: integer() | nil,
           package_id: integer() | nil,
           package_version_id: integer() | nil,
           path: String.t(),
           source: String.t(),
-          ast: Macro.t() | nil,
+          ast: any(),
           comments_text: String.t(),
           identifier_tokens: String.t(),
           sha256: String.t()

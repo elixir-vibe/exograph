@@ -1,16 +1,14 @@
-defmodule Mix.Tasks.Exograph.Reach.Audit do
+defmodule Mix.Tasks.Exograph.Pattern.Audit do
   @moduledoc """
   Audits Reach smell modules against an Exograph DuckDB index.
 
-      mix exograph.reach.audit Reach.Smell.Checks.PipelineWaste \
+      mix exograph.pattern.audit Reach.Smell.Checks.PipelineWaste \
         --duckdb-database /tmp/exograph-prod-shard-bench/hex_0.duckdb \
         --prefix hex_0 \
         --limit 50
 
-  Each positional argument is a Reach smell module name. Source-pattern modules
-  exposing `__reach_pattern_check__/0` use Exograph's indexed structural terms.
-  Other file-local Reach checks run against indexed source files and can be
-  narrowed with `--source-prefilter`.
+  Each positional argument is a Reach source-pattern smell module exposing
+  `__reach_pattern_check__/0`. Audits use Exograph's indexed structural terms.
 
   ## Options
 
@@ -34,7 +32,6 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     * `--group-by` - group text output by `kind`, `package`, or `check`
     * `--sample` - deterministically sample findings after scanning
     * `--show-skipped` - print skipped-pattern anchor summaries
-    * `--source-prefilter` - for non-source Reach checks, only scan indexed files containing this text (comma-separated values are allowed)
     * `--save` - write the current audit JSON to a file
     * `--diff` - compare current findings against a previously saved audit JSON
   """
@@ -70,7 +67,6 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
           group_by: :string,
           sample: :integer,
           show_skipped: :boolean,
-          source_prefilter: :string,
           save: :string,
           diff: :string
         ],
@@ -88,10 +84,9 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     index = open_index!(opts)
     smell_modules = Enum.map(modules, &module!/1)
 
-    {source_modules, file_check_modules} =
-      Enum.split_with(smell_modules, &source_pattern_check?/1)
+    Enum.each(smell_modules, &ensure_source_pattern_check!/1)
 
-    result = audit_modules(index, source_modules, file_check_modules, opts)
+    result = audit_modules(index, smell_modules, opts)
     result = apply_presentation_opts(result, opts)
     maybe_save_result!(result, opts)
 
@@ -101,54 +96,25 @@ defmodule Mix.Tasks.Exograph.Reach.Audit do
     end
   end
 
-  defp audit_modules(index, source_modules, file_check_modules, opts) do
-    source_result =
-      if source_modules == [] do
-        empty_result()
-      else
-        {:ok, result} =
-          Exograph.Reach.SourceSmellAudit.scan(index, source_modules,
-            limit: Keyword.get(opts, :limit, 100),
-            candidate_batch_size: Keyword.get(opts, :candidate_batch_size),
-            max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000),
-            candidate_mode: Keyword.get(opts, :candidate_mode, "anchor"),
-            verify_concurrency: Keyword.get(opts, :verify_concurrency)
-          )
+  defp audit_modules(index, source_modules, opts) do
+    patterns = Exograph.Integrations.Reach.Patterns.load!(source_modules)
 
-        result
-      end
+    {:ok, result} =
+      Exograph.PatternAudit.scan_patterns(index, patterns,
+        limit: Keyword.get(opts, :limit, 100),
+        candidate_batch_size: Keyword.get(opts, :candidate_batch_size),
+        max_anchor_candidates: Keyword.get(opts, :max_anchor_candidates, 10_000),
+        candidate_mode: Keyword.get(opts, :candidate_mode, "anchor"),
+        verify_concurrency: Keyword.get(opts, :verify_concurrency)
+      )
 
-    file_result =
-      if file_check_modules == [] do
-        empty_result()
-      else
-        {:ok, result} =
-          Exograph.Reach.SourceSmellAudit.scan_file_checks(index, file_check_modules,
-            limit: Keyword.get(opts, :limit, 100),
-            candidate_batch_size: Keyword.get(opts, :candidate_batch_size),
-            source_prefilter: Keyword.get(opts, :source_prefilter)
-          )
-
-        result
-      end
-
-    merge_results(source_result, file_result, Keyword.get(opts, :limit, 100))
+    result
   end
 
-  defp empty_result, do: %Exograph.Reach.SourceSmellAudit.Result{}
-
-  defp merge_results(left, right, limit) do
-    %Exograph.Reach.SourceSmellAudit.Result{
-      findings: Enum.take(left.findings ++ right.findings, limit),
-      elapsed_ms: Float.round(left.elapsed_ms + right.elapsed_ms, 1),
-      candidate_count: left.candidate_count + right.candidate_count,
-      scanned_patterns: left.scanned_patterns + right.scanned_patterns,
-      skipped_patterns: left.skipped_patterns ++ right.skipped_patterns
-    }
-  end
-
-  defp source_pattern_check?(module) do
-    Code.ensure_loaded?(module) and function_exported?(module, :__reach_pattern_check__, 0)
+  defp ensure_source_pattern_check!(module) do
+    unless Code.ensure_loaded?(module) and function_exported?(module, :__reach_pattern_check__, 0) do
+      Mix.raise("#{inspect(module)} is not a Reach source-pattern check")
+    end
   end
 
   defp open_index!(opts) do

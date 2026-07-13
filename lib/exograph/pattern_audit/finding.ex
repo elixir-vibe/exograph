@@ -1,4 +1,4 @@
-defmodule Exograph.Reach.SourceSmellAudit.Finding do
+defmodule Exograph.PatternAudit.Finding do
   @moduledoc "A Reach smell finding discovered in an Exograph fragment."
 
   @enforce_keys [:check, :kind, :message, :file, :line]

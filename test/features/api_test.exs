@@ -123,6 +123,26 @@ defmodule Exograph.Features.APITest do
       assert body["meta"]["shards"]["total"] >= 1
     end
 
+    test "executes versioned query objects" do
+      resp =
+        api_post("/api/query", %{
+          query: %{
+            version: 1,
+            source: "definition",
+            binding: "d",
+            predicates: [
+              %{op: "prefix_search", binding: "d", field: "name", value: "handle"}
+            ],
+            joins: []
+          }
+        })
+
+      assert resp.status == 200
+      body = json_body(resp)
+      assert body["count"] > 0
+      assert hd(body["results"])["type"] == "definition"
+    end
+
     test "rejects dangerous code" do
       resp = api_post("/api/query", %{query: ~s|System.cmd("ls", [])|})
 
@@ -137,6 +157,46 @@ defmodule Exograph.Features.APITest do
       assert resp.status == 400
       body = json_body(resp)
       assert body["error"]["message"] =~ "missing terminator"
+    end
+  end
+
+  describe "POST /api/query with public entities" do
+    test "serializes package results through JSONCodec" do
+      body =
+        api_post("/api/query", %{
+          query: %{version: 1, source: "package", binding: "p", predicates: [], joins: []}
+        })
+        |> json_body()
+
+      assert [%{"name" => "feature_fixture", "ecosystem" => "hex"}] = body["results"]
+    end
+  end
+
+  describe "POST /api/hydrate" do
+    test "returns a package-version source snapshot" do
+      body =
+        api_post("/api/hydrate", %{
+          packageName: "feature_fixture",
+          version: "1.0.0",
+          paths: ["**"]
+        })
+        |> json_body()
+
+      assert body["package_version"]["package_name"] == "feature_fixture"
+      assert body["complete"]
+      assert is_binary(body["fingerprint"])
+      assert length(body["files"]) == 1
+    end
+  end
+
+  describe "GET /api/capabilities" do
+    test "returns versioned query capabilities" do
+      body = api_get("/api/capabilities") |> json_body()
+
+      assert body["version"] == 1
+      assert "package_version" in body["sources"]
+      assert "matches" in body["predicates"]
+      assert body["hydration"] == ["package_version"]
     end
   end
 

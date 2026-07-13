@@ -25,6 +25,7 @@ defmodule Exograph do
     DSL,
     Hit,
     Index,
+    Query,
     ReferenceHit,
     ShardedIndex,
     ShardTelemetry,
@@ -143,33 +144,70 @@ defmodule Exograph do
     {:error, :invalid_index}
   end
 
-  @spec all(Index.t(), DSL.Query.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  @doc "Builds and validates the storage-independent plan for an Exograph query."
+  @spec plan(Query.t()) :: Exograph.Query.Plan.t()
+  def plan(%Query{} = query) do
+    Exograph.DSL.Planner.plan(query)
+
+    execution = if query.source == :fragment, do: :indexed_structural, else: :relational
+
+    required_terms =
+      if query.source == :fragment, do: DSL.Compiler.required_terms(query), else: []
+
+    %Exograph.Query.Plan{
+      query: query,
+      execution: execution,
+      required_terms: required_terms
+    }
+  end
+
+  @doc "Hydrates an immutable source snapshot for a package version."
+  @spec hydrate(Index.t() | ShardedIndex.t(), Exograph.PackageVersion.t(), keyword()) ::
+          {:ok, Exograph.SourceSnapshot.t()} | {:error, term()}
+  def hydrate(index, version, opts \\ [])
+
+  def hydrate(%Index{} = index, %Exograph.PackageVersion{} = version, opts) do
+    Exograph.Hydration.package_version(index, version, opts)
+  end
+
+  def hydrate(%ShardedIndex{shards: shards}, %Exograph.PackageVersion{} = version, opts) do
+    Enum.reduce_while(shards, {:error, :package_version_not_found}, fn shard, _result ->
+      result =
+        Exograph.DuckDBShards.with_repo(shard, fn ->
+          Exograph.Hydration.package_version(shard.index, version, opts)
+        end)
+
+      case result do
+        {:ok, _snapshot} -> {:halt, result}
+        {:error, :package_version_not_found} -> {:cont, result}
+        {:error, _reason} -> {:halt, result}
+      end
+    end)
+  end
+
+  @spec all(Index.t(), Query.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def all(index, query, opts \\ [])
 
-  def all(%ShardedIndex{} = index, %DSL.Query{} = query, opts) do
+  def all(%ShardedIndex{} = index, %Exograph.Query{} = query, opts) do
     index
     |> fanout(:all, [query], opts)
     |> merge_hits(opts)
   end
 
-  def all(%Index{} = index, %DSL.Query{source: :fragment} = query, opts) do
-    DSL.Executor.all(index, query, opts)
-  end
-
-  def all(%Index{} = index, %DSL.Query{} = query, opts) do
+  def all(%Index{} = index, %Exograph.Query{} = query, opts) do
     DSL.Executor.all(index, query, opts)
   end
 
   @doc false
   def count(index, query, opts \\ [])
 
-  def count(%ShardedIndex{} = index, %DSL.Query{} = query, opts) do
+  def count(%ShardedIndex{} = index, %Exograph.Query{} = query, opts) do
     index
     |> fanout(:count, [query], Keyword.drop(opts, [:limit, :skip]))
     |> sum_counts()
   end
 
-  def count(%Index{} = index, %DSL.Query{} = query, opts) do
+  def count(%Index{} = index, %Exograph.Query{} = query, opts) do
     DSL.Executor.count(index, query, opts)
   end
 
@@ -315,8 +353,23 @@ defmodule Exograph do
   exact verification are measured separately so plan changes can be evaluated
   without conflating their costs.
   """
+  def explain(index, query, opts \\ [])
+
+  @spec explain(Index.t(), Query.t(), keyword()) :: map()
+  def explain(%Index{} = index, %Query{} = query, _opts) do
+    logical = plan(query)
+
+    %{
+      query: query,
+      logical_plan: logical,
+      execution: logical.execution,
+      required_terms: logical.required_terms,
+      index: %{prefix: index.inverted.prefix}
+    }
+  end
+
   @spec explain(Index.t(), ExAST.Pattern.pattern() | ExAST.Selector.t(), keyword()) :: map()
-  def explain(%Index{} = index, pattern_or_selector, opts \\ []) do
+  def explain(%Index{} = index, pattern_or_selector, opts) do
     compiled = compile(pattern_or_selector)
     query = DSL.Executor.structural_candidate_query(index, compiled, opts)
     repo = index.inverted.repo

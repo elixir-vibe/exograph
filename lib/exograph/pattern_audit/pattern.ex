@@ -1,4 +1,4 @@
-defmodule Exograph.Reach.SourceSmellAudit.Pattern do
+defmodule Exograph.PatternAudit.Pattern do
   @moduledoc "A planned Reach source-pattern smell used by the Exograph audit scanner."
 
   @enforce_keys [:module, :source, :kind, :message, :prefilter, :pattern, :required_terms]

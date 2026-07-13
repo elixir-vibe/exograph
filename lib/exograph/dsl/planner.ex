@@ -1,8 +1,10 @@
 defmodule Exograph.DSL.Planner do
   @moduledoc false
 
-  alias Exograph.DSL.{Plan, Query}
+  alias Exograph.DSL.Plan
   alias Exograph.DSL.Plan.Join
+  alias Exograph.Query
+  alias Exograph.Query.Predicate
 
   @assoc_sources %{
     definitions: :definition,
@@ -11,6 +13,9 @@ defmodule Exograph.DSL.Planner do
   }
 
   @source_assocs %{
+    package: [],
+    package_version: [],
+    file: [],
     fragment: [:definitions, :references, :calls],
     definition: [:calls],
     reference: [],
@@ -19,26 +24,30 @@ defmodule Exograph.DSL.Planner do
 
   @spec plan(Query.t()) :: Plan.t()
   def plan(%Query{} = query) do
+    query = Query.validate!(query)
     joins = Enum.with_index(query.joins, 1) |> Enum.map(&join/1)
+    predicates = Enum.map(query.predicates, &Predicate.to_internal/1)
+    select = internal_select(query.select)
+    internal_query = %{query | predicates: predicates, select: select}
 
     %Plan{
-      query: query,
+      query: internal_query,
       source: query.source,
       binding: query.binding,
       joins: joins,
-      predicates_by_binding: Enum.group_by(query.predicates, &predicate_binding/1),
-      structural_predicates: Enum.filter(query.predicates, &structural_predicate?/1),
-      select: query.select
+      predicates_by_binding: Enum.group_by(predicates, &predicate_binding/1),
+      structural_predicates: Enum.filter(predicates, &structural_predicate?/1),
+      select: select
     }
     |> validate!()
   end
 
-  defp join({{:assoc, parent, binding, assoc}, position}) do
+  defp join({%Exograph.Query.Join{} = query_join, position}) do
     %Join{
-      parent: parent,
-      binding: binding,
-      assoc: assoc,
-      source: assoc_source!(assoc),
+      parent: query_join.parent,
+      binding: query_join.binding,
+      assoc: query_join.association,
+      source: assoc_source!(query_join.association),
       position: position
     }
   end
@@ -172,8 +181,7 @@ defmodule Exograph.DSL.Planner do
     Enum.each(bindings, &validate_select_binding!(plan, &1))
   end
 
-  defp validate_select!(%Plan{select: binding} = plan)
-       when is_atom(binding) or is_binary(binding) do
+  defp validate_select!(%Plan{select: binding} = plan) when is_binary(binding) do
     validate_select_binding!(plan, binding)
   end
 
@@ -190,6 +198,9 @@ defmodule Exograph.DSL.Planner do
   defp binding_set(%Plan{binding: binding, joins: joins}) do
     MapSet.new([binding | Enum.map(joins, & &1.binding)])
   end
+
+  defp internal_select(bindings) when is_list(bindings), do: {:tuple, bindings}
+  defp internal_select(select), do: select
 
   defp duplicates(values) do
     values

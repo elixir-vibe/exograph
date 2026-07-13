@@ -1,13 +1,20 @@
 defmodule Exograph.Web.SafeEval do
   @moduledoc false
 
-  alias Exograph.DSL.Query
+  alias Exograph.Query
+  alias Exograph.Query.{Join, Predicate}
 
   @source_names %{
+    "Package" => :package,
+    "PackageVersion" => :package_version,
+    "File" => :file,
     "Fragment" => :fragment,
     "Definition" => :definition,
     "Reference" => :reference,
     "CallEdge" => :call_edge,
+    "Exograph.Package" => :package,
+    "Exograph.PackageVersion" => :package_version,
+    "Exograph.File" => :file,
     "Exograph.Fragment" => :fragment,
     "Exograph.Definition" => :definition,
     "Exograph.Reference" => :reference,
@@ -57,7 +64,8 @@ defmodule Exograph.Web.SafeEval do
     {:error, %{message: "Expected from(binding in Source, ...) or a pattern string", markers: []}}
   end
 
-  defp extract_binding({name, _meta, nil}) when is_atom(name) or is_binary(name), do: {:ok, name}
+  defp extract_binding({name, _meta, nil}) when is_atom(name), do: {:ok, Atom.to_string(name)}
+  defp extract_binding({name, _meta, nil}) when is_binary(name), do: {:ok, name}
 
   defp extract_binding({{@identifier_tag, name}, _meta, nil}) when is_binary(name),
     do: {:ok, name}
@@ -99,7 +107,7 @@ defmodule Exograph.Web.SafeEval do
     with {:ok, binding} <- extract_binding(binding_ast),
          {:ok, parent} <- extract_binding(parent_ast),
          {:ok, association} <- extract_association(assoc_name) do
-      {:ok, {:assoc, parent, binding, association}}
+      {:ok, %Join{parent: parent, binding: binding, association: association}}
     else
       _ -> {:error, error("Invalid join syntax. Use: join: b in assoc(f, :name)")}
     end
@@ -109,7 +117,7 @@ defmodule Exograph.Web.SafeEval do
 
   defp extract_predicates(clauses, binding, joins) do
     join_bindings =
-      Enum.map(joins, fn {:assoc, _parent, jb, _assoc} -> jb end)
+      Enum.map(joins, & &1.binding)
 
     all_bindings = MapSet.new([binding | join_bindings])
 
@@ -127,14 +135,14 @@ defmodule Exograph.Web.SafeEval do
   defp extract_predicate({:matches, _, [binding_ast, pattern]}, _bindings)
        when is_binary(pattern) do
     with {:ok, binding} <- extract_binding(binding_ast) do
-      {:ok, {:matches, binding, pattern}}
+      {:ok, %Predicate{op: :matches, binding: binding, value: pattern}}
     end
   end
 
   defp extract_predicate({:contains, _, [binding_ast, pattern]}, _bindings)
        when is_binary(pattern) do
     with {:ok, binding} <- extract_binding(binding_ast) do
-      {:ok, {:contains, binding, pattern}}
+      {:ok, %Predicate{op: :contains, binding: binding, value: pattern}}
     end
   end
 
@@ -145,7 +153,7 @@ defmodule Exograph.Web.SafeEval do
        when is_binary(value) do
     with {:ok, binding} <- extract_binding(binding_ast),
          {:ok, field} <- existing_atom(field) do
-      {:ok, {:prefix_search, binding, field, value}}
+      {:ok, %Predicate{op: :prefix_search, binding: binding, field: field, value: value}}
     end
   end
 
@@ -155,28 +163,28 @@ defmodule Exograph.Web.SafeEval do
        )
        when is_binary(value) do
     with {:ok, binding} <- extract_binding(binding_ast) do
-      {:ok, {:prefix_search, binding, :name, value}}
+      {:ok, %Predicate{op: :prefix_search, binding: binding, field: :name, value: value}}
     end
   end
 
   defp extract_predicate({:==, _, [left, right]}, bindings) do
     with {:ok, {binding, field}} <- extract_field_access(left, bindings),
          {:ok, value} <- extract_value(right) do
-      {:ok, {:eq, binding, field, value}}
+      {:ok, %Predicate{op: :eq, binding: binding, field: field, value: value}}
     end
   end
 
   defp extract_predicate({op, _, [left, right]}, bindings) when op in [:>, :<, :>=, :<=] do
     with {:ok, {binding, field}} <- extract_field_access(left, bindings),
          {:ok, value} <- extract_value(right) do
-      {:ok, {:cmp, binding, field, op, value}}
+      {:ok, %Predicate{op: :cmp, binding: binding, field: field, comparison: op, value: value}}
     end
   end
 
   defp extract_predicate({:in, _, [left, right]}, bindings) when is_list(right) do
     with {:ok, {binding, field}} <- extract_field_access(left, bindings),
          {:ok, values} <- extract_values(right) do
-      {:ok, {:in, binding, field, values}}
+      {:ok, %Predicate{op: :in, binding: binding, field: field, value: values}}
     end
   end
 
@@ -301,7 +309,7 @@ defmodule Exograph.Web.SafeEval do
 
   defp collect_ok_tuple(results) do
     case Enum.find(results, &match?({:error, _}, &1)) do
-      nil -> {:ok, {:tuple, Enum.map(results, fn {:ok, value} -> value end)}}
+      nil -> {:ok, Enum.map(results, fn {:ok, value} -> value end)}
       error -> error
     end
   end

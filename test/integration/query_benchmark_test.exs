@@ -1,7 +1,8 @@
 defmodule Exograph.Integration.QueryBenchmarkTest do
   use ExUnit.Case, async: false
 
-  alias Exograph.DSL.Query
+  alias Exograph.Query
+  alias Exograph.Query.{Join, Predicate}
   alias Exograph.QueryBenchmarkFixture
 
   @moduletag :benchmark
@@ -44,8 +45,10 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
           index,
           %Query{
             source: :fragment,
-            binding: :f,
-            predicates: [{:matches, :f, "def _ do ... end"}]
+            binding: "f",
+            predicates: [
+              %Predicate{op: :matches, binding: "f", value: "def _ do ... end"}
+            ]
           },
           limit: 5
         )
@@ -60,8 +63,10 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
           index,
           %Query{
             source: :fragment,
-            binding: :f,
-            predicates: [{:matches, :f, "def _ do ... end"}]
+            binding: "f",
+            predicates: [
+              %Predicate{op: :matches, binding: "f", value: "def _ do ... end"}
+            ]
           },
           limit: 5,
           cursor: cursor
@@ -162,20 +167,30 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
   defp one_join_query do
     %Query{
       source: :fragment,
-      binding: :f,
-      joins: [{:assoc, :f, :r, :references}],
-      predicates: [{:eq, :r, :qualified_name, "Enum.map/2"}]
+      binding: "f",
+      joins: [%Join{parent: "f", binding: "r", association: :references}],
+      predicates: [
+        %Predicate{op: :eq, binding: "r", field: :qualified_name, value: "Enum.map/2"}
+      ]
     }
   end
 
   defp two_join_query do
     %Query{
       source: :fragment,
-      binding: :f,
-      joins: [{:assoc, :f, :d, :definitions}, {:assoc, :f, :r, :references}],
+      binding: "f",
+      joins: [
+        %Join{parent: "f", binding: "d", association: :definitions},
+        %Join{parent: "f", binding: "r", association: :references}
+      ],
       predicates: [
-        {:eq, :d, :qualified_name, "Benchmark.Fixture1.run/1"},
-        {:eq, :r, :qualified_name, "Enum.map/2"}
+        %Predicate{
+          op: :eq,
+          binding: "d",
+          field: :qualified_name,
+          value: "Benchmark.Fixture1.run/1"
+        },
+        %Predicate{op: :eq, binding: "r", field: :qualified_name, value: "Enum.map/2"}
       ]
     }
   end
@@ -183,15 +198,20 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
   defp three_join_query do
     %Query{
       source: :fragment,
-      binding: :f,
+      binding: "f",
       joins: [
-        {:assoc, :f, :d, :definitions},
-        {:assoc, :f, :r, :references},
-        {:assoc, :f, :e, :calls}
+        %Join{parent: "f", binding: "d", association: :definitions},
+        %Join{parent: "f", binding: "r", association: :references},
+        %Join{parent: "f", binding: "e", association: :calls}
       ],
       predicates: [
-        {:eq, :d, :qualified_name, "Benchmark.Fixture1.run/1"},
-        {:eq, :r, :qualified_name, "Enum.map/2"}
+        %Predicate{
+          op: :eq,
+          binding: "d",
+          field: :qualified_name,
+          value: "Benchmark.Fixture1.run/1"
+        },
+        %Predicate{op: :eq, binding: "r", field: :qualified_name, value: "Enum.map/2"}
       ]
     }
   end

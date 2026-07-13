@@ -11,6 +11,9 @@ import Exograph.DSL
 
 Supported sources:
 
+- `Package` — indexed package identity
+- `PackageVersion` — concrete indexed package release
+- `File` — lightweight indexed file identity
 - `Fragment` — structural fragments verified by ExAST
 - `Definition` — normalized definitions
 - `Reference` — normalized references
@@ -58,6 +61,10 @@ from(e in CallEdge,
 ```
 
 These run directly against normalized DuckDB facts and return typed hits.
+
+Package, version, and file queries return lightweight public entities. Source
+content is loaded explicitly with `Exograph.hydrate/3`, which returns a
+reproducible `Exograph.SourceSnapshot`.
 
 ## Joins
 

@@ -3,7 +3,9 @@ defmodule Exograph.Package do
   Source package identity for multi-package indexes.
   """
 
-  @type ecosystem :: atom() | String.t()
+  use JSONCodec
+
+  @type ecosystem :: String.t()
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -12,12 +14,12 @@ defmodule Exograph.Package do
           metadata: map()
         }
 
-  defstruct id: nil, ecosystem: :hex, name: nil, metadata: %{}
+  defstruct id: nil, ecosystem: "hex", name: nil, metadata: %{}
 
   @spec new(keyword() | map()) :: t()
   def new(attrs) do
     attrs = Map.new(attrs)
-    ecosystem = Map.get(attrs, :ecosystem, :hex)
+    ecosystem = attrs |> Map.get(:ecosystem, "hex") |> to_string()
     name = Map.fetch!(attrs, :name)
 
     %__MODULE__{

@@ -1,7 +1,37 @@
 defmodule Exograph.DSL.Sources do
   @moduledoc false
 
-  alias Exograph.Storage.{CallEdgeRecord, DefinitionRecord, Schema, ReferenceRecord}
+  alias Exograph.Storage.{
+    CallEdgeRecord,
+    DefinitionRecord,
+    FileRecord,
+    PackageRecord,
+    PackageVersionRecord,
+    ReferenceRecord,
+    Schema
+  }
+
+  @package_fields MapSet.new([:id, :ecosystem, :name, :metadata])
+
+  @package_version_fields MapSet.new([
+                            :id,
+                            :package_id,
+                            :version,
+                            :source_ref,
+                            :checksum,
+                            :index_state,
+                            :metadata
+                          ])
+
+  @file_fields MapSet.new([
+                 :id,
+                 :package_id,
+                 :package_version_id,
+                 :path,
+                 :comments_text,
+                 :identifier_tokens,
+                 :sha256
+               ])
 
   @symbol_fact_fields MapSet.new([
                         :id,
@@ -46,10 +76,16 @@ defmodule Exograph.DSL.Sources do
                       :column
                     ])
 
+  def source(:package, prefix), do: Schema.packages_source(prefix)
+  def source(:package_version, prefix), do: Schema.package_versions_source(prefix)
+  def source(:file, prefix), do: Schema.files_source(prefix)
   def source(:definition, prefix), do: Schema.definitions_source(prefix)
   def source(:reference, prefix), do: Schema.references_source(prefix)
   def source(:call_edge, prefix), do: Schema.call_edges_source(prefix)
 
+  def source_record(:package), do: PackageRecord
+  def source_record(:package_version), do: PackageVersionRecord
+  def source_record(:file), do: FileRecord
   def source_record(:definition), do: DefinitionRecord
   def source_record(:reference), do: ReferenceRecord
   def source_record(:call_edge), do: CallEdgeRecord
@@ -62,6 +98,9 @@ defmodule Exograph.DSL.Sources do
   def join_source(:references, prefix), do: Schema.references_source(prefix)
   def join_source(:calls, prefix), do: Schema.call_edges_source(prefix)
 
+  def fields(:package), do: @package_fields
+  def fields(:package_version), do: @package_version_fields
+  def fields(:file), do: @file_fields
   def fields(:fragment), do: @fragment_fields
   def fields(:definition), do: @symbol_fact_fields
   def fields(:reference), do: @symbol_fact_fields

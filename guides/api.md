@@ -30,15 +30,31 @@ Response:
 
 ### POST /api/query
 
-Execute a DSL query.
+Execute a versioned query object:
 
     curl -X POST http://localhost:4200/api/query \
       -H "Content-Type: application/json" \
-      -d '{"query": "from(d in Definition, where: d.kind == :def, where: prefix_search(d.name, \"handle\"))"}'
+      -d '{"query":{"version":1,"source":"definition","binding":"d","predicates":[{"op":"prefix_search","binding":"d","field":"name","value":"handle"}],"joins":[]}}'
+
+The Elixir-shaped DSL string remains available for interactive use.
 
 Parameters:
-- `query` (required) — DSL query string
+- `query` (required) — versioned `Exograph.Query` object or interactive DSL string
 - `cursor` — pagination cursor
+
+### POST /api/hydrate
+
+Hydrate an immutable package-version source snapshot:
+
+    curl -X POST http://localhost:4200/api/hydrate \
+      -H "Content-Type: application/json" \
+      -d '{"ecosystem":"hex","packageName":"ecto","version":"3.13.3","paths":["lib/**"]}'
+
+### GET /api/capabilities
+
+Returns the current query-model version, sources, predicates, associations, and hydration targets.
+
+    curl http://localhost:4200/api/capabilities
 
 ### GET /api/health
 

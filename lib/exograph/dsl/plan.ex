@@ -4,13 +4,13 @@ defmodule Exograph.DSL.Plan do
   @type join :: Exograph.DSL.Plan.Join.t()
 
   @type t :: %__MODULE__{
-          query: Exograph.DSL.Query.t(),
-          source: Exograph.DSL.Query.source(),
-          binding: atom(),
+          query: Exograph.Query.t(),
+          source: Exograph.Query.source(),
+          binding: String.t(),
           joins: [join()],
-          predicates_by_binding: %{atom() => [Exograph.DSL.Query.predicate()]},
-          structural_predicates: [Exograph.DSL.Query.predicate()],
-          select: Exograph.DSL.Query.select()
+          predicates_by_binding: %{String.t() => [Exograph.Query.predicate()]},
+          structural_predicates: [Exograph.Query.predicate()],
+          select: Exograph.Query.select()
         }
 
   defstruct [

@@ -1,14 +1,15 @@
 defmodule Exograph.DSL.Compiler do
   @moduledoc false
 
-  alias Exograph.DSL.Query
+  alias Exograph.Query
+  alias Exograph.Query.Predicate
 
   @spec from_pattern(ExAST.Pattern.pattern() | ExAST.Selector.t()) :: Query.t()
   def from_pattern(pattern) when is_binary(pattern) do
     %Query{
       source: :fragment,
-      binding: :f,
-      predicates: [{:matches, :f, pattern}]
+      binding: "f",
+      predicates: [%Predicate{op: :matches, binding: "f", value: pattern}]
     }
   end
 
@@ -19,40 +20,41 @@ defmodule Exograph.DSL.Compiler do
     contains_predicates =
       selector.filters
       |> Enum.filter(&(&1.relation == :has_descendant and not &1.negated?))
-      |> Enum.map(&{:contains, :f, Macro.to_string(&1.pattern)})
+      |> Enum.map(&%Predicate{op: :contains, binding: "f", value: Macro.to_string(&1.pattern)})
 
     %Query{
       source: :fragment,
-      binding: :f,
-      predicates: [{:matches, :f, pattern} | contains_predicates]
+      binding: "f",
+      predicates: [%Predicate{op: :matches, binding: "f", value: pattern} | contains_predicates]
     }
   end
 
   def from_selector(%ExAST.Selector{}) do
     %Query{
       source: :fragment,
-      binding: :f,
-      predicates: [{:matches, :f, "_"}]
+      binding: "f",
+      predicates: [%Predicate{op: :matches, binding: "f", value: "_"}]
     }
   end
 
   @spec structural_only?(Query.t()) :: boolean()
   def structural_only?(%Query{source: :fragment, binding: binding, predicates: predicates}) do
     Enum.all?(predicates, fn predicate ->
-      match?({_, ^binding, _}, normalize_predicate(predicate)) and
-        structural_predicate?(predicate)
+      predicate = internal_predicate(predicate)
+      match?({_, ^binding, _}, predicate) and structural_predicate?(predicate)
     end)
   end
 
   @spec compile(Query.t()) :: ExAST.Selector.t()
   def compile(%Query{source: :fragment, binding: binding, predicates: predicates}) do
     predicates =
-      Enum.filter(predicates, fn predicate ->
-        match?({_, ^binding, _}, normalize_predicate(predicate)) and
-          structural_predicate?(predicate)
+      predicates
+      |> Enum.map(&internal_predicate/1)
+      |> Enum.filter(fn predicate ->
+        match?({_, ^binding, _}, predicate) and structural_predicate?(predicate)
       end)
 
-    {matches, filters} = Enum.split_with(predicates, &match?({:matches, _binding, _pattern}, &1))
+    {matches, filters} = Enum.split_with(predicates, &match?({:matches, _, _}, &1))
 
     selector =
       case matches do
@@ -82,12 +84,14 @@ defmodule Exograph.DSL.Compiler do
 
   @spec text_contains_patterns(Query.t()) :: [String.t()]
   def text_contains_patterns(%Query{binding: binding, predicates: predicates}) do
-    Enum.flat_map(predicates, fn
-      {:contains, ^binding, pattern} when is_binary(pattern) ->
-        if ast_pattern?(pattern), do: [], else: [pattern]
+    Enum.flat_map(predicates, fn predicate ->
+      case internal_predicate(predicate) do
+        {:contains, ^binding, pattern} when is_binary(pattern) ->
+          if ast_pattern?(pattern), do: [], else: [pattern]
 
-      _predicate ->
-        []
+        _predicate ->
+          []
+      end
     end)
   end
 
@@ -118,12 +122,11 @@ defmodule Exograph.DSL.Compiler do
 
   def ast_pattern?(_pattern), do: false
 
+  defp internal_predicate(%Predicate{} = predicate), do: Predicate.to_internal(predicate)
+  defp internal_predicate(predicate) when is_tuple(predicate), do: predicate
+
   defp plain_text_token?(pattern) do
     String.match?(pattern, ~r/^[[:alnum:]_#!?@.-]+$/u) and
       not String.contains?(pattern, ["(", ")"])
   end
-
-  defp normalize_predicate({kind, binding, value}), do: {kind, binding, value}
-  defp normalize_predicate({kind, binding, _field, value}), do: {kind, binding, value}
-  defp normalize_predicate({kind, binding, _field, _op, value}), do: {kind, binding, value}
 end

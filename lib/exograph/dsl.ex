@@ -12,7 +12,8 @@ defmodule Exograph.DSL do
         where: contains(f, "Repo.transaction(_)")
   """
 
-  alias Exograph.DSL.Query
+  alias Exograph.Query
+  alias Exograph.Query.{Join, Predicate}
 
   defmacro from({:in, _meta, [binding_ast, source_ast]}, clauses) when is_list(clauses) do
     binding = binding_name!(binding_ast)
@@ -20,7 +21,7 @@ defmodule Exograph.DSL do
     joins = joins!(clauses, binding)
 
     bindings =
-      MapSet.new([binding | Enum.map(joins, fn {:assoc, _parent, join, _assoc} -> join end)])
+      MapSet.new([binding | Enum.map(joins, & &1.binding)])
 
     predicates = predicates!(clauses, binding, bindings)
     select = select!(Keyword.get(clauses, :select), bindings)
@@ -52,7 +53,8 @@ defmodule Exograph.DSL do
     raise ArgumentError, "assoc/2 can only be used inside Exograph.DSL.from/2"
   end
 
-  defp binding_name!({name, _meta, context}) when is_atom(name) and is_atom(context), do: name
+  defp binding_name!({name, _meta, context}) when is_atom(name) and is_atom(context),
+    do: Atom.to_string(name)
 
   defp binding_name!(ast) do
     raise ArgumentError, "expected a binding such as `f`, got: #{Macro.to_string(ast)}"
@@ -60,6 +62,12 @@ defmodule Exograph.DSL do
 
   defp source!(source_ast, caller) do
     case Macro.expand(source_ast, caller) do
+      Exograph.Package -> :package
+      Package -> :package
+      Exograph.PackageVersion -> :package_version
+      PackageVersion -> :package_version
+      Exograph.File -> :file
+      File -> :file
       Exograph.Fragment -> :fragment
       Fragment -> :fragment
       Exograph.Definition -> :definition
@@ -85,7 +93,7 @@ defmodule Exograph.DSL do
        when is_atom(assoc) do
     join_binding = binding_name!(join_binding_ast)
     assert_binding!(parent_ast, binding)
-    {:assoc, binding, join_binding, assoc}
+    %Join{parent: binding, binding: join_binding, association: assoc}
   end
 
   defp join!(ast, _binding) do
@@ -96,10 +104,10 @@ defmodule Exograph.DSL do
   defp select!(nil, _bindings), do: nil
 
   defp select!({left, right}, bindings),
-    do: {:tuple, [select_binding!(left, bindings), select_binding!(right, bindings)]}
+    do: [select_binding!(left, bindings), select_binding!(right, bindings)]
 
   defp select!({:{}, _meta, items}, bindings),
-    do: {:tuple, Enum.map(items, &select_binding!(&1, bindings))}
+    do: Enum.map(items, &select_binding!(&1, bindings))
 
   defp select!(ast, bindings), do: select_binding!(ast, bindings)
 
@@ -122,42 +130,53 @@ defmodule Exograph.DSL do
   defp predicate!({:matches, _meta, [binding_ast, pattern]}, binding, _bindings)
        when is_binary(pattern) do
     assert_binding!(binding_ast, binding)
-    {:matches, binding, pattern}
+    %Predicate{op: :matches, binding: binding, value: pattern}
   end
 
   defp predicate!({:contains, _meta, [binding_ast, pattern]}, binding, _bindings)
        when is_binary(pattern) do
     assert_binding!(binding_ast, binding)
-    {:contains, binding, pattern}
+    %Predicate{op: :contains, binding: binding, value: pattern}
   end
 
   defp predicate!({:prefix_search, _meta, [field_ast, value]}, _binding, bindings)
        when is_binary(value) do
     {:field, field_binding, field} = field!(field_ast, bindings)
-    {:prefix_search, field_binding, field, value}
+    %Predicate{op: :prefix_search, binding: field_binding, field: field, value: value}
   end
 
   defp predicate!({:==, _meta, [field_ast, value]}, _binding, bindings) do
     {:field, field_binding, field} = field!(field_ast, bindings)
-    {:eq, field_binding, field, value}
+    %Predicate{op: :eq, binding: field_binding, field: field, value: value}
   end
 
   defp predicate!({op, _meta, [field_ast, value]}, _binding, bindings)
        when op in [:>, :<, :>=, :<=] do
     {:field, field_binding, field} = field!(field_ast, bindings)
-    {:cmp, field_binding, field, op, value}
+
+    %Predicate{
+      op: :cmp,
+      binding: field_binding,
+      field: field,
+      comparison: op,
+      value: value
+    }
   end
 
   defp predicate!({:in, _meta, [field_ast, values]}, _binding, bindings) when is_list(values) do
     {:field, field_binding, field} = field!(field_ast, bindings)
-    {:in, field_binding, field, values}
+    %Predicate{op: :in, binding: field_binding, field: field, value: values}
   end
 
   defp predicate!(ast, _binding, _bindings) do
     raise ArgumentError, "unsupported Exograph predicate: #{Macro.to_string(ast)}"
   end
 
-  defp assert_binding!({name, _meta, context}, name) when is_atom(context), do: :ok
+  defp assert_binding!({name, _meta, context}, binding) when is_atom(context) do
+    if Atom.to_string(name) == binding,
+      do: :ok,
+      else: raise(ArgumentError, "predicate must target binding `#{binding}`")
+  end
 
   defp assert_binding!(ast, binding) do
     raise ArgumentError,

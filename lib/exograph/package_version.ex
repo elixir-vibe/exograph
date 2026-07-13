@@ -3,6 +3,8 @@ defmodule Exograph.PackageVersion do
   Concrete package release/version identity for multi-version indexes.
   """
 
+  use JSONCodec
+
   alias Exograph.Package
 
   @type t :: %__MODULE__{
@@ -18,7 +20,7 @@ defmodule Exograph.PackageVersion do
 
   defstruct id: nil,
             package_id: nil,
-            ecosystem: :hex,
+            ecosystem: "hex",
             package_name: nil,
             version: nil,
             source_ref: nil,
@@ -28,7 +30,7 @@ defmodule Exograph.PackageVersion do
   @spec new(keyword() | map()) :: t()
   def new(attrs) do
     attrs = Map.new(attrs)
-    ecosystem = Map.get(attrs, :ecosystem, :hex)
+    ecosystem = attrs |> Map.get(:ecosystem, "hex") |> to_string()
     package_name = Map.get(attrs, :package_name) || Map.fetch!(attrs, :name)
     package_id = Map.get(attrs, :package_id)
     version = Map.fetch!(attrs, :version)

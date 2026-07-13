@@ -6,7 +6,8 @@ defmodule Exograph.DSL.Executor do
   import Exograph.DSL.Executor.Scope
 
   alias Exograph.{CallEdgeHit, DefinitionHit, Fragment, Hit, ReferenceHit}
-  alias Exograph.DSL.{Compiler, Plan, Planner, Query, Sources}
+  alias Exograph.DSL.{Compiler, Plan, Planner, Sources}
+  alias Exograph.Query
   alias Exograph.DSL.Executor.JoinBuilder
   alias Exograph.DSL.Plan.Join
   alias Exograph.Storage.{FragmentStore, Hydration, InvertedIndex}
@@ -44,7 +45,23 @@ defmodule Exograph.DSL.Executor do
     end
   end
 
+  defp do_count(index, %Plan{source: source, joins: []} = plan, opts)
+       when source in [:package, :package_version, :file] do
+    query =
+      source
+      |> Sources.source(index.inverted.prefix)
+      |> where_source_predicates(predicates(plan, plan.binding), nil, source)
+      |> where_scope(Keyword.drop(opts, [:limit, :skip]))
+
+    {:ok, index.inverted.repo.aggregate(query, :count)}
+  end
+
   defp do_count(_index, _plan, _opts), do: :unknown
+
+  defp execute(index, %Plan{source: source, joins: []} = plan, opts)
+       when source in [:package, :package_version, :file] do
+    entity_all(index, plan, opts)
+  end
 
   defp execute(index, %Plan{source: :fragment, joins: []} = plan, opts) do
     fragment_all(index, plan, opts)
@@ -1034,6 +1051,92 @@ defmodule Exograph.DSL.Executor do
 
   defp predicates(%Plan{predicates_by_binding: predicates_by_binding}, binding) do
     Map.get(predicates_by_binding, binding, [])
+  end
+
+  defp entity_all(index, %Plan{source: :package} = plan, opts) do
+    limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
+
+    query =
+      from(package in Sources.source(:package, index.inverted.prefix),
+        order_by: [asc: package.id],
+        offset: ^skip,
+        limit: ^limit,
+        select: package
+      )
+      |> where_source_predicates(predicates(plan, plan.binding), nil, :package)
+
+    results =
+      index.inverted.repo.all(query)
+      |> Enum.map(fn package ->
+        Exograph.Package.new(%{
+          id: package.id,
+          ecosystem: package.ecosystem,
+          name: package.name,
+          metadata: package.metadata || %{}
+        })
+      end)
+
+    {:ok, results}
+  end
+
+  defp entity_all(index, %Plan{source: :package_version} = plan, opts) do
+    limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
+    packages = Sources.source(:package, index.inverted.prefix)
+
+    query =
+      from(version in Sources.source(:package_version, index.inverted.prefix),
+        join: package in ^packages,
+        on: package.id == version.package_id,
+        order_by: [asc: version.id],
+        offset: ^skip,
+        limit: ^limit,
+        select: {version, package.ecosystem, package.name}
+      )
+      |> where_source_predicates(predicates(plan, plan.binding), nil, :package_version)
+      |> where_scope(opts)
+
+    results =
+      index.inverted.repo.all(query)
+      |> Enum.map(fn {version, ecosystem, package_name} ->
+        Exograph.PackageVersion.new(%{
+          id: version.id,
+          package_id: version.package_id,
+          ecosystem: ecosystem,
+          name: package_name,
+          version: version.version,
+          source_ref: version.source_ref,
+          checksum: version.checksum,
+          metadata: version.metadata || %{}
+        })
+      end)
+
+    {:ok, results}
+  end
+
+  defp entity_all(index, %Plan{source: :file} = plan, opts) do
+    limit = Keyword.get(opts, :limit, 50)
+    skip = Keyword.get(opts, :skip, 0)
+
+    query =
+      from(file in Sources.source(:file, index.inverted.prefix),
+        order_by: [asc: file.id],
+        offset: ^skip,
+        limit: ^limit,
+        select: %{
+          id: file.id,
+          package_id: file.package_id,
+          package_version_id: file.package_version_id,
+          path: file.path,
+          sha256: file.sha256
+        }
+      )
+      |> where_source_predicates(predicates(plan, plan.binding), nil, :file)
+      |> where_scope(opts)
+
+    results = Enum.map(index.inverted.repo.all(query), &struct!(Exograph.FileRef, &1))
+    {:ok, results}
   end
 
   defp symbol_fact_all(index, plan, opts, source_name) do

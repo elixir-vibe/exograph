@@ -377,10 +377,12 @@ defmodule Exograph.ShardedIndexTest do
         package_version: %{name: "beta", version: "1.0.0"}
       )
 
-    query = %Exograph.DSL.Query{
+    query = %Exograph.Query{
       source: :fragment,
-      binding: :f,
-      predicates: [{:matches, :f, "def _ do ... end"}]
+      binding: "f",
+      predicates: [
+        %Exograph.Query.Predicate{op: :matches, binding: "f", value: "def _ do ... end"}
+      ]
     }
 
     sharded = ShardedIndex.new([alpha_index, beta_index])
