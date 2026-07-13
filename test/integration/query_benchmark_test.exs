@@ -35,6 +35,17 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
         )
       end)
 
+    similarity_subhash =
+      QueryBenchmarkFixture.measure(fn ->
+        Exograph.explain_similarity(
+          index,
+          "def run(value), do: helper(value)",
+          min_mass: 1,
+          min_similarity: 0.0,
+          prefilter: :subhash
+        )
+      end)
+
     one_join = measure_join(index, one_join_query())
     two_join = measure_join(index, two_join_query())
     three_join = measure_join(index, three_join_query())
@@ -100,6 +111,7 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
       broad: explain_metrics(broad),
       similarity: similarity.result |> elem(1),
       similarity_fallback: similarity_fallback.result |> elem(1),
+      similarity_subhash: similarity_subhash.result |> elem(1),
       one_join: join_metrics(one_join),
       two_join: join_metrics(two_join),
       three_join: join_metrics(three_join),
@@ -122,6 +134,8 @@ defmodule Exograph.Integration.QueryBenchmarkTest do
     assert similarity_diagnostics.exact_scored_fragments > 0
     assert {:ok, fallback_diagnostics} = similarity_fallback.result
     assert fallback_diagnostics.fallback_to_full_scan
+    assert {:ok, subhash_diagnostics} = similarity_subhash.result
+    assert subhash_diagnostics.prefilter_strategy == :subhash
     assert {:ok, [_ | _]} = one_join.result
     assert one_join.query_count == 3
     assert {:ok, [_ | _]} = two_join.result

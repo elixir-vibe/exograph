@@ -53,6 +53,7 @@ defmodule Exograph.SimilarityTest do
     assert diagnostics.candidate_fragments > 0
     assert diagnostics.exact_scored_fragments == diagnostics.candidate_fragments
     refute diagnostics.fallback_to_full_scan
+    assert diagnostics.prefilter_strategy == :subhash
     assert diagnostics.returned_results > 0
     assert is_number(diagnostics.elapsed_ms)
 
@@ -125,6 +126,9 @@ defmodule Exograph.SimilarityTest do
                Exograph.similar(index, query, Keyword.put(opts, :force_full_scan, true))
 
       assert similarity_signature(prefiltered) == similarity_signature(full_scan)
+
+      assert {:ok, diagnostics} = Exograph.explain_similarity(index, query, opts)
+      assert diagnostics.prefilter_strategy == :full_scan
     end)
   end
 

@@ -110,6 +110,21 @@ Exograph.explain(index, "Repo.get!(User, id)", limit: 50)
 #=> }
 ```
 
+## Similarity prefiltering
+
+Similarity uses indexed subhash candidates automatically at the default `0.8`
+minimum similarity. Lower thresholds use a full scan to preserve recall. Override
+the strategy when measuring or accepting the trade-off:
+
+```elixir
+Exograph.similar(index, source, prefilter: :subhash)
+Exograph.similar(index, source, prefilter: :full_scan)
+Exograph.similar(index, source, prefilter_min_similarity: 0.9)
+```
+
+`Exograph.explain_similarity/3` reports the chosen strategy and whether a
+subhash lookup fell back to a full scan.
+
 ## Benchmark baseline
 
 The deterministic query baseline is an opt-in integration test. It emits JSON

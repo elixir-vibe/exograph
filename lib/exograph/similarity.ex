@@ -8,7 +8,13 @@ defmodule Exograph.Similarity do
   alias Exograph.Index
   alias Exograph.Storage.{FragmentRecord, FragmentStore, Hydration, Schema}
 
-  @default_opts [min_mass: 8, min_similarity: 0.8, limit: 20]
+  @default_opts [
+    min_mass: 8,
+    min_similarity: 0.8,
+    limit: 20,
+    prefilter: :auto,
+    prefilter_min_similarity: 0.8
+  ]
 
   @spec search(Index.t(), String.t() | Macro.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def search(%Index{} = index, source_or_ast, opts \\ []) do
@@ -37,7 +43,9 @@ defmodule Exograph.Similarity do
 
     with {:ok, query_fragment} <- query_fragment(source_or_ast, opts) do
       query_norm = Normalizer.normalize(query_fragment.ast)
-      {fragments, fallback?} = candidate_fragments(index, query_fragment, opts)
+
+      {fragments, fallback?, prefilter_strategy} =
+        candidate_fragments(index, query_fragment, opts)
 
       results =
         fragments
@@ -61,17 +69,42 @@ defmodule Exograph.Similarity do
          query_subhashes: MapSet.size(query_fragment.sub_hashes),
          candidate_fragments: length(fragments),
          exact_scored_fragments: length(fragments),
-         fallback_to_full_scan: fallback?
+         fallback_to_full_scan: fallback?,
+         prefilter_strategy: prefilter_strategy
        }}
     end
   end
 
   defp candidate_fragments(index, query_fragment, opts) do
-    if Keyword.get(opts, :force_full_scan, false) or
-         opts[:min_similarity] < @default_opts[:min_similarity] do
-      {FragmentStore.all(index.fragment_store), true}
+    case prefilter_strategy(opts) do
+      :full_scan ->
+        {FragmentStore.all(index.fragment_store), true, :full_scan}
+
+      :subhash ->
+        prefiltered_candidates(index, query_fragment)
+    end
+  end
+
+  defp prefilter_strategy(opts) do
+    if Keyword.get(opts, :force_full_scan, false) do
+      :full_scan
     else
-      prefiltered_candidates(index, query_fragment)
+      case Keyword.get(opts, :prefilter) do
+        :full_scan ->
+          :full_scan
+
+        :subhash ->
+          :subhash
+
+        :auto ->
+          if(opts[:min_similarity] >= opts[:prefilter_min_similarity],
+            do: :subhash,
+            else: :full_scan
+          )
+
+        invalid ->
+          raise ArgumentError, "unsupported similarity prefilter: #{inspect(invalid)}"
+      end
     end
   end
 
@@ -96,8 +129,8 @@ defmodule Exograph.Similarity do
       end)
 
     case candidates do
-      [] -> {FragmentStore.all(index.fragment_store), true}
-      _ -> {candidates, false}
+      [] -> {FragmentStore.all(index.fragment_store), true, :full_scan}
+      _ -> {candidates, false, :subhash}
     end
   end
 
