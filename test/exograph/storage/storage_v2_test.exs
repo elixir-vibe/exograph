@@ -34,6 +34,8 @@ defmodule Exograph.Storage.StorageV2Test do
 
     [file] = Exograph.DuckDBRepo.all(Schema.files_source(prefix))
     assert is_binary(file.ast)
+    assert file.identifier_tokens =~ "repo"
+    assert file.identifier_tokens =~ "get"
     raw_ast = :erlang.binary_to_term(file.ast, [:safe])
     refute contains_atom?(raw_ast)
     assert {:defmodule, _, _} = Exograph.AST.Codec.load(file.ast)
@@ -102,6 +104,32 @@ defmodule Exograph.Storage.StorageV2Test do
     assert_raise ArgumentError, ~r/unsupported Exograph index format/, fn ->
       Exograph.index([], repo: Exograph.DuckDBRepo, prefix: prefix, migrate?: false)
     end
+  end
+
+  test "requires rebuilding v3 indexes before applying the v4 identifier format", %{
+    prefix: prefix
+  } do
+    Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
+
+    {1, nil} =
+      Exograph.DuckDBRepo.update_all(
+        Schema.index_format_source(prefix),
+        set: [format_version: 3]
+      )
+
+    assert_raise ArgumentError, ~r/unsupported Exograph index format 3\/1; reindex/, fn ->
+      Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
+    end
+
+    Exograph.DuckDBSupport.drop_prefix(prefix)
+    Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
+
+    columns =
+      Exograph.DuckDBRepo
+      |> QuackDB.Meta.table_info!(Schema.table_name(prefix, :files))
+      |> Enum.map(& &1.name)
+
+    assert "identifier_tokens" in columns
   end
 
   test "schema drops persisted fragment AST and tree node table", %{prefix: prefix} do

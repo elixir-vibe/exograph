@@ -47,9 +47,16 @@ defmodule Exograph.DuckDB do
 
     table_names = QuackDB.Meta.tables!(repo) |> Enum.map(& &1.name)
 
-    if fragments_table in table_names and format_table not in table_names do
-      raise ArgumentError,
-            "legacy Exograph index detected; rebuild it instead of migrating in place"
+    cond do
+      fragments_table in table_names and format_table not in table_names ->
+        raise ArgumentError,
+              "legacy Exograph index detected; rebuild it instead of migrating in place"
+
+      fragments_table in table_names ->
+        IndexFormat.ensure_compatible!(repo, prefix)
+
+      true ->
+        :ok
     end
   end
 
