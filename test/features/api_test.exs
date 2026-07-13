@@ -227,6 +227,22 @@ defmodule Exograph.Features.APITest do
     end
   end
 
+  describe "POST /api/hydrate validation" do
+    test "rejects unsafe snapshot paths with the public error envelope" do
+      resp =
+        api_post("/api/hydrate", %{
+          packageName: "feature_fixture",
+          version: "1.0.0",
+          paths: ["../**"]
+        })
+
+      assert resp.status == 400
+      body = json_body(resp)
+      assert body["version"] == 1
+      assert body["error"]["code"] == "invalid_hydration_request"
+    end
+  end
+
   describe "GET /api/capabilities" do
     test "returns versioned query capabilities" do
       body = api_get("/api/capabilities") |> json_body()
@@ -238,6 +254,8 @@ defmodule Exograph.Features.APITest do
       assert "package_version" in body["sources"]
       assert "matches" in body["predicates"]
       assert body["hydration"] == ["package_version"]
+      assert body["hydration_limits"]["max_files"] > 0
+      assert body["hydration_limits"]["max_bytes"] > 0
     end
   end
 

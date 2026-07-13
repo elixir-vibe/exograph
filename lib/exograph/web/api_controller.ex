@@ -180,19 +180,37 @@ defmodule Exograph.Web.APIController do
              name: request.package_name,
              version: request.version
            ),
-         {:ok, snapshot} <- Exograph.hydrate(index(), version, paths: request.paths) do
+         {:ok, snapshot} <- Exograph.hydrate(index(), version, hydration_opts(request)) do
       json(conn, JSONCodec.dump(snapshot))
     else
       {:error, :package_version_not_found} ->
         api_error(conn, 404, "package_version_not_found", "package version not found")
+
+      {:error, {:snapshot_limit_exceeded, dimension, actual, limit}} ->
+        api_error(conn, 413, "snapshot_limit_exceeded", %{
+          message: "hydrated snapshot exceeds the configured #{dimension} limit",
+          dimension: dimension,
+          actual: actual,
+          limit: limit
+        })
 
       {:error, reason} ->
         api_error(conn, 400, "invalid_hydration_request", reason)
     end
   end
 
+  defp hydration_opts(request) do
+    Application.get_env(:exograph, :hydration, [])
+    |> Keyword.put(:paths, request.paths)
+  end
+
   def capabilities(conn, _params) do
-    json(conn, Exograph.Query.capabilities())
+    hydration_limits =
+      :exograph
+      |> Application.get_env(:hydration, [])
+      |> Exograph.Hydration.limits()
+
+    json(conn, Map.put(Exograph.Query.capabilities(), :hydration_limits, hydration_limits))
   end
 
   def health(conn, _params) do

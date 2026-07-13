@@ -63,6 +63,10 @@ Hydrate an immutable package-version source snapshot:
       -H "Content-Type: application/json" \
       -d '{"ecosystem":"hex","packageName":"ecto","version":"3.13.3","paths":["lib/**"]}'
 
+Paths must be relative and cannot contain `..`. Hydration fails rather than
+returning a partial snapshot when configured file-count, source-byte, or path-
+pattern limits are exceeded. Effective limits are reported by `/api/capabilities`.
+
 ### GET /api/capabilities
 
 Returns the current query-model version, sources, predicates, associations, and hydration targets.

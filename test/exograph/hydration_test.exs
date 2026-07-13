@@ -24,6 +24,21 @@ defmodule Exograph.HydrationTest do
     {:ok, index: index, version: version}
   end
 
+  test "rejects unsafe path patterns", %{index: index, version: version} do
+    assert {:error, {:invalid_hydration_path, "../**"}} =
+             Exograph.hydrate(index, version, paths: ["../**"])
+  end
+
+  test "enforces file and source-byte limits", %{index: index, version: version} do
+    assert {:error, {:snapshot_limit_exceeded, :files, 1, 0}} =
+             Exograph.hydrate(index, version, max_files: 0)
+
+    assert {:error, {:snapshot_limit_exceeded, :source_bytes, actual, 1}} =
+             Exograph.hydrate(index, version, max_bytes: 1)
+
+    assert actual > 1
+  end
+
   test "hydrates reproducible package source snapshots", %{index: index, version: version} do
     assert {:ok, snapshot} = Exograph.hydrate(index, version)
     assert snapshot.package_version.package_name == "demo"

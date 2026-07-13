@@ -6,10 +6,23 @@ defmodule Exograph.Hydration do
   alias Exograph.{File, Index, PackageVersion, SourceSnapshot}
   alias Exograph.Storage.Schema
 
-  def package_version(%Index{} = index, %PackageVersion{} = version, opts) do
-    with {:ok, stored_version} <- resolve_version(index, version) do
-      files = load_files(index, stored_version, opts)
+  @default_max_files 500
+  @default_max_bytes 10 * 1024 * 1024
+  @default_max_path_patterns 20
 
+  @doc "Returns the effective source snapshot limits."
+  def limits(opts \\ []) do
+    %{
+      max_files: Keyword.get(opts, :max_files, @default_max_files),
+      max_bytes: Keyword.get(opts, :max_bytes, @default_max_bytes),
+      max_path_patterns: Keyword.get(opts, :max_path_patterns, @default_max_path_patterns)
+    }
+  end
+
+  def package_version(%Index{} = index, %PackageVersion{} = version, opts) do
+    with :ok <- validate_options(opts),
+         {:ok, stored_version} <- resolve_version(index, version),
+         {:ok, files} <- load_files(index, stored_version, opts) do
       {:ok,
        %SourceSnapshot{
          package_version: stored_version,
@@ -72,10 +85,15 @@ defmodule Exograph.Hydration do
 
     root = source_root(records)
 
-    records
-    |> Enum.map(&{&1, logical_path(&1.path, root)})
-    |> Enum.filter(fn {_record, path} -> selected_path?(path, paths) end)
-    |> Enum.map(fn {record, path} -> to_file(record, path, include_ast?) end)
+    selected =
+      records
+      |> Enum.map(&{&1, logical_path(&1.path, root)})
+      |> Enum.filter(fn {_record, path} -> selected_path?(path, paths) end)
+
+    with :ok <- validate_file_count(selected, opts),
+         :ok <- validate_source_bytes(selected, opts) do
+      {:ok, Enum.map(selected, fn {record, path} -> to_file(record, path, include_ast?) end)}
+    end
   end
 
   defp to_file(record, path, include_ast?) do
@@ -115,6 +133,49 @@ defmodule Exograph.Hydration do
 
   defp logical_path(path, nil), do: path
   defp logical_path(path, root), do: Path.relative_to(path, root)
+
+  defp validate_options(opts) do
+    patterns = Keyword.get(opts, :paths, ["lib/**"])
+    max_patterns = Keyword.get(opts, :max_path_patterns, @default_max_path_patterns)
+
+    cond do
+      not is_list(patterns) or patterns == [] ->
+        {:error, {:invalid_hydration_paths, patterns}}
+
+      length(patterns) > max_patterns ->
+        {:error, {:snapshot_limit_exceeded, :path_patterns, length(patterns), max_patterns}}
+
+      invalid_pattern = Enum.find(patterns, &(not safe_pattern?(&1))) ->
+        {:error, {:invalid_hydration_path, invalid_pattern}}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp safe_pattern?(pattern) when is_binary(pattern) do
+    Path.type(pattern) == :relative and ".." not in Path.split(pattern)
+  end
+
+  defp safe_pattern?(_pattern), do: false
+
+  defp validate_file_count(selected, opts) do
+    max_files = Keyword.get(opts, :max_files, @default_max_files)
+    actual = length(selected)
+
+    if actual <= max_files,
+      do: :ok,
+      else: {:error, {:snapshot_limit_exceeded, :files, actual, max_files}}
+  end
+
+  defp validate_source_bytes(selected, opts) do
+    max_bytes = Keyword.get(opts, :max_bytes, @default_max_bytes)
+    actual = Enum.sum_by(selected, fn {record, _path} -> byte_size(record.source || "") end)
+
+    if actual <= max_bytes,
+      do: :ok,
+      else: {:error, {:snapshot_limit_exceeded, :source_bytes, actual, max_bytes}}
+  end
 
   defp selected_path?(path, patterns), do: Enum.any?(patterns, &path_matches?(path, &1))
 
