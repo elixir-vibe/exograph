@@ -5,7 +5,7 @@ defmodule Exograph.Storage.IndexFormat do
 
   alias Exograph.Storage.{IndexFormatRecord, Schema}
 
-  @format_version 4
+  @format_version 5
   @parser_version 1
 
   def ensure_compatible!(repo, prefix) do

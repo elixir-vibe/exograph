@@ -33,45 +33,21 @@ defmodule Exograph.Storage.Schema do
     table(:package_versions, PackageVersionRecord) do
       unique_index([:package_id, :version], name: :package_version)
     end,
-    table(:files, FileRecord) do
-      index([:package_version_id, :path], name: :package_path)
+    table(:files, FileRecord, primary_key: false) do
       unique_index([:package_version_id, :path], name: :package_version_path)
     end,
     table(:terms, TermRecord, primary_key: false) do
       unique_index([:term], name: :term)
     end,
     table(:fragment_terms, FragmentTermRecord, primary_key: false),
-    table(:fragments, FragmentRecord) do
+    table(:fragments, FragmentRecord, primary_key: false) do
       unique_index([:content_hash], name: :content_hash)
-      index([:package_id, :package_version_id], name: :package)
-      index([:file_id], name: :file)
-      index([:file_id, :line], name: :file_line)
-      index([:file_id, :kind, :line], name: :file_kind_line)
-      index([:kind, :name, :arity], name: :kind_name_arity)
     end,
-    table(:comments, CommentRecord) do
-      index([:file_id], name: :file)
-      index([:fragment_id], name: :fragment)
-    end,
-    table(:definitions, DefinitionRecord) do
-      index([:qualified_name], name: :qualified)
-      index([:fragment_id], name: :fragment)
-      index([:file_id, :line], name: :file_line)
-    end,
-    table(:references, ReferenceRecord) do
-      index([:qualified_name], name: :qualified)
-      index([:fragment_id], name: :fragment)
-      index([:file_id, :line], name: :file_line)
-    end,
-    table(:graph_nodes, GraphNodeRecord) do
-      index([:qualified_name], name: :qualified)
-      index([:file_id], name: :file)
-    end,
-    table(:call_edges, CallEdgeRecord) do
-      index([:caller_qualified_name], name: :caller)
-      index([:callee_qualified_name], name: :callee)
-      index([:file_id], name: :file)
-    end
+    table(:comments, CommentRecord, primary_key: false),
+    table(:definitions, DefinitionRecord, primary_key: false),
+    table(:references, ReferenceRecord, primary_key: false),
+    table(:graph_nodes, GraphNodeRecord, primary_key: false),
+    table(:call_edges, CallEdgeRecord, primary_key: false)
   ]
 
   def tables, do: @tables

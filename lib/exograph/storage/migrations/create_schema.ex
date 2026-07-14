@@ -26,7 +26,7 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
     create_indexes(:packages)
 
     create_if_not_exists table(name(:package_versions), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all), null: false)
+      add(:package_id, :integer, null: false)
       add(:version, :text, null: false)
       add(:source_ref, :text)
       add(:checksum, :text)
@@ -37,9 +37,10 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:package_versions)
 
-    create_if_not_exists table(name(:files), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
+    create_if_not_exists table(name(:files), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
       add(:path, :text, null: false)
       add(:source, :text, null: false)
       add(:ast, :binary)
@@ -52,7 +53,7 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
     create_indexes(:files)
 
     create_if_not_exists table(name(:terms), table_opts(primary_key: false)) do
-      add(:id, :serial, primary_key: true)
+      add(:id, :serial)
       add(:term, :text, null: false)
     end
 
@@ -63,10 +64,11 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
       add(:fragment_id, :integer, null: false)
     end
 
-    create_if_not_exists table(name(:fragments), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all))
+    create_if_not_exists table(name(:fragments), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer)
       add(:content_hash, :binary)
       add(:node_pre, :integer)
       add(:node_post, :integer)
@@ -84,11 +86,12 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:fragments)
 
-    create_if_not_exists table(name(:comments), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all), null: false)
-      add(:fragment_id, references(name(:fragments), on_delete: :nilify_all))
+    create_if_not_exists table(name(:comments), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer, null: false)
+      add(:fragment_id, :integer)
       add(:text, :text, null: false)
       add(:line, :integer)
       add(:column, :integer)
@@ -97,11 +100,12 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:comments)
 
-    create_if_not_exists table(name(:definitions), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all), null: false)
-      add(:fragment_id, references(name(:fragments), on_delete: :nilify_all))
+    create_if_not_exists table(name(:definitions), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer, null: false)
+      add(:fragment_id, :integer)
       add(:kind, :text, null: false)
       add(:module, :text)
       add(:name, :text, null: false)
@@ -114,11 +118,12 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:definitions)
 
-    create_if_not_exists table(name(:references), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all), null: false)
-      add(:fragment_id, references(name(:fragments), on_delete: :nilify_all))
+    create_if_not_exists table(name(:references), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer, null: false)
+      add(:fragment_id, :integer)
       add(:kind, :text, null: false)
       add(:module, :text)
       add(:name, :text, null: false)
@@ -131,11 +136,12 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:references)
 
-    create_if_not_exists table(name(:graph_nodes), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all))
-      add(:fragment_id, references(name(:fragments), on_delete: :nilify_all))
+    create_if_not_exists table(name(:graph_nodes), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer)
+      add(:fragment_id, :integer)
       add(:engine, :text, null: false)
       add(:external_id, :text)
       add(:kind, :text, null: false)
@@ -151,15 +157,16 @@ defmodule Exograph.Storage.Migrations.CreateSchema do
 
     create_indexes(:graph_nodes)
 
-    create_if_not_exists table(name(:call_edges), table_opts()) do
-      add(:package_id, references(name(:packages), on_delete: :delete_all))
-      add(:package_version_id, references(name(:package_versions), on_delete: :delete_all))
-      add(:file_id, references(name(:files), on_delete: :delete_all))
+    create_if_not_exists table(name(:call_edges), table_opts(primary_key: false)) do
+      add(:id, :serial)
+      add(:package_id, :integer)
+      add(:package_version_id, :integer)
+      add(:file_id, :integer)
 
-      add(:caller_node_id, references(name(:graph_nodes), on_delete: :delete_all), null: false)
-      add(:callee_node_id, references(name(:graph_nodes), on_delete: :delete_all), null: false)
+      add(:caller_node_id, :integer, null: false)
+      add(:callee_node_id, :integer, null: false)
 
-      add(:call_site_fragment_id, references(name(:fragments), on_delete: :nilify_all))
+      add(:call_site_fragment_id, :integer)
 
       add(:caller_qualified_name, :text, null: false)
       add(:callee_qualified_name, :text, null: false)

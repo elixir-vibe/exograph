@@ -427,7 +427,6 @@ defmodule Exograph.Storage.FragmentStore do
           store.repo,
           {source(store), FragmentRecord},
           entries,
-          on_conflict: :nothing,
           timeout: :infinity
         )
       end)
@@ -789,7 +788,6 @@ defmodule Exograph.Storage.FragmentStore do
         gn_source,
         entries,
         chunk_size: 2_000,
-        on_conflict: :nothing,
         timeout: :infinity
       )
 

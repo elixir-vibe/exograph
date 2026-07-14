@@ -106,7 +106,7 @@ defmodule Exograph.Storage.StorageV2Test do
     end
   end
 
-  test "requires rebuilding v3 indexes before applying the v4 identifier format", %{
+  test "requires rebuilding v4 indexes before applying the v5 columnar format", %{
     prefix: prefix
   } do
     Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
@@ -114,10 +114,10 @@ defmodule Exograph.Storage.StorageV2Test do
     {1, nil} =
       Exograph.DuckDBRepo.update_all(
         Schema.index_format_source(prefix),
-        set: [format_version: 3]
+        set: [format_version: 4]
       )
 
-    assert_raise ArgumentError, ~r/unsupported Exograph index format 3\/1; reindex/, fn ->
+    assert_raise ArgumentError, ~r/unsupported Exograph index format 4\/1; reindex/, fn ->
       Exograph.DuckDB.migrate!(repo: Exograph.DuckDBRepo, prefix: prefix)
     end
 
