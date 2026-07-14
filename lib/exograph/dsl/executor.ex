@@ -171,7 +171,7 @@ defmodule Exograph.DSL.Executor do
 
         {cursor, false} ->
           batch = filtered_fragment_batch(index, plan, opts, cursor)
-          done = length(batch) < fragment_candidate_limit(opts)
+          done = length(batch) < fragment_candidate_limit(plan, opts)
           next_cursor = if batch == [], do: cursor, else: last_cursor(batch)
           {batch, {next_cursor, done}}
       end,
@@ -180,12 +180,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   defp filtered_fragment_batch(index, plan, opts, cursor) do
-    base_filtered_fragment_query(
-      index,
-      cursor,
-      plan_requires_source_projection?(plan),
-      fragment_candidate_limit(opts)
-    )
+    base_filtered_fragment_query(index, cursor, fragment_candidate_limit(plan, opts))
     |> where_fragment_text_contains(plan)
     |> where_structural_terms(index, plan)
     |> where_pattern_kind(plan)
@@ -193,7 +188,6 @@ defmodule Exograph.DSL.Executor do
     |> where_source_predicates(predicates(plan, plan.binding), plan.binding, :fragment)
     |> where_fragment_scope(opts)
     |> hydrate_fragment_batch(index)
-    |> hydrate_text_contains_sources(index, plan)
   end
 
   @def_kinds [:def, :defp, :defmacro, :defmacrop]
@@ -326,7 +320,7 @@ defmodule Exograph.DSL.Executor do
               cursor
             )
 
-          done = length(batch) < fragment_candidate_limit(opts)
+          done = length(batch) < structural_fragment_candidate_limit(opts)
           next_cursor = if batch == [], do: cursor, else: last_cursor(batch)
           {batch, {next_cursor, done}}
       end,
@@ -374,7 +368,7 @@ defmodule Exograph.DSL.Executor do
          opts,
          cursor
        ) do
-    query = base_fragment_query(index, cursor, fragment_candidate_limit(opts))
+    query = base_fragment_query(index, cursor, structural_fragment_candidate_limit(opts))
 
     query = where_required_term_ids(query, index, term_ids)
 
@@ -395,36 +389,27 @@ defmodule Exograph.DSL.Executor do
 
     query
     |> where_fragment_scope(opts)
-    |> hydrate_fragment_batch(index)
+    |> hydrate_structural_fragment_batch(index)
   end
 
   defp base_fragment_query(index, cursor, candidate_limit) do
-    files_source = Schema.files_source(index.inverted.prefix)
-    versions_source = Schema.package_versions_source(index.inverted.prefix)
-    packages_source = Schema.packages_source(index.inverted.prefix)
     fragments_source = Schema.fragments_source(index.inverted.prefix)
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
-        left_join: file in ^files_source,
-        on: file.id == fragment.file_id,
-        left_join: version in ^versions_source,
-        on: version.id == fragment.package_version_id,
-        left_join: package in ^packages_source,
-        on: package.id == version.package_id,
         order_by: [asc: fragment.file_id, asc: fragment.id],
         limit: ^candidate_limit,
-        select: {fragment, file.source, file.path, version.version, package.name, file.ast}
+        select: fragment
       )
 
-    where_after_cursor(query, cursor)
+    where_fragment_after_cursor(query, cursor)
   end
 
-  defp base_filtered_fragment_query(index, cursor, include_source?, candidate_limit) do
-    base_fragment_candidate_query(index, cursor, include_source?, candidate_limit)
+  defp base_filtered_fragment_query(index, cursor, candidate_limit) do
+    base_fragment_candidate_query(index, cursor, candidate_limit)
   end
 
-  defp base_fragment_candidate_query(index, cursor, include_source?, candidate_limit) do
+  defp base_fragment_candidate_query(index, cursor, candidate_limit) do
     files_source = Schema.files_source(index.inverted.prefix)
     versions_source = Schema.package_versions_source(index.inverted.prefix)
     packages_source = Schema.packages_source(index.inverted.prefix)
@@ -441,31 +426,29 @@ defmodule Exograph.DSL.Executor do
         order_by: [asc: fragment.file_id, asc: fragment.id],
         limit: ^candidate_limit
       )
-      |> select_fragment_candidate(include_source?)
+      |> select_fragment_candidate()
 
     where_after_cursor(query, cursor)
   end
 
-  defp select_fragment_candidate(query, true) do
+  defp select_fragment_candidate(query) do
     select(query, [fragment, file, version, package], {
       map(fragment, @candidate_fragment_fields),
-      file.source,
       file.path,
       version.version,
-      package.name,
-      file.ast
+      package.name
     })
   end
 
-  defp select_fragment_candidate(query, false) do
-    select(query, [fragment, file, version, package], {
-      map(fragment, @candidate_fragment_fields),
-      nil,
-      file.path,
-      version.version,
-      package.name,
-      file.ast
-    })
+  defp where_fragment_after_cursor(query, nil), do: query
+
+  defp where_fragment_after_cursor(query, {file_id, id}) do
+    where(
+      query,
+      [fragment],
+      fragment.file_id > ^file_id or
+        (fragment.file_id == ^file_id and fragment.id > ^id)
+    )
   end
 
   defp where_after_cursor(query, nil), do: query
@@ -486,15 +469,18 @@ defmodule Exograph.DSL.Executor do
 
   defp hydrate_fragment_batch(query, index) do
     rows = index.inverted.repo.all(query)
+    fragments = Enum.map(rows, &elem(&1, 0))
+    files = load_fragment_files(index, fragments)
 
     locators =
-      Enum.reduce(rows, %{}, fn {fragment, _source, _path, _package_version, _package_name,
-                                 file_ast},
-                                locators ->
-        Map.put_new_lazy(locators, fragment.file_id, fn -> Hydration.locator(file_ast) end)
+      Map.new(files, fn {file_id, {_source, _path, _package_version, _package_name, file_ast}} ->
+        {file_id, Hydration.locator(file_ast)}
       end)
 
-    Enum.map(rows, fn {fragment, source, path, package_version, package_name, file_ast} ->
+    Enum.map(rows, fn {fragment, path, package_version, package_name} ->
+      {source, _path, _package_version, _package_name, file_ast} =
+        Map.fetch!(files, fragment.file_id)
+
       hydrate_query_fragment(
         fragment,
         source,
@@ -504,6 +490,53 @@ defmodule Exograph.DSL.Executor do
         file_ast,
         Map.fetch!(locators, fragment.file_id)
       )
+    end)
+  end
+
+  defp hydrate_structural_fragment_batch(query, index) do
+    fragments = index.inverted.repo.all(query)
+    files = load_fragment_files(index, fragments)
+
+    locators =
+      Map.new(files, fn {file_id, {_source, _path, _package_version, _package_name, file_ast}} ->
+        {file_id, Hydration.locator(file_ast)}
+      end)
+
+    Enum.map(fragments, fn fragment ->
+      {source, path, package_version, package_name, file_ast} =
+        Map.fetch!(files, fragment.file_id)
+
+      hydrate_query_fragment(
+        fragment,
+        source,
+        path,
+        package_version,
+        package_name,
+        file_ast,
+        Map.fetch!(locators, fragment.file_id)
+      )
+    end)
+  end
+
+  defp load_fragment_files(_index, []), do: %{}
+
+  defp load_fragment_files(index, fragments) do
+    file_ids = fragments |> Enum.map(& &1.file_id) |> Enum.uniq()
+    files_source = Schema.files_source(index.inverted.prefix)
+    versions_source = Schema.package_versions_source(index.inverted.prefix)
+    packages_source = Schema.packages_source(index.inverted.prefix)
+
+    from(file in files_source,
+      left_join: version in ^versions_source,
+      on: version.id == file.package_version_id,
+      left_join: package in ^packages_source,
+      on: package.id == version.package_id,
+      where: file.id in ^file_ids,
+      select: {file.id, file.source, file.path, version.version, package.name, file.ast}
+    )
+    |> index.inverted.repo.all()
+    |> Map.new(fn {file_id, source, path, package_version, package_name, file_ast} ->
+      {file_id, {source, path, package_version, package_name, file_ast}}
     end)
   end
 
@@ -891,32 +924,6 @@ defmodule Exograph.DSL.Executor do
 
   defp light_join_projection?(_index, _plan), do: false
 
-  defp plan_requires_source_projection?(%Plan{query: query}) do
-    query
-    |> Compiler.compile()
-    |> StructuralQuery.selector()
-    |> StructuralQuery.requires_source?()
-  end
-
-  defp hydrate_text_contains_sources(fragments, index, %Plan{query: query}) do
-    if query_contains_text_predicate?(query) do
-      sources = fragment_sources(index, Enum.map(fragments, & &1.id))
-
-      Enum.map(fragments, fn
-        %Fragment{id: id} = fragment when is_integer(id) ->
-          case Map.fetch(sources, id) do
-            {:ok, {source, path}} -> %{fragment | source: source, file: path}
-            :error -> fragment
-          end
-
-        fragment ->
-          fragment
-      end)
-    else
-      fragments
-    end
-  end
-
   defp hydrate_hit_sources(hits, index) do
     missing_source_ids =
       hits
@@ -943,8 +950,6 @@ defmodule Exograph.DSL.Executor do
       end)
     end
   end
-
-  defp fragment_sources(_index, []), do: %{}
 
   defp fragment_sources(index, ids) do
     files_source = Schema.files_source(index.inverted.prefix)
@@ -1034,12 +1039,6 @@ defmodule Exograph.DSL.Executor do
   defp fragment_source_line_count(_line, _end_line, line_count, start),
     do: max(line_count - start, 0)
 
-  defp query_contains_text_predicate?(%Query{binding: binding, predicates: predicates}) do
-    predicates
-    |> binding_patterns(binding, :contains)
-    |> Enum.any?(&(not Compiler.ast_pattern?(&1)))
-  end
-
   defp joined_fragment_batch_limit(index, plan, opts) do
     if structural_plan?(plan) do
       @stream_batch_size
@@ -1049,6 +1048,14 @@ defmodule Exograph.DSL.Executor do
       _index = index
       min(max(requested * 3, requested), @stream_batch_size)
     end
+  end
+
+  defp structural_fragment_candidate_limit(opts) do
+    Keyword.get(opts, :candidate_limit, @stream_batch_size)
+  end
+
+  defp fragment_candidate_limit(%Plan{} = plan, opts) do
+    if structural_plan?(plan), do: @stream_batch_size, else: fragment_candidate_limit(opts)
   end
 
   defp fragment_candidate_limit(opts) do
