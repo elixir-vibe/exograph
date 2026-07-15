@@ -320,7 +320,7 @@ defmodule Exograph.DSL.Executor do
               cursor
             )
 
-          done = length(batch) < structural_fragment_candidate_limit(opts)
+          done = length(batch) < structural_fragment_candidate_limit(compiled_query, opts)
           next_cursor = if batch == [], do: cursor, else: last_cursor(batch)
           {batch, {next_cursor, done}}
       end,
@@ -368,7 +368,12 @@ defmodule Exograph.DSL.Executor do
          opts,
          cursor
        ) do
-    query = base_fragment_query(index, cursor, structural_fragment_candidate_limit(opts))
+    query =
+      base_fragment_query(
+        index,
+        cursor,
+        structural_fragment_candidate_limit(kind_filter, name_filter, opts)
+      )
 
     query = where_required_term_ids(query, index, term_ids)
 
@@ -1050,12 +1055,23 @@ defmodule Exograph.DSL.Executor do
     end
   end
 
-  defp structural_fragment_candidate_limit(opts) do
-    Keyword.get(opts, :candidate_limit, @stream_batch_size)
+  defp structural_fragment_candidate_limit(compiled_query, opts) do
+    {name, _arity} = structural_query_name_arity(compiled_query)
+    structural_fragment_candidate_limit(structural_query_kind(compiled_query), name, opts)
+  end
+
+  defp structural_fragment_candidate_limit(kind, name, opts) do
+    if kind && name do
+      fragment_candidate_limit(opts)
+    else
+      Keyword.get(opts, :candidate_limit, @stream_batch_size)
+    end
   end
 
   defp fragment_candidate_limit(%Plan{} = plan, opts) do
-    if structural_plan?(plan), do: @stream_batch_size, else: fragment_candidate_limit(opts)
+    if exact_fragment_count_supported?(plan),
+      do: fragment_candidate_limit(opts),
+      else: @stream_batch_size
   end
 
   defp fragment_candidate_limit(opts) do

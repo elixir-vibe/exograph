@@ -172,10 +172,10 @@ defmodule Exograph.DSL.Executor.Scope do
     else
       ids = InvertedIndex.resolve_term_ids(index.inverted, required_terms)
 
-      if ids == [] do
-        :missing_required_term
-      else
+      if length(ids) == length(Enum.uniq(required_terms)) do
         {:ok, ids}
+      else
+        :missing_required_term
       end
     end
   end
