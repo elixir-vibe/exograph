@@ -25,6 +25,21 @@ defmodule Exograph.Integration.AtomSafetyTest do
     assert :erlang.system_info(:atom_count) - before_count < 100
   end
 
+  @tag :slow
+  test "Reach extraction over unique identifiers has bounded atom growth" do
+    {:ok, warmup} = Exograph.ElixirParser.string_to_quoted("def warmup(value), do: value")
+    assert {:ok, _graph} = Reach.ast_to_graph(warmup, file: "warmup.ex")
+    before_count = :erlang.system_info(:atom_count)
+
+    for index <- 1..1_000 do
+      source = "def unique_reach_#{index}(argument_#{index}), do: argument_#{index}"
+      assert {:ok, ast} = Exograph.ElixirParser.string_to_quoted(source)
+      assert {:ok, _graph} = Reach.ast_to_graph(ast, file: "unique_#{index}.ex")
+    end
+
+    assert :erlang.system_info(:atom_count) - before_count < 20
+  end
+
   test "compiling unique structural queries has bounded atom growth" do
     _warmup = Exograph.compile("Warmup.Module.call(_)")
     before_count = :erlang.system_info(:atom_count)

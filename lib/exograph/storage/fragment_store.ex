@@ -226,6 +226,71 @@ defmodule Exograph.Storage.FragmentStore do
 
   def mark_package_version_complete(%__MODULE__{}), do: :ok
 
+  @doc false
+  def delete_incomplete_package_version(repo, prefix, package_name, version) do
+    package_versions_source = Schema.package_versions_source(prefix)
+    packages_source = Schema.packages_source(prefix)
+
+    package_version_id =
+      from(package_version in package_versions_source,
+        join: package in ^packages_source,
+        on: package.id == package_version.package_id,
+        where:
+          package.name == ^package_name and package_version.version == ^version and
+            package_version.index_state != "complete",
+        select: package_version.id
+      )
+      |> repo.one()
+
+    if package_version_id do
+      delete_package_version(repo, prefix, package_version_id)
+    end
+
+    :ok
+  end
+
+  defp delete_package_version(repo, prefix, package_version_id) do
+    fragments_source = Schema.fragments_source(prefix)
+
+    fragment_ids =
+      from(fragment in {fragments_source, FragmentRecord},
+        where: fragment.package_version_id == ^package_version_id,
+        select: fragment.id
+      )
+
+    repo.transaction(fn ->
+      from(fragment_term in Schema.fragment_terms_source(prefix),
+        where: fragment_term.fragment_id in subquery(fragment_ids)
+      )
+      |> repo.delete_all(timeout: :infinity)
+
+      Enum.each(
+        [:call_edges, :comments, :definitions, :references, :graph_nodes],
+        fn table ->
+          source = Schema.source(table, prefix)
+
+          from(record in source, where: record.package_version_id == ^package_version_id)
+          |> repo.delete_all(timeout: :infinity)
+        end
+      )
+
+      from(fragment in {fragments_source, FragmentRecord},
+        where: fragment.package_version_id == ^package_version_id
+      )
+      |> repo.delete_all(timeout: :infinity)
+
+      from(file in Schema.files_source(prefix),
+        where: file.package_version_id == ^package_version_id
+      )
+      |> repo.delete_all(timeout: :infinity)
+
+      from(package_version in Schema.package_versions_source(prefix),
+        where: package_version.id == ^package_version_id
+      )
+      |> repo.delete_all(timeout: :infinity)
+    end)
+  end
+
   defp ensure_package_context(%__MODULE__{package: nil, package_version: nil} = store, _now),
     do: store
 

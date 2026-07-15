@@ -45,6 +45,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
     * `--shard-dir` - directory for managed DuckDB shard files
     * `--min-mass` - minimum fragment AST mass (default: `8`)
     * `--generated-min-mass` - minimum fragment AST mass for generated files (default: `20000`)
+    * `--max-source-file-bytes` - skip individual source files larger than this many bytes (default: `5000000`)
     * `--reach` - include Reach call graph extraction
     * `--force` - re-index already-indexed packages
     * `--no-bm25` - skip DuckDB BM25/FTS index creation
@@ -95,6 +96,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
           shard_dir: :string,
           min_mass: :integer,
           generated_min_mass: :integer,
+          max_source_file_bytes: :integer,
           reach: :boolean,
           force: :boolean,
           no_bm25: :boolean,
@@ -157,6 +159,7 @@ defmodule Mix.Tasks.Exograph.Index.Hex do
       shard_directory: Keyword.get(opts, :shard_dir),
       min_mass: Keyword.get(opts, :min_mass, 8),
       generated_min_mass: Keyword.get(opts, :generated_min_mass, 20_000),
+      max_source_file_bytes: Keyword.get(opts, :max_source_file_bytes, 5_000_000),
       resume: not Keyword.get(opts, :force, false),
       bm25?: !Keyword.get(opts, :no_bm25, false),
       extractors: extractors,

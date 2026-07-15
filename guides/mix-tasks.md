@@ -74,6 +74,7 @@ Download and index Hex.pm packages in a streaming DuckDB pipeline.
 | `--manifest-path` | — | Write sharded DuckDB manifest ETF |
 | `--shard-dir` | system temp | Directory for managed DuckDB shard files |
 | `--min-mass` | `8` | Minimum AST fragment mass |
+| `--max-source-file-bytes` | `5000000` | Skip individual source files larger than this limit |
 | `--reach` | false | Include Reach call graph extraction |
 | `--force` | false | Re-index already-indexed packages |
 | `--no-bm25` | false | Skip DuckDB BM25/FTS index creation |

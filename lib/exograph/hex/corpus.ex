@@ -11,6 +11,7 @@ defmodule Exograph.Hex.Corpus do
   require Logger
 
   @default_generated_min_mass 20_000
+  @default_max_source_file_bytes 5_000_000
 
   def index(opts \\ []) do
     reject_ephemeral_storage!(opts)
@@ -371,6 +372,7 @@ defmodule Exograph.Hex.Corpus do
 
       nil ->
         Logger.error("Package #{entry.name}@#{entry.version} indexing timed out")
+        cleanup_incomplete_entry(entry, opts, flush?: true)
         {:timeout, entry}
     end
   end
@@ -397,11 +399,20 @@ defmodule Exograph.Hex.Corpus do
           end)
 
         Logger.error("Package batch indexing timed out: #{names}")
+
+        Enum.each(entries_with_index, fn {entry, _index} ->
+          cleanup_incomplete_entry(entry, opts, flush?: true)
+        end)
+
         {:timeout, entries_with_index}
     end
   end
 
   defp index_entries_batch(entries_with_index, opts) do
+    Enum.each(entries_with_index, fn {entry, _index} ->
+      cleanup_incomplete_entry(entry, opts)
+    end)
+
     fetched =
       Enum.map(entries_with_index, fn {entry, index} ->
         {entry, fetch_entry_sources(entry, index, opts)}
@@ -457,7 +468,7 @@ defmodule Exograph.Hex.Corpus do
       sources =
         Exograph.Hex.StageTimings.measure(:source_filter, fn ->
           files
-          |> Enum.filter(fn {path, source} -> elixir_source?(path, source) end)
+          |> Enum.filter(fn {path, source} -> source_file_allowed?(path, source, opts) end)
           |> Enum.map(fn {path, source} -> {safe_path!(path), source} end)
         end)
 
@@ -809,6 +820,21 @@ defmodule Exograph.Hex.Corpus do
     end)
   end
 
+  defp cleanup_incomplete_entry(entry, opts, cleanup_opts \\ []) do
+    set_dynamic_repo(opts)
+
+    if Keyword.get(cleanup_opts, :flush?, false) do
+      Exograph.DuckDB.InsertBuffer.flush(Keyword.get(opts, :duckdb_insert_buffer))
+    end
+
+    Exograph.Storage.FragmentStore.delete_incomplete_package_version(
+      Keyword.fetch!(opts, :repo),
+      Keyword.get(opts, :prefix, "hex"),
+      entry.name,
+      entry.version
+    )
+  end
+
   defp existing_versions(repo, prefix) do
     import Ecto.Query
 
@@ -829,6 +855,7 @@ defmodule Exograph.Hex.Corpus do
 
   def index_entry(entry, index, opts) do
     set_dynamic_repo(opts)
+    cleanup_incomplete_entry(entry, opts)
     repo = Keyword.fetch!(opts, :repo)
     prefix = Keyword.get(opts, :prefix, "hex")
     min_mass = Keyword.get(opts, :min_mass, 8)
@@ -846,7 +873,7 @@ defmodule Exograph.Hex.Corpus do
       sources =
         Exograph.Hex.StageTimings.measure(:source_filter, fn ->
           files
-          |> Enum.filter(fn {path, source} -> elixir_source?(path, source) end)
+          |> Enum.filter(fn {path, source} -> source_file_allowed?(path, source, opts) end)
           |> Enum.map(fn {path, source} -> {safe_path!(path), source} end)
         end)
 
@@ -900,10 +927,13 @@ defmodule Exograph.Hex.Corpus do
       10_000
   end
 
-  defp elixir_source?(path, source) do
+  @doc false
+  def source_file_allowed?(path, source, opts) do
     String.ends_with?(path, [".ex", ".exs"]) and
       not String.starts_with?(Path.basename(path), "._") and
-      String.valid?(source)
+      String.valid?(source) and
+      byte_size(source) <=
+        Keyword.get(opts, :max_source_file_bytes, @default_max_source_file_bytes)
   end
 
   defp safe_path!(path) do

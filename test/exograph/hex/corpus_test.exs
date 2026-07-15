@@ -29,6 +29,20 @@ defmodule Exograph.Hex.CorpusTest do
     assert shard_opts[:progress_lifecycle?] == false
   end
 
+  test "bounds individual source files before parsing" do
+    assert Exograph.Hex.Corpus.source_file_allowed?("lib/small.ex", "12345",
+             max_source_file_bytes: 5
+           )
+
+    refute Exograph.Hex.Corpus.source_file_allowed?("lib/large.ex", "123456",
+             max_source_file_bytes: 5
+           )
+
+    refute Exograph.Hex.Corpus.source_file_allowed?("README.md", "12345",
+             max_source_file_bytes: 5
+           )
+  end
+
   test "rejects ephemeral recovery modes for corpus indexes" do
     assert_raise ArgumentError, ~r/require durable DuckDB storage/, fn ->
       Exograph.Hex.Corpus.index(recovery_mode: :no_wal_writes)
