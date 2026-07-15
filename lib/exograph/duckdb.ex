@@ -67,6 +67,23 @@ defmodule Exograph.DuckDB do
     QuackDB.Error -> :ok
   end
 
+  @doc false
+  def drop_ingest_indexes!(repo, prefix) do
+    index = %Ecto.Migration.Index{
+      table: Schema.table_name(prefix, :fragments),
+      name: Schema.index_name(prefix, :fragments, :content_hash),
+      columns: [:content_hash]
+    }
+
+    {:drop_if_exists, index, :restrict}
+    |> Ecto.Adapters.QuackDB.Connection.execute_ddl()
+    |> Enum.each(fn statement ->
+      repo.query!(IO.iodata_to_binary(statement), [], timeout: :infinity)
+    end)
+
+    :ok
+  end
+
   @doc "Creates DuckDB FTS/BM25 indexes for searchable Exograph tables."
   def create_bm25_indexes!(opts) do
     repo = Keyword.fetch!(opts, :repo)

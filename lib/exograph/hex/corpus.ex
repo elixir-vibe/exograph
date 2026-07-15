@@ -211,7 +211,9 @@ defmodule Exograph.Hex.Corpus do
     record_atom_count(:beam_atom_count_after_packages)
     results = [combined_results]
 
-    finalize_sharded_structural_indexes!(shards)
+    if Keyword.get(opts, :pipeline) == :broadway do
+      finalize_sharded_structural_indexes!(shards)
+    end
 
     Progress.finish_run()
 
@@ -805,6 +807,9 @@ defmodule Exograph.Hex.Corpus do
     if Keyword.get(opts, :bm25?, true) do
       Exograph.DuckDB.create_bm25_indexes!(repo: repo, prefix: prefix)
     end
+
+    Exograph.DuckDB.drop_ingest_indexes!(repo, prefix)
+    QuackDB.Storage.checkpoint!(repo, timeout: :infinity)
   end
 
   defp finalize_sharded_structural_indexes!(shards) do
@@ -816,6 +821,8 @@ defmodule Exograph.Hex.Corpus do
         )
 
         Exograph.DuckDB.optimize_structural_indexes!(repo: shard.repo, prefix: shard.prefix)
+        Exograph.DuckDB.drop_ingest_indexes!(shard.repo, shard.prefix)
+        QuackDB.Storage.checkpoint!(shard.repo, timeout: :infinity)
       end)
     end)
   end

@@ -32,6 +32,7 @@ defmodule Exograph.ReleaseTasks do
       retry_sleep: env_integer("EXOGRAPH_RETRY_SLEEP", 1_000),
       timeout: env_integer("EXOGRAPH_INDEX_TIMEOUT", 300_000),
       generated_min_mass: env_integer("EXOGRAPH_GENERATED_MIN_MASS", 20_000),
+      max_source_file_bytes: env_integer("EXOGRAPH_MAX_SOURCE_FILE_BYTES", 5_000_000),
       bm25?: false,
       extractors: [:ex_ast],
       mirrors: [env("EXOGRAPH_MIRROR", "https://hex.pm")],
@@ -43,11 +44,21 @@ defmodule Exograph.ReleaseTasks do
     result = Exograph.Hex.Corpus.index(opts)
 
     validate_index_result!(result, build)
+    compact_index!(result, build.manifest_path)
 
     publish_file!(build.manifest_path, final_manifest_path)
     publish_file!(build.report_path, final_report_path)
 
     result
+  end
+
+  defp compact_index!(result, manifest_path) do
+    result
+    |> Map.fetch!(:index)
+    |> Map.fetch!(:shards)
+    |> Exograph.DuckDBShards.stop()
+
+    Exograph.DuckDB.Compactor.compact_manifest!(manifest_path)
   end
 
   @doc false

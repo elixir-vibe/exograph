@@ -42,6 +42,7 @@ defmodule Exograph.Storage.Schema do
     table(:fragment_terms, FragmentTermRecord, primary_key: false),
     table(:fragments, FragmentRecord, primary_key: false) do
       unique_index([:content_hash], name: :content_hash)
+      index([:kind, :name, :arity], name: :kind_name_arity)
     end,
     table(:comments, CommentRecord, primary_key: false),
     table(:definitions, DefinitionRecord, primary_key: false),
