@@ -31,7 +31,7 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
         on: package.id == version.package_id,
         where: fragment.kind in ^@function_fragment_kinds,
         distinct: fragment.id,
-        order_by: [asc: fragment.file_id, asc: fragment.id],
+        order_by: [asc: fragment.mass, asc: fragment.id],
         limit: ^Keyword.get(opts, :candidate_limit, 50),
         select: %{
           fragment: fragment,
@@ -161,12 +161,12 @@ defmodule Exograph.DSL.Executor.JoinBuilder do
       nil ->
         query
 
-      {file_id, id} ->
+      {mass, id} ->
         where(
           query,
           [],
-          field(as(^root), :file_id) > ^file_id or
-            (field(as(^root), :file_id) == ^file_id and field(as(^root), :id) > ^id)
+          field(as(^root), :mass) > ^mass or
+            (field(as(^root), :mass) == ^mass and field(as(^root), :id) > ^id)
         )
     end
   end

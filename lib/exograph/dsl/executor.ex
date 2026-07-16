@@ -145,6 +145,7 @@ defmodule Exograph.DSL.Executor do
   end
 
   @stream_batch_size 500
+  @structural_batch_size 50
   @light_fragment_fields [
     :id,
     :package_id,
@@ -402,7 +403,7 @@ defmodule Exograph.DSL.Executor do
 
     query =
       from(fragment in {fragments_source, FragmentRecord},
-        order_by: [asc: fragment.file_id, asc: fragment.id],
+        order_by: [asc: fragment.mass, asc: fragment.id],
         limit: ^candidate_limit,
         select: fragment
       )
@@ -428,7 +429,7 @@ defmodule Exograph.DSL.Executor do
         on: version.id == fragment.package_version_id,
         left_join: package in ^packages_source,
         on: package.id == version.package_id,
-        order_by: [asc: fragment.file_id, asc: fragment.id],
+        order_by: [asc: fragment.mass, asc: fragment.id],
         limit: ^candidate_limit
       )
       |> select_fragment_candidate()
@@ -447,29 +448,29 @@ defmodule Exograph.DSL.Executor do
 
   defp where_fragment_after_cursor(query, nil), do: query
 
-  defp where_fragment_after_cursor(query, {file_id, id}) do
+  defp where_fragment_after_cursor(query, {mass, id}) do
     where(
       query,
       [fragment],
-      fragment.file_id > ^file_id or
-        (fragment.file_id == ^file_id and fragment.id > ^id)
+      fragment.mass > ^mass or
+        (fragment.mass == ^mass and fragment.id > ^id)
     )
   end
 
   defp where_after_cursor(query, nil), do: query
 
-  defp where_after_cursor(query, {file_id, id}) do
+  defp where_after_cursor(query, {mass, id}) do
     where(
       query,
       [fragment, _file, _version, _package],
-      fragment.file_id > ^file_id or
-        (fragment.file_id == ^file_id and fragment.id > ^id)
+      fragment.mass > ^mass or
+        (fragment.mass == ^mass and fragment.id > ^id)
     )
   end
 
   defp last_cursor(batch) do
     last = List.last(batch)
-    {last.file_id, last.id}
+    {last.mass, last.id}
   end
 
   defp hydrate_fragment_batch(query, index) do
@@ -1064,14 +1065,14 @@ defmodule Exograph.DSL.Executor do
     if kind && name do
       fragment_candidate_limit(opts)
     else
-      Keyword.get(opts, :candidate_limit, @stream_batch_size)
+      Keyword.get(opts, :candidate_limit, @structural_batch_size)
     end
   end
 
   defp fragment_candidate_limit(%Plan{} = plan, opts) do
     if exact_fragment_count_supported?(plan),
       do: fragment_candidate_limit(opts),
-      else: @stream_batch_size
+      else: @structural_batch_size
   end
 
   defp fragment_candidate_limit(opts) do

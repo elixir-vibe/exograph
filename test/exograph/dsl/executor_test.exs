@@ -141,10 +141,10 @@ defmodule Exograph.DSL.ExecutorTest do
 
     assert {:ok, [first]} = Exograph.all(index, query, limit: 1)
 
-    cursor = {first.fragment.file_id, first.fragment.id}
+    cursor = {first.fragment.mass, first.fragment.id}
 
     assert {:ok, [second]} = Exograph.all(index, query, limit: 1, cursor: cursor)
-    assert second.fragment.id != first.fragment.id
+    assert {second.fragment.mass, second.fragment.id} > cursor
   end
 
   test "counts named function patterns exactly", %{index: index} do
