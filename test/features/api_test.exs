@@ -111,15 +111,17 @@ defmodule Exograph.Features.APITest do
       resp =
         api_post("/api/query", %{
           query:
-            ~s|from(d in Definition, where: d.kind == :def, where: prefix_search(d.name, "handle"), limit: 5)|
+            ~s|from(d in Definition, where: d.kind == :def, where: prefix_search(d.name, "handle"), limit: 1)|
         })
 
       assert resp.status == 200
       body = json_body(resp)
       assert body["count"] > 0
       assert hd(body["results"])["type"] == "definition"
-      assert body["meta"]["limit"] == 5
+      assert body["count"] == 1
+      assert body["meta"]["limit"] == 1
       assert body["meta"]["returned"] == body["count"]
+      assert body["meta"]["total"] == %{"relation" => "gte", "value" => 1}
       assert body["meta"]["shards"]["total"] >= 1
     end
 

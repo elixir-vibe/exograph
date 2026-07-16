@@ -71,8 +71,7 @@ defmodule Exograph.Web.QueryExecutor do
     query_opts = Keyword.put(opts, :limit, effective_limit)
 
     with {:ok, results} <- Exograph.all(index, query, query_opts) do
-      total = exact_total(index, query, query_opts)
-      {:ok, results, effective_limit, total}
+      {:ok, results, effective_limit, nil}
     end
   end
 
@@ -82,14 +81,6 @@ defmodule Exograph.Web.QueryExecutor do
     case Exograph.search(index, pattern, opts) do
       {:ok, results} -> {:ok, results, limit, nil}
       error -> error
-    end
-  end
-
-  defp exact_total(index, query, opts) do
-    case Exograph.count(index, query, opts) do
-      {:ok, total} -> total
-      :unknown -> nil
-      {:error, _reason} -> nil
     end
   end
 
