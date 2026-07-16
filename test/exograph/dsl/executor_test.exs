@@ -22,6 +22,7 @@ defmodule Exograph.DSL.ExecutorTest do
            defmodule Demo do
              def run(value) do
                _message = "Expected 'list' key in response"
+               _fragment = "' provided"
                Map.get(%{}, :key)
                Enum.map([value], & &1)
              end

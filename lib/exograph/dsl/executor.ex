@@ -1022,7 +1022,7 @@ defmodule Exograph.DSL.Executor do
     |> ExAST.Patcher.find_all(pattern)
     |> Enum.any?(fn %{node: node} -> node != fragment.ast end)
   rescue
-    _error in [ArgumentError, SyntaxError] -> false
+    _error in [ArgumentError, MismatchedDelimiterError, SyntaxError, TokenMissingError] -> false
   end
 
   defp fragment_source_text(%Fragment{source: source, line: line, end_line: end_line})
