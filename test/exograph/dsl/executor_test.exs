@@ -21,6 +21,8 @@ defmodule Exograph.DSL.ExecutorTest do
            """
            defmodule Demo do
              def run(value) do
+               _message = "Expected 'list' key in response"
+               Map.get(%{}, :key)
                Enum.map([value], & &1)
              end
 
@@ -59,6 +61,13 @@ defmodule Exograph.DSL.ExecutorTest do
     |> assert_ok_hits(fn hits ->
       assert Enum.map(hits, & &1.fragment.name) == ["run"]
     end)
+  end
+
+  test "AST contains ignores non-code string literal fragments", %{index: index} do
+    query = query!(~s|from(f in Fragment, where: contains(f, "Map.get(_, _)"), limit: 20)|)
+
+    assert {:ok, hits} = Exograph.all(index, query, limit: 20)
+    assert hits != []
   end
 
   test "text contains filters against hydrated source", %{index: index} do
