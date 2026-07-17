@@ -1,6 +1,9 @@
 defmodule Exograph.DuckDB.Compactor do
   @moduledoc false
 
+  @lock_retry_timeout_ms 30_000
+  @lock_retry_interval_ms 100
+
   def compact_manifest!(manifest) do
     manifest
     |> Exograph.DuckDBShards.load_manifest()
@@ -52,9 +55,27 @@ defmodule Exograph.DuckDB.Compactor do
         "COPY FROM DATABASE exograph_source TO exograph_compact;"
       ])
 
+    deadline = System.monotonic_time(:millisecond) + @lock_retry_timeout_ms
+    run_copy_with_lock_retry!(statement, deadline)
+  end
+
+  defp run_copy_with_lock_retry!(statement, deadline) do
     case System.cmd(QuackDB.Binary.path!(), [":memory:", "-c", statement], stderr_to_stdout: true) do
-      {_output, 0} -> :ok
-      {output, status} -> raise "DuckDB compaction failed with status #{status}: #{output}"
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        if lock_conflict?(output) and System.monotonic_time(:millisecond) < deadline do
+          Process.sleep(@lock_retry_interval_ms)
+          run_copy_with_lock_retry!(statement, deadline)
+        else
+          raise "DuckDB compaction failed with status #{status}: #{output}"
+        end
     end
+  end
+
+  defp lock_conflict?(output) do
+    String.contains?(output, "Could not set lock on file") or
+      String.contains?(output, "Conflicting lock is held")
   end
 end

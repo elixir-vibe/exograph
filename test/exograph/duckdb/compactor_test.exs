@@ -3,6 +3,39 @@ defmodule Exograph.DuckDB.CompactorTest do
 
   alias Exograph.DuckDBShards
 
+  test "waits for a managed DuckDB lock to be released" do
+    directory =
+      Path.join(
+        System.tmp_dir!(),
+        "exograph-compactor-lock-#{System.unique_integer([:positive])}"
+      )
+
+    port = Mix.Exograph.DuckDBOptions.free_tcp_port!()
+    File.mkdir_p!(directory)
+
+    on_exit(fn -> File.rm_rf(directory) end)
+
+    {:ok, [shard]} =
+      DuckDBShards.start_managed(1,
+        directory: directory,
+        prefix: "compact_lock",
+        port_base: port,
+        duckdb_threads: 1,
+        pool_size: 1
+      )
+
+    DuckDBShards.with_repo(shard, fn ->
+      Exograph.DuckDB.migrate!(repo: shard.repo, prefix: shard.prefix)
+    end)
+
+    compact_task = Task.async(fn -> Exograph.DuckDB.Compactor.compact!(shard.database) end)
+    Process.sleep(300)
+    assert Process.alive?(compact_task.pid)
+    DuckDBShards.stop([shard])
+
+    assert :ok = Task.await(compact_task, 35_000)
+  end
+
   test "compacts an offline manifest without changing query results" do
     directory =
       Path.join(System.tmp_dir!(), "exograph-compactor-#{System.unique_integer([:positive])}")
