@@ -210,6 +210,28 @@ defmodule Exograph.Features.APITest do
 
       assert [%{"name" => "feature_fixture", "ecosystem" => "hex"}] = body["results"]
     end
+
+    test "paginates public entities with offset cursors" do
+      query = %{
+        version: 1,
+        source: "package_version",
+        binding: "v",
+        predicates: [],
+        joins: [],
+        limit: 1
+      }
+
+      first_page = api_post("/api/query", %{query: query}) |> json_body()
+      assert [%{"package_name" => "feature_fixture"}] = first_page["results"]
+      assert is_binary(first_page["next_cursor"])
+
+      second_page =
+        api_post("/api/query", %{query: query, cursor: first_page["next_cursor"]})
+        |> json_body()
+
+      assert second_page["results"] == []
+      assert second_page["next_cursor"] == nil
+    end
   end
 
   describe "POST /api/hydrate" do

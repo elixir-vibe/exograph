@@ -727,6 +727,14 @@ defmodule Exograph do
      |> Enum.take(limit)}
   end
 
+  defp hit_sort_key(%Exograph.Package{} = package) do
+    {package.ecosystem, package.name, package.id}
+  end
+
+  defp hit_sort_key(%Exograph.PackageVersion{} = version) do
+    {version.ecosystem, version.package_name, version.version, version.id}
+  end
+
   defp hit_sort_key(hit) do
     fragment = hit_fragment(hit)
     score = hit_score(hit)

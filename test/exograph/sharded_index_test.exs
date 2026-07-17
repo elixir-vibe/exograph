@@ -111,7 +111,22 @@ defmodule Exograph.ShardedIndexTest do
     package_query = %Exograph.Query{source: :package, binding: "p"}
 
     assert {:ok, packages} = Exograph.all(sharded, package_query, limit: 10)
-    assert Enum.map(packages, & &1.name) |> Enum.sort() == ["alpha", "beta"]
+    assert Enum.map(packages, & &1.name) == ["alpha", "beta"]
+
+    assert {:ok, [%Exograph.Package{name: "alpha"}]} =
+             Exograph.all(sharded, package_query, limit: 1)
+
+    assert {:ok, [%Exograph.Package{name: "beta"}]} =
+             Exograph.all(sharded, package_query, limit: 1, skip: 1)
+
+    version_query = %Exograph.Query{source: :package_version, binding: "v"}
+
+    assert {:ok, [%Exograph.PackageVersion{package_name: "alpha"}]} =
+             Exograph.all(sharded, version_query, limit: 1)
+
+    assert {:ok, [%Exograph.PackageVersion{package_name: "beta"}]} =
+             Exograph.all(sharded, version_query, limit: 1, skip: 1)
+
     assert {:ok, 2} = Exograph.count(sharded, package_query)
 
     assert {:ok, %Exograph.Query.Estimate{value: 2, relation: :eq}} =

@@ -440,8 +440,13 @@ defmodule Exograph.Web.APIController do
     if length(hits) == limit, do: hits |> List.last() |> encode_keyset_cursor(), else: nil
   end
 
-  defp next_query_cursor(hits, _cursor, limit) do
-    if length(hits) >= limit, do: hits |> List.last() |> encode_keyset_cursor(), else: nil
+  defp next_query_cursor(hits, cursor, limit) do
+    if length(hits) >= limit do
+      case hits |> List.last() |> encode_keyset_cursor() do
+        nil -> encode_offset_cursor(offset(cursor) + limit)
+        keyset_cursor -> keyset_cursor
+      end
+    end
   end
 
   defp encode_offset_cursor(offset) when is_integer(offset),
