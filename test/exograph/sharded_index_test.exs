@@ -80,56 +80,52 @@ defmodule Exograph.ShardedIndexTest do
   end
 
   test "public entity queries and hydration work across shards" do
-    {:ok, alpha_index} =
-      Exograph.index_sources(
-        [{"lib/alpha.ex", "defmodule Alpha do\nend\n"}],
-        DuckDBSupport.opts("public_alpha",
-          extractors: [:ex_ast],
-          min_mass: 1,
-          package: %{name: "alpha"},
-          package_version: %{name: "alpha", version: "1.0.0"}
-        )
-      )
+    {:ok, alpha_index} = index_public_package("public_alpha", "alpha", "1.0.0", true)
+    {:ok, _charlie_index} = index_public_package("public_alpha", "charlie", "3.0.0", false)
+    {:ok, _echo_index} = index_public_package("public_alpha", "echo", "5.0.0", false)
 
-    {:ok, beta_index} =
-      Exograph.index_sources(
-        [{"lib/beta.ex", "defmodule Beta do\nend\n"}],
-        DuckDBSupport.opts("public_beta",
-          extractors: [:ex_ast],
-          min_mass: 1,
-          package: %{name: "beta"},
-          package_version: %{name: "beta", version: "2.0.0"}
-        )
-      )
+    {:ok, beta_index} = index_public_package("public_beta", "beta", "2.0.0", true)
+    {:ok, _delta_index} = index_public_package("public_beta", "delta", "4.0.0", false)
+    {:ok, _foxtrot_index} = index_public_package("public_beta", "foxtrot", "6.0.0", false)
+
+    alpha_packages = [
+      %{name: "alpha", version: "1.0.0"},
+      %{name: "charlie", version: "3.0.0"},
+      %{name: "echo", version: "5.0.0"}
+    ]
+
+    beta_packages = [
+      %{name: "beta", version: "2.0.0"},
+      %{name: "delta", version: "4.0.0"},
+      %{name: "foxtrot", version: "6.0.0"}
+    ]
 
     sharded =
       ShardedIndex.new([
-        %{index: alpha_index, packages: [%{name: "alpha", version: "1.0.0"}]},
-        %{index: beta_index, packages: [%{name: "beta", version: "2.0.0"}]}
+        %{index: alpha_index, packages: alpha_packages},
+        %{index: beta_index, packages: beta_packages}
       ])
 
     package_query = %Exograph.Query{source: :package, binding: "p"}
 
     assert {:ok, packages} = Exograph.all(sharded, package_query, limit: 10)
-    assert Enum.map(packages, & &1.name) == ["alpha", "beta"]
+    assert Enum.map(packages, & &1.name) == ~w(alpha beta charlie delta echo foxtrot)
 
-    assert {:ok, [%Exograph.Package{name: "alpha"}]} =
-             Exograph.all(sharded, package_query, limit: 1)
+    assert {:ok, page_one} = Exograph.all(sharded, package_query, limit: 2)
+    assert {:ok, page_two} = Exograph.all(sharded, package_query, limit: 2, skip: 2)
+    assert {:ok, page_three} = Exograph.all(sharded, package_query, limit: 2, skip: 4)
 
-    assert {:ok, [%Exograph.Package{name: "beta"}]} =
-             Exograph.all(sharded, package_query, limit: 1, skip: 1)
+    assert Enum.map(page_one ++ page_two ++ page_three, & &1.name) ==
+             ~w(alpha beta charlie delta echo foxtrot)
 
     version_query = %Exograph.Query{source: :package_version, binding: "v"}
 
-    assert {:ok, [%Exograph.PackageVersion{package_name: "alpha"}]} =
-             Exograph.all(sharded, version_query, limit: 1)
+    assert {:ok, version_page} = Exograph.all(sharded, version_query, limit: 3, skip: 2)
+    assert Enum.map(version_page, & &1.package_name) == ~w(charlie delta echo)
 
-    assert {:ok, [%Exograph.PackageVersion{package_name: "beta"}]} =
-             Exograph.all(sharded, version_query, limit: 1, skip: 1)
+    assert {:ok, 6} = Exograph.count(sharded, package_query)
 
-    assert {:ok, 2} = Exograph.count(sharded, package_query)
-
-    assert {:ok, %Exograph.Query.Estimate{value: 2, relation: :eq}} =
+    assert {:ok, %Exograph.Query.Estimate{value: 6, relation: :eq}} =
              Exograph.estimate_candidates(sharded, package_query)
 
     version = Exograph.PackageVersion.new(name: "beta", version: "2.0.0")
@@ -453,6 +449,19 @@ defmodule Exograph.ShardedIndexTest do
 
   def handle_event(_event, measurements, metadata, test_pid) do
     send(test_pid, {:shard_query_stop, measurements, metadata})
+  end
+
+  defp index_public_package(prefix, name, version, migrate?) do
+    Exograph.index_sources(
+      [{"lib/#{name}.ex", "defmodule #{Macro.camelize(name)} do\nend\n"}],
+      DuckDBSupport.opts(prefix,
+        extractors: [:ex_ast],
+        min_mass: 1,
+        migrate?: migrate?,
+        package: %{name: name},
+        package_version: %{name: name, version: version}
+      )
+    )
   end
 
   defp fixture(name, source) do

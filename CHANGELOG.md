@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Stage both corpus publication artifacts before replacing the live report and manifest, with the manifest published last as the runtime commit point.
+- Cover globally ordered offset pagination for package and package-version entities distributed across multiple shards.
+
 ## 0.9.12 - 2026-07-07
 
 ### Changed

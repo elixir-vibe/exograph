@@ -46,8 +46,7 @@ defmodule Exograph.ReleaseTasks do
     validate_index_result!(result, build)
     compact_index!(result, build.manifest_path)
 
-    publish_file!(build.manifest_path, final_manifest_path)
-    publish_file!(build.report_path, final_report_path)
+    publish_staged_build!(build, final_manifest_path, final_report_path)
 
     result
   end
@@ -100,14 +99,39 @@ defmodule Exograph.ReleaseTasks do
     }
   end
 
-  defp publish_file!(source, destination) do
-    destination
+  @doc false
+  def publish_staged_build!(build, final_manifest_path, final_report_path) do
+    sources = [build.manifest_path, build.report_path]
+
+    Enum.each(sources, fn source ->
+      unless File.regular?(source) do
+        raise "staged index artifact is missing: #{source}; refusing to publish"
+      end
+    end)
+
+    suffix = ".tmp-#{System.unique_integer([:positive])}"
+    manifest_temp = final_manifest_path <> suffix
+    report_temp = final_report_path <> suffix
+
+    try do
+      stage_file!(build.manifest_path, manifest_temp)
+      stage_file!(build.report_path, report_temp)
+      File.rename!(report_temp, final_report_path)
+      File.rename!(manifest_temp, final_manifest_path)
+    after
+      File.rm(manifest_temp)
+      File.rm(report_temp)
+    end
+
+    :ok
+  end
+
+  defp stage_file!(source, temporary_destination) do
+    temporary_destination
     |> Path.dirname()
     |> File.mkdir_p!()
 
-    temporary_destination = "#{destination}.tmp-#{System.unique_integer([:positive])}"
     File.cp!(source, temporary_destination)
-    File.rename!(temporary_destination, destination)
   end
 
   defp env(name, default), do: Exograph.Environment.get(name, default)
